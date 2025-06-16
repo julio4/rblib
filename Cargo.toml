@@ -2,7 +2,7 @@
 name = "rblib"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.86"
+rust-version = "1.87"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/flashbots/rblib"
 repository = "https://github.com/flashbots/rblib"
@@ -10,3 +10,4 @@ description = "SDK for building rthereum compatible block builders"
 exclude = [".github/"]
 
 [dependencies]
+pipeline-macros = { path = "src/pipeline/macros" }

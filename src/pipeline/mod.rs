@@ -1,0 +1,276 @@
+use {
+	crate::pipeline::{
+		limits::Limits,
+		step::{Step, StepMode, WrappedStep},
+	},
+	pipeline_macros::impl_into_pipeline_steps,
+};
+pub use {
+	r#static::{Static, StaticContext, StaticPayload},
+	simulated::{Simulated, SimulatedContext, SimulatedPayload},
+	step::ControlFlow,
+	Behavior::{Loop, Once},
+};
+
+mod limits;
+mod simulated;
+mod r#static;
+mod step;
+
+#[cfg(test)]
+mod tests;
+
+pub enum Behavior {
+	Once,
+	Loop,
+}
+
+#[derive(Default)]
+pub struct Pipeline {
+	limits: Option<Box<dyn limits::Limits>>,
+	epilogue: Option<WrappedStep>,
+	prologue: Option<WrappedStep>,
+	steps: Vec<StepOrPipeline>,
+}
+
+impl Pipeline {
+	/// A step that happens before any transaction is added to the block, executes
+	/// as the first step in the pipeline.
+	pub fn with_prologue<Mode: StepMode>(
+		self,
+		step: impl Step<Mode = Mode>,
+	) -> Self {
+		let mut this = self;
+		this.prologue = Some(WrappedStep::new(step));
+		this
+	}
+
+	/// A step that happens as the last step of the block after the whole payload
+	/// has been built.
+	pub fn with_epilogue<Mode: StepMode>(
+		self,
+		step: impl Step<Mode = Mode>,
+	) -> Self {
+		let mut this = self;
+		this.epilogue = Some(WrappedStep::new(step));
+		this
+	}
+
+	/// A step that runs with an input that is the result of the previous step.
+	/// The order of steps definition is important, as it determines the flow of
+	/// data through the pipeline.
+	pub fn with_step<Mode: StepMode>(self, step: impl Step<Mode = Mode>) -> Self {
+		let mut this = self;
+		this
+			.steps
+			.push(StepOrPipeline::Step(WrappedStep::new(step)));
+		this
+	}
+
+	pub fn with_pipeline<T>(
+		self,
+		behavior: Behavior,
+		nested: impl IntoPipeline<T>,
+	) -> Self {
+		let mut this = self;
+		let nested_pipeline = nested.into_pipeline();
+		this
+			.steps
+			.push(StepOrPipeline::Pipeline(behavior, nested_pipeline));
+		this
+	}
+
+	pub fn with_limits<L: Limits>(self, limits: L) -> Self {
+		let mut this = self;
+		this.limits = Some(Box::new(limits));
+		this
+	}
+}
+
+enum StepOrPipeline {
+	Step(WrappedStep),
+	Pipeline(Behavior, Pipeline),
+}
+
+pub trait IntoPipeline<Marker> {
+	fn into_pipeline(self) -> Pipeline;
+}
+
+struct Sentinel;
+impl<F: FnOnce(Pipeline) -> Pipeline> IntoPipeline<Sentinel> for F {
+	fn into_pipeline(self) -> Pipeline {
+		self(Pipeline::default())
+	}
+}
+
+impl IntoPipeline<()> for Pipeline {
+	fn into_pipeline(self) -> Pipeline {
+		self
+	}
+}
+
+impl<M0: StepMode, S0: Step<Mode = M0>> IntoPipeline<()> for (S0,) {
+	fn into_pipeline(self) -> Pipeline {
+		Pipeline::default().with_step(self.0)
+	}
+}
+
+// Generate implementations for tuples of steps up to 32 elements
+impl_into_pipeline_steps!(32);
+
+mod sealed {
+	pub trait Sealed {}
+}
+
+#[cfg(test)]
+mod test {
+	use {super::*, crate::pipeline::tests::*};
+
+	#[test]
+	fn pipeline_syntax_only_steps() {
+		let _pipeline = Pipeline::default()
+			.with_prologue(OptimismPrologue)
+			.with_epilogue(BuilderEpilogue)
+			.with_step(GatherBestTransactions)
+			.with_step(PriorityFeeOrdering)
+			.with_step(TotalProfitOrdering)
+			.with_step(RevertProtection);
+
+		assert!(true, "Pipeline created successfully");
+	}
+
+	#[test]
+	fn pipeline_syntax_nested_verbose() {
+		let top_level = Pipeline::default()
+			.with_prologue(OptimismPrologue)
+			.with_epilogue(BuilderEpilogue);
+
+		let nested = Pipeline::default()
+			.with_step(AppendNewTransactionFromPool)
+			.with_step(PriorityFeeOrdering)
+			.with_step(TotalProfitOrdering)
+			.with_step(RevertProtection);
+
+		let _top_level = top_level //
+			.with_pipeline(Loop, nested);
+
+		assert!(true, "Pipeline created successfully");
+	}
+
+	#[test]
+	fn pipeline_syntax_nested_one_concise_static() {
+		let _top_level = Pipeline::default()
+			.with_prologue(OptimismPrologue)
+			.with_epilogue(BuilderEpilogue)
+			.with_pipeline(Loop, AppendNewTransactionFromPool);
+
+		assert!(true, "Pipeline created successfully");
+	}
+
+	#[test]
+	fn pipeline_syntax_nested_one_concise_simulated() {
+		let _top_level = Pipeline::default()
+			.with_prologue(OptimismPrologue)
+			.with_epilogue(BuilderEpilogue)
+			.with_pipeline(Loop, (RevertProtection,));
+
+		assert!(true, "Pipeline created successfully");
+	}
+
+	#[test]
+	fn pipeline_syntax_nested_many_concise() {
+		let _top_level = Pipeline::default()
+			.with_prologue(OptimismPrologue)
+			.with_epilogue(BuilderEpilogue)
+			.with_pipeline(
+				Loop,
+				(
+					AppendNewTransactionFromPool,
+					PriorityFeeOrdering,
+					TotalProfitOrdering,
+					RevertProtection,
+				),
+			);
+
+		assert!(true, "Pipeline created successfully");
+	}
+
+	#[test]
+	fn pipeline_syntax_flashblocks_example() {
+		struct WebSocketBeginBlock;
+		impl Step for WebSocketBeginBlock {
+			type Mode = Simulated;
+
+			async fn step(
+				&mut self,
+				_payload: SimulatedPayload,
+				_ctx: &mut SimulatedContext,
+			) -> ControlFlow {
+				todo!()
+			}
+		}
+
+		struct WebSocketEndBlock;
+		impl Step for WebSocketEndBlock {
+			type Mode = Simulated;
+
+			async fn step(
+				&mut self,
+				_payload: SimulatedPayload,
+				_ctx: &mut SimulatedContext,
+			) -> ControlFlow {
+				todo!()
+			}
+		}
+
+		struct FlashblockEpilogue;
+		impl Step for FlashblockEpilogue {
+			type Mode = Simulated;
+
+			async fn step(
+				&mut self,
+				_payload: SimulatedPayload,
+				_ctx: &mut SimulatedContext,
+			) -> ControlFlow {
+				todo!()
+			}
+		}
+
+		struct PublishToWebSocket;
+		impl Step for PublishToWebSocket {
+			type Mode = Simulated;
+
+			async fn step(
+				&mut self,
+				_payload: SimulatedPayload,
+				_ctx: &mut SimulatedContext,
+			) -> ControlFlow {
+				todo!()
+			}
+		}
+
+		struct FlashblockLimits;
+		impl Limits for FlashblockLimits {}
+
+		let _ = Pipeline::default()
+			.with_prologue(OptimismPrologue)
+			.with_epilogue(BuilderEpilogue)
+			.with_step(WebSocketBeginBlock)
+			.with_pipeline(Loop, |nested: Pipeline| {
+				nested
+					.with_limits(FlashblockLimits)
+					.with_epilogue(FlashblockEpilogue)
+					.with_pipeline(
+						Loop,
+						(
+							AppendNewTransactionFromPool,
+							PriorityFeeOrdering,
+							TotalProfitOrdering,
+							RevertProtection,
+						),
+					)
+					.with_step(PublishToWebSocket)
+			})
+			.with_step(WebSocketEndBlock);
+	}
+}

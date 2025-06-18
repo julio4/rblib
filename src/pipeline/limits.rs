@@ -1,1 +1,3 @@
-pub trait Limits: Send + Sync + 'static {}
+use core::fmt::Debug;
+
+pub trait Limits: Debug + Send + Sync + 'static {}

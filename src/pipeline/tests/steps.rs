@@ -1,6 +1,4 @@
-//! Utilities used in internal unit tests
-
-use crate::pipeline::{r#static::Static, simulated::Simulated, *};
+use super::*;
 
 pub struct OptimismPrologue;
 impl Step for OptimismPrologue {
@@ -10,7 +8,7 @@ impl Step for OptimismPrologue {
 		&mut self,
 		_payload: StaticPayload,
 		_ctx: &mut StaticContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Static> {
 		todo!()
 	}
 }
@@ -23,7 +21,7 @@ impl Step for BuilderEpilogue {
 		&mut self,
 		_payload: SimulatedPayload,
 		_ctx: &mut SimulatedContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Simulated> {
 		todo!()
 	}
 }
@@ -36,7 +34,7 @@ impl Step for GatherBestTransactions {
 		&mut self,
 		_payload: StaticPayload,
 		_ctx: &mut StaticContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Static> {
 		todo!()
 	}
 }
@@ -49,7 +47,7 @@ impl Step for PriorityFeeOrdering {
 		&mut self,
 		_payload: StaticPayload,
 		_ctx: &mut StaticContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Static> {
 		todo!()
 	}
 }
@@ -62,7 +60,7 @@ impl Step for TotalProfitOrdering {
 		&mut self,
 		_payload: SimulatedPayload,
 		_ctx: &mut SimulatedContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Simulated> {
 		todo!()
 	}
 }
@@ -75,7 +73,7 @@ impl Step for RevertProtection {
 		&mut self,
 		_payload: SimulatedPayload,
 		_ctx: &mut SimulatedContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Simulated> {
 		todo!()
 	}
 }
@@ -88,7 +86,7 @@ impl Step for AppendNewTransactionFromPool {
 		&mut self,
 		_payload: StaticPayload,
 		_ctx: &mut StaticContext,
-	) -> ControlFlow {
+	) -> ControlFlow<Static> {
 		todo!()
 	}
 }

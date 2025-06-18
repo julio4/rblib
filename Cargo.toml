@@ -2,12 +2,38 @@
 name = "rblib"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.86"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/flashbots/rblib"
 repository = "https://github.com/flashbots/rblib"
-description = "SDK for building rthereum compatible block builders"
+description = "SDK for building ethereum compatible block builders"
 exclude = [".github/"]
 
+[features]
+default = ["optimism", "ethereum"]
+optimism = [
+  "reth-optimism-primitives",
+  "reth-optimism-node",
+  "reth-optimism-chainspec",
+]
+ethereum = []
+
 [dependencies]
+# internal dependencies
 pipeline-macros = { path = "src/pipeline/macros" }
+
+# Common dependencies
+alloy = { version = "1.0.11" }
+thiserror = { version = "2.0", default-features = false }
+
+# reth dependencies
+reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
+
+# reth optimism dependencies
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
+
+
+[dev-dependencies]
+tokio = { version = "1.45", features = ["full"] }

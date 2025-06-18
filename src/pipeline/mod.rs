@@ -1,17 +1,24 @@
+//! Builder Pipelines API
+//!
+//! This API is used to construct payload builders.
+
 use {
 	crate::pipeline::{
 		limits::Limits,
-		step::{Step, StepMode, WrappedStep},
+		step::{StepMode, WrappedStep},
 	},
+	alloc::{boxed::Box, vec::Vec},
 	pipeline_macros::impl_into_pipeline_steps,
 };
+// public API exports
 pub use {
 	r#static::{Static, StaticContext, StaticPayload},
 	simulated::{Simulated, SimulatedContext, SimulatedPayload},
-	step::ControlFlow,
+	step::{ControlFlow, Step},
 	Behavior::{Loop, Once},
 };
 
+mod exec;
 mod limits;
 mod simulated;
 mod r#static;
@@ -20,6 +27,7 @@ mod step;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Behavior {
 	Once,
 	Loop,
@@ -27,12 +35,13 @@ pub enum Behavior {
 
 #[derive(Default)]
 pub struct Pipeline {
-	limits: Option<Box<dyn limits::Limits>>,
 	epilogue: Option<WrappedStep>,
 	prologue: Option<WrappedStep>,
 	steps: Vec<StepOrPipeline>,
+	limits: Option<Box<dyn Limits>>,
 }
 
+/// Public API
 impl Pipeline {
 	/// A step that happens before any transaction is added to the block, executes
 	/// as the first step in the pipeline.
@@ -87,12 +96,44 @@ impl Pipeline {
 	}
 }
 
-enum StepOrPipeline {
+/// Internal API
+impl Pipeline {
+	pub(crate) fn prologue(&mut self) -> Option<&mut WrappedStep> {
+		self.prologue.as_mut()
+	}
+
+	pub(crate) fn epilogue(&mut self) -> Option<&mut WrappedStep> {
+		self.epilogue.as_mut()
+	}
+
+	pub(crate) fn steps(&mut self) -> &mut [StepOrPipeline] {
+		&mut self.steps
+	}
+
+	pub(crate) fn limits(&self) -> Option<&dyn Limits> {
+		self.limits.as_deref()
+	}
+}
+
+pub(crate) enum StepOrPipeline {
 	Step(WrappedStep),
 	Pipeline(Behavior, Pipeline),
 }
 
-pub trait IntoPipeline<Marker> {
+impl core::fmt::Debug for StepOrPipeline {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			StepOrPipeline::Step(step) => step.fmt(f),
+			StepOrPipeline::Pipeline(behavior, pipeline) => f
+				.debug_tuple("Pipeline")
+				.field(behavior)
+				.field(pipeline)
+				.finish(),
+		}
+	}
+}
+
+pub trait IntoPipeline<Marker = ()> {
 	fn into_pipeline(self) -> Pipeline;
 }
 
@@ -118,17 +159,28 @@ impl<M0: StepMode, S0: Step<Mode = M0>> IntoPipeline<()> for (S0,) {
 // Generate implementations for tuples of steps up to 32 elements
 impl_into_pipeline_steps!(32);
 
+impl core::fmt::Debug for Pipeline {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("Pipeline")
+			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
+			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
+			.field("steps", &self.steps)
+			.field("limits", &self.limits)
+			.finish()
+	}
+}
+
 mod sealed {
 	pub trait Sealed {}
 }
 
 #[cfg(test)]
 mod test {
-	use {super::*, crate::pipeline::tests::*};
+	use {super::*, crate::pipeline::tests::steps::*};
 
 	#[test]
 	fn pipeline_syntax_only_steps() {
-		let _pipeline = Pipeline::default()
+		let pipeline = Pipeline::default()
 			.with_prologue(OptimismPrologue)
 			.with_epilogue(BuilderEpilogue)
 			.with_step(GatherBestTransactions)
@@ -136,7 +188,7 @@ mod test {
 			.with_step(TotalProfitOrdering)
 			.with_step(RevertProtection);
 
-		assert!(true, "Pipeline created successfully");
+		println!("{pipeline:#?}");
 	}
 
 	#[test]
@@ -151,20 +203,20 @@ mod test {
 			.with_step(TotalProfitOrdering)
 			.with_step(RevertProtection);
 
-		let _top_level = top_level //
+		let top_level = top_level //
 			.with_pipeline(Loop, nested);
 
-		assert!(true, "Pipeline created successfully");
+		println!("{top_level:#?}");
 	}
 
 	#[test]
 	fn pipeline_syntax_nested_one_concise_static() {
-		let _top_level = Pipeline::default()
+		let top_level = Pipeline::default()
 			.with_prologue(OptimismPrologue)
 			.with_epilogue(BuilderEpilogue)
 			.with_pipeline(Loop, AppendNewTransactionFromPool);
 
-		assert!(true, "Pipeline created successfully");
+		println!("{top_level:#?}");
 	}
 
 	#[test]
@@ -179,7 +231,7 @@ mod test {
 
 	#[test]
 	fn pipeline_syntax_nested_many_concise() {
-		let _top_level = Pipeline::default()
+		let top_level = Pipeline::default()
 			.with_prologue(OptimismPrologue)
 			.with_epilogue(BuilderEpilogue)
 			.with_pipeline(
@@ -192,7 +244,7 @@ mod test {
 				),
 			);
 
-		assert!(true, "Pipeline created successfully");
+		println!("{top_level:#?}");
 	}
 
 	#[test]
@@ -205,7 +257,7 @@ mod test {
 				&mut self,
 				_payload: SimulatedPayload,
 				_ctx: &mut SimulatedContext,
-			) -> ControlFlow {
+			) -> ControlFlow<Simulated> {
 				todo!()
 			}
 		}
@@ -218,7 +270,7 @@ mod test {
 				&mut self,
 				_payload: SimulatedPayload,
 				_ctx: &mut SimulatedContext,
-			) -> ControlFlow {
+			) -> ControlFlow<Simulated> {
 				todo!()
 			}
 		}
@@ -231,7 +283,7 @@ mod test {
 				&mut self,
 				_payload: SimulatedPayload,
 				_ctx: &mut SimulatedContext,
-			) -> ControlFlow {
+			) -> ControlFlow<Simulated> {
 				todo!()
 			}
 		}
@@ -244,15 +296,16 @@ mod test {
 				&mut self,
 				_payload: SimulatedPayload,
 				_ctx: &mut SimulatedContext,
-			) -> ControlFlow {
+			) -> ControlFlow<Simulated> {
 				todo!()
 			}
 		}
 
+		#[derive(Debug)]
 		struct FlashblockLimits;
 		impl Limits for FlashblockLimits {}
 
-		let _ = Pipeline::default()
+		let fb = Pipeline::default()
 			.with_prologue(OptimismPrologue)
 			.with_epilogue(BuilderEpilogue)
 			.with_step(WebSocketBeginBlock)
@@ -272,5 +325,7 @@ mod test {
 					.with_step(PublishToWebSocket)
 			})
 			.with_step(WebSocketEndBlock);
+
+		println!("{fb:#?}");
 	}
 }

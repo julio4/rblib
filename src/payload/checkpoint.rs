@@ -2,12 +2,14 @@ use {
 	super::{block::BlockContext, span, Platform, Span},
 	crate::types,
 	alloc::sync::Arc,
-	alloy::primitives::{Address, StorageValue, B256, U256},
+	alloy::primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
+	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
 	reth::{
-		api::PayloadBuilderError,
+		api::{ConfigureEvm, PayloadBuilderError},
+		core::primitives::SignedTransaction,
+		providers::ProviderError,
 		revm::{
-			context::result::ResultAndState,
-			db::DBErrorMarker,
+			db::{DBErrorMarker, WrapDatabaseRef},
 			state::{AccountInfo, Bytecode},
 			DatabaseRef,
 		},
@@ -15,10 +17,41 @@ use {
 	thiserror::Error,
 };
 
-#[derive(Debug, Clone, Error)]
-pub enum Error {}
-impl DBErrorMarker for Error {}
+#[allow(type_alias_bounds)]
+pub type EvmFactoryError<P: Platform> =
+	<
+		<
+				<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
+		>::EvmFactory as EvmFactory
+	>::Error<StateError>;
 
+#[derive(Debug, Error)]
+pub enum Error<P: Platform> {
+	#[error("state error: {0}")]
+	State(#[from] StateError),
+
+	#[error("transaction has invalid signature")]
+	InvalidSignature,
+
+	#[error("Evm execution error: {0}")]
+	Evm(types::EvmError<P>),
+
+	#[error("Evm factory error: {0}")]
+	EvmFactory(EvmFactoryError<P>),
+}
+
+#[derive(Debug, Clone, Error)]
+pub enum StateError {
+	#[error("Provider error: {0}")]
+	Provider(#[from] ProviderError),
+}
+
+impl DBErrorMarker for StateError {}
+
+/// Notes:
+///  - There is no public API to create a checkpoint directly. Checkpoints are
+///    created by the [`BlockContext`] when it starts a new payload building
+///    process or by mutatations applied to an already existing checkpoint.
 pub struct Checkpoint<P: Platform> {
 	inner: Arc<CheckpointInner<P>>,
 }
@@ -81,6 +114,13 @@ impl<P: Platform> Checkpoint<P> {
 		}
 		current
 	}
+
+	/// Returns a span that includes all checkpoints from the beginning of the
+	/// block payload we're building to the current checkpoint.
+	pub fn history(&self) -> Span<P> {
+		Span::between(self, &self.root())
+			.expect("history is always linear between self and root")
+	}
 }
 
 /// Public builder API
@@ -88,13 +128,33 @@ impl<P: Platform> Checkpoint<P> {
 	pub fn apply(
 		&self,
 		transaction: types::Transaction<P>,
-	) -> Result<Self, Error> {
+	) -> Result<Self, Error<P>> {
+		let Ok(recovered) = transaction.clone().try_into_recovered() else {
+			return Err(Error::InvalidSignature);
+		};
+
+		// Create a new EVM instance with its state rooted at the current checkpoint
+		// state and the environment configured for the block under construction.
+		let mut evm = self.block_context().evm_config().evm_with_env(
+			WrapDatabaseRef(self),
+			self.block_context().evm_env().clone(),
+		);
+
+		let result = evm
+			.transact(recovered)
+			.map_err(|e| Error::<P>::EvmFactory(e))?;
+
+		println!("Transaction result: {transaction:#?} ----> {result:#?}");
+
 		Ok(Self {
 			inner: Arc::new(CheckpointInner {
 				block: self.inner.block.clone(),
 				prev: Some(Arc::clone(&self.inner)),
 				depth: self.inner.depth + 1,
-				mutation: todo!(),
+				mutation: Mutation::Transaction {
+					content: transaction,
+					result,
+				},
 			}),
 		})
 	}
@@ -104,7 +164,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// A barrier is a special type of checkpoint that prevents any mutations to
 	/// the checkpoints payload prior to it.
 	pub fn barrier(&self) -> Self {
-		Self::new_barrier(&self)
+		Self::new_barrier(self)
 	}
 
 	/// Produces a built payload that can be submitted as the result of a block
@@ -118,8 +178,7 @@ impl<P: Platform> Checkpoint<P> {
 
 		// select all checkpoints since the beginning of the block
 		// payload we're building, including the current one.
-		let span = Span::between(&self, &self.root())
-			.expect("history is always linear between self and root");
+		let span = self.history();
 
 		todo!("Checkpoint::build not implemented yet")
 	}
@@ -131,6 +190,9 @@ impl<P: Platform> Checkpoint<P> {
 	/// state of the parent block of the block for which the payload is
 	/// being built.
 	pub(super) fn new_at_block(block: BlockContext<P>) -> Self {
+		// at the beginning of the payload building process, we need to apply any
+		// pre-execution changes.
+
 		Self {
 			inner: Arc::new(CheckpointInner {
 				block,
@@ -143,7 +205,7 @@ impl<P: Platform> Checkpoint<P> {
 
 	/// Creates a new checkpoint that is a barrier on top of the previous
 	/// checkpoint.
-	pub(super) fn new_barrier(prev: &Self) -> Self {
+	fn new_barrier(prev: &Self) -> Self {
 		Self {
 			inner: Arc::new(CheckpointInner {
 				block: prev.inner.block.clone(),
@@ -152,6 +214,14 @@ impl<P: Platform> Checkpoint<P> {
 				mutation: Mutation::Barrier,
 			}),
 		}
+	}
+
+	fn block_context(&self) -> &BlockContext<P> {
+		&self.inner.block
+	}
+
+	fn mutation(&self) -> &Mutation<P> {
+		&self.inner.mutation
 	}
 }
 
@@ -176,7 +246,7 @@ enum Mutation<P: Platform> {
 
 		/// The result of executing the transaction, including the state changes
 		/// and the result of the execution.
-		result: ResultAndState,
+		result: ResultAndState<P>,
 	},
 }
 
@@ -199,14 +269,44 @@ struct CheckpointInner<P: Platform> {
 
 impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	/// The database error type.
-	type Error = Error;
+	type Error = StateError;
 
 	/// Gets basic account information.
 	fn basic_ref(
 		&self,
 		address: Address,
 	) -> Result<Option<AccountInfo>, Self::Error> {
-		todo!()
+		for checkpoint in self.history() {
+			match checkpoint.mutation() {
+				Mutation::Barrier => continue,
+				Mutation::Transaction { result, .. } => {
+					if let Some(account) = result.state.get(&address) {
+						return Ok(Some(account.info.clone()));
+					}
+				}
+			};
+		}
+
+		// none of the checkpoints priori to this have touched this address,
+		// now we need to check if the account exists in the base state of the
+		// block context.
+		if let Some(acc) =
+			self.block_context().base_state().basic_account(&address)?
+		{
+			return Ok(Some(AccountInfo {
+				balance: acc.balance,
+				nonce: acc.nonce,
+				code_hash: acc.bytecode_hash.unwrap_or(KECCAK256_EMPTY),
+				code: self
+					.block_context()
+					.base_state()
+					.account_code(&address)?
+					.map(|code| code.0),
+			}));
+		}
+
+		// account does not exist
+		Ok(None)
 	}
 
 	/// Gets account code by its hash.
@@ -228,3 +328,22 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		todo!()
 	}
 }
+
+#[allow(type_alias_bounds)]
+type TypedError<P: Platform> =
+	Error<
+		<
+			<
+				<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
+			>::EvmFactory as EvmFactory
+		>::Error<StateError>
+	>;
+
+#[allow(type_alias_bounds)]
+type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<
+	<
+		<
+			<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
+		>::EvmFactory as EvmFactory
+	>::HaltReason
+>;

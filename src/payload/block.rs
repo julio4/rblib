@@ -2,12 +2,27 @@ use {
 	super::{types, Checkpoint, Platform},
 	alloc::sync::Arc,
 	reth::{
-		api::PayloadBuilderAttributes,
+		api::{ConfigureEvm, PayloadBuilderAttributes, PayloadBuilderError},
 		payload::PayloadId,
 		primitives::SealedHeader,
-		providers::StateProviderBox,
+		providers::{StateProvider, StateProviderBox},
+		revm::{database::StateProviderDatabase, State},
 	},
+	reth_evm::{block::BlockExecutionError, execute::BlockBuilder},
+	thiserror::Error,
 };
+
+#[derive(Debug, Error)]
+pub enum Error<P: Platform> {
+	#[error("Evm execution error: {0}")]
+	Evm(types::EvmError<P>),
+
+	#[error("State error: {0}")]
+	PayloadBuilder(#[from] PayloadBuilderError),
+
+	#[error("Block execution error: {0}")]
+	BlockExecution(#[from] BlockExecutionError),
+}
 
 /// This is a factory type that can create different parallel streams of
 /// incrementally built payloads, all rooted at the same parent block.
@@ -35,14 +50,40 @@ impl<P: Platform> BlockContext<P> {
 		parent: SealedHeader<types::Header<P>>,
 		attribs: types::PayloadBuilderAttributes<P>,
 		base_state: StateProviderBox,
-	) -> Self {
-		Self {
+		evm_config: P::EvmConfig,
+		chainspec: &P::ChainSpec,
+	) -> Result<Self, Error<P>> {
+		let next_block_env = P::next_block_environment_context(
+			//
+			chainspec,
+			parent.header(),
+			&attribs,
+		);
+
+		let evm_env = evm_config //
+			.next_evm_env(&parent, &next_block_env)
+			.map_err(Error::Evm)?;
+
+		let mut base_state = State::builder()
+			.with_database(StateProviderDatabase(base_state))
+			.with_bundle_update()
+			.build();
+
+		// prepare the base state for the next block
+		evm_config
+			.builder_for_next_block(&mut base_state, &parent, next_block_env)
+			.map_err(Error::Evm)?
+			.apply_pre_execution_changes()?;
+
+		Ok(Self {
 			inner: Arc::new(BlockContextInner {
+				evm_env,
 				parent,
 				attribs,
 				base_state,
+				evm_config,
 			}),
-		}
+		})
 	}
 }
 
@@ -69,8 +110,20 @@ impl<P: Platform> BlockContext<P> {
 	/// Returns the state provider that provides access to the state of the
 	/// environment rooted at the end of the parent block for which the payload
 	/// is being built.
-	pub fn base_state(&self) -> &StateProviderBox {
-		&self.inner.base_state
+	pub fn base_state(&self) -> &dyn StateProvider {
+		self.inner.base_state.database.as_ref()
+	}
+
+	/// Returns the EVM configuration that is used to create EVM instances
+	/// for executing transactions in the payload under construction.
+	pub fn evm_config(&self) -> &P::EvmConfig {
+		&self.inner.evm_config
+	}
+
+	/// Returns a evm environment preconfigured for executing transactions in
+	/// the payload under construction.
+	pub fn evm_env(&self) -> &types::EvmEnv<P> {
+		&self.inner.evm_env
 	}
 }
 
@@ -97,6 +150,11 @@ struct BlockContextInner<P: Platform> {
 	/// during the ForkchoiceUpdated request.
 	attribs: types::PayloadBuilderAttributes<P>,
 
+	/// Context object for constucting evm instance for the block that is being
+	/// built. We use this context to apply any chain and fork specific state
+	/// updates that are defined in the chainspec.
+	evm_env: types::EvmEnv<P>,
+
 	/// Access to the state of the environment rooted at the end of the parent
 	/// block for which the payload is being built. This state will be read when
 	/// there is an attempt to read a storage element that is not present in any
@@ -104,5 +162,10 @@ struct BlockContextInner<P: Platform> {
 	///
 	/// This state has no changes made to it during the payload building process
 	/// through any of the created checkpoints.
-	base_state: StateProviderBox,
+	base_state: State<StateProviderDatabase<StateProviderBox>>,
+
+	/// The EVM factory configured for the environment in which we are building
+	/// the payload. This type is used to create individual EVM instances that
+	/// execute transactions in the payload under construction.
+	evm_config: P::EvmConfig,
 }

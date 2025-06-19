@@ -21,20 +21,40 @@ ethereum = []
 
 [dependencies]
 # internal dependencies
-pipeline-macros = { path = "src/pipeline/macros" }
+pipelines-macros = { path = "src/pipelines/macros" }
 
 # Common dependencies
 alloy = "1.0.11"
 alloy-evm = "0.10"
+itertools = "0.14"
+eyre = "0.6"
 thiserror = { version = "2.0", default-features = false }
+tracing = "0.1"
+
+# Reth dependencies
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 
-# optimism dependencies
+
+# optimism dependencies (optional)
 reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 
 [dev-dependencies]
+nanoid = "0.4"
+futures = "0.3"
+ctor = "0.4.2"
 tokio = { version = "1.45", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+#reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
+reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
+reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", features = [
+  "full",
+  "test-utils",
+] }

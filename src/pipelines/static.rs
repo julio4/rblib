@@ -1,4 +1,4 @@
-use crate::pipeline::{sealed::Sealed, step::StepMode};
+use super::{sealed::Sealed, step::StepMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StaticPayload;

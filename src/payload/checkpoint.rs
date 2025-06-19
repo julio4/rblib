@@ -1,6 +1,5 @@
 use {
-	super::{block::BlockContext, span, Platform, Span},
-	crate::types,
+	super::{block::BlockContext, platform::types, span, Platform, Span},
 	alloc::sync::Arc,
 	alloy::primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
 	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
@@ -21,7 +20,7 @@ use {
 pub type EvmFactoryError<P: Platform> =
 	<
 		<
-				<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
+			<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
 		>::EvmFactory as EvmFactory
 	>::Error<StateError>;
 
@@ -205,7 +204,7 @@ impl<P: Platform> Checkpoint<P> {
 
 	/// Creates a new checkpoint that is a barrier on top of the previous
 	/// checkpoint.
-	fn new_barrier(prev: &Self) -> Self {
+	pub(super) fn new_barrier(prev: &Self) -> Self {
 		Self {
 			inner: Arc::new(CheckpointInner {
 				block: prev.inner.block.clone(),
@@ -216,17 +215,17 @@ impl<P: Platform> Checkpoint<P> {
 		}
 	}
 
-	fn block_context(&self) -> &BlockContext<P> {
+	pub(super) fn block_context(&self) -> &BlockContext<P> {
 		&self.inner.block
 	}
 
-	fn mutation(&self) -> &Mutation<P> {
+	pub(super) fn mutation(&self) -> &Mutation<P> {
 		&self.inner.mutation
 	}
 }
 
 /// Describes the type of state mutation that created a given checkpoint.
-enum Mutation<P: Platform> {
+pub(super) enum Mutation<P: Platform> {
 	/// A barrier was inserted on top of the previous checkpoint.
 	///
 	/// Barriers are used to prevent transactions from being reordered or the

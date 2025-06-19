@@ -1,5 +1,5 @@
 use {
-	super::{types, Checkpoint, Platform},
+	super::{platform::types, Checkpoint, Platform},
 	alloc::sync::Arc,
 	reth::{
 		api::{ConfigureEvm, PayloadBuilderAttributes, PayloadBuilderError},

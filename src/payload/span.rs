@@ -1,6 +1,6 @@
 use {
-	super::{Checkpoint, Platform},
-	alloc::{vec, vec::Vec},
+	super::{checkpoint::Mutation, platform::types, Checkpoint, Platform},
+	alloc::vec::Vec,
 	thiserror::Error,
 };
 
@@ -22,6 +22,7 @@ pub struct Span<P: Platform> {
 	checkpoints: Vec<Checkpoint<P>>,
 }
 
+/// Construction
 impl<P: Platform> Span<P> {
 	/// Attempts to create a span between two checkpoints.
 	///
@@ -83,7 +84,10 @@ impl<P: Platform> Span<P> {
 
 		Err(Error::NonlinearHistory)
 	}
+}
 
+/// Iteration
+impl<P: Platform> Span<P> {
 	/// The number of checkpoints in the span.
 	pub fn len(&self) -> usize {
 		self.checkpoints.len()
@@ -98,11 +102,22 @@ impl<P: Platform> Span<P> {
 	/// Returns an iterator over the checkpoints in the span.
 	/// The iteration order is from the ancestor checkpoint to the descendant
 	/// checkpoint.
-	pub fn iter(&self) -> Iter<'_, P> {
+	pub fn iter(&self) -> impl Iterator<Item = &Checkpoint<P>> {
 		Iter {
 			checkpoints: &self.checkpoints,
 			index: 0,
 		}
+	}
+
+	/// Iterates of all transactions in the span in chronological order as they
+	/// appear in the payload under construction.
+	pub fn transactions(&self) -> impl Iterator<Item = &types::Transaction<P>> {
+		self
+			.iter()
+			.filter_map(|checkpoint| match checkpoint.mutation() {
+				Mutation::Transaction { content, .. } => Some(content),
+				_ => None,
+			})
 	}
 }
 

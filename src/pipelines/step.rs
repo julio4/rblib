@@ -67,11 +67,11 @@ impl WrappedStep {
 			step_fn: step_fn_impl::<M, S>,
 			drop_fn: drop_fn_impl::<S>,
 			mode: if core::any::TypeId::of::<M>()
-				== core::any::TypeId::of::<crate::pipeline::Static>()
+				== core::any::TypeId::of::<crate::pipelines::Static>()
 			{
 				ModeType::Static
 			} else if core::any::TypeId::of::<M>()
-				== core::any::TypeId::of::<crate::pipeline::Simulated>()
+				== core::any::TypeId::of::<crate::pipelines::Simulated>()
 			{
 				ModeType::Simulated
 			} else {

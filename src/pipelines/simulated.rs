@@ -1,4 +1,4 @@
-use crate::pipeline::{sealed, step::StepMode};
+use super::{sealed, step::StepMode};
 
 pub struct SimulatedPayload;
 pub struct SimulatedContext;

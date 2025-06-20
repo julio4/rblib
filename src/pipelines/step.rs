@@ -4,37 +4,65 @@ use {
 	core::{fmt::Debug, future::Future, pin::Pin, ptr::NonNull},
 };
 
-pub trait StepMode: sealed::Sealed + Debug + Sync + Send + 'static {
+/// Defines the kind of step of a pipeline.
+///
+/// There are two kinds of steps:
+/// - Static: These steps are executed in a static context, without access to
+///   execution results or state manipulation.
+/// - Simulated: These steps are executed in a simulated context, with access to
+///   execution results and state manipulation capabilities.
+///
+/// This trait cannot be implemented by users of this library and only the
+/// two provided implementations are available.
+pub trait StepKind: sealed::Sealed + Debug + Sync + Send + 'static {
 	type Payload: Send;
 	type Context: Send;
 }
 
 pub trait Step: Send + Sync + 'static {
-	type Mode: StepMode;
+	type Kind: StepKind;
 
 	fn step(
 		&mut self,
-		payload: <Self::Mode as StepMode>::Payload,
-		ctx: &mut <Self::Mode as StepMode>::Context,
-	) -> impl Future<Output = ControlFlow<Self::Mode>> + Send;
+		payload: <Self::Kind as StepKind>::Payload,
+		ctx: &mut <Self::Kind as StepKind>::Context,
+	) -> impl Future<Output = ControlFlow<Self::Kind>> + Send;
 }
 
+/// This type is returned from every step in the pipeline and it controls the
+/// next action of the pipeline execution.
 #[derive(Debug)]
-pub enum ControlFlow<S: StepMode> {
+pub enum ControlFlow<S: StepKind> {
+	/// Terminate the pipeline execution with an error.
+	/// No valid payload will be produced by this pipeline run.
 	Fail(Box<dyn core::error::Error>),
+
+	/// Stops the pipeline execution and returns the payload.
+	///
+	/// If the step is inside a `Loop` sub-pipeline, it will leave the loop
+	/// and progress to next steps immediately after the loop with the output
+	/// carried by this variant.
 	Break(S::Payload),
+
+	/// Continues the pipeline execution to the next step with the given payload
+	/// version
 	Ok(S::Payload),
+
+	/// This step is only valid in a `Loop` sub-pipeline, it will jump to the
+	/// first step of the loop with the given payload version.
 	Continue(S::Payload),
-	Goto,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModeType {
+enum ModeType {
 	Static,
 	Simulated,
 }
 
-// Function pointer table for type-erased operations
+/// Function pointer table for type-erased operations.
+///
+/// This is used internally in the pipeline implementation to abstract the
+/// underlying developer friendly typed version of the step.
 struct StepVTable {
 	#[expect(clippy::type_complexity)]
 	step_fn: unsafe fn(
@@ -47,13 +75,15 @@ struct StepVTable {
 	name: &'static str,
 }
 
+/// Wraps a step in a type-erased manner, allowing it to be stored in a
+/// heterogeneous collection of steps inside a pipeline.
 pub(crate) struct WrappedStep {
 	step_ptr: NonNull<u8>,
 	vtable: StepVTable,
 }
 
 impl WrappedStep {
-	pub fn new<M: StepMode + 'static, S: Step<Mode = M> + 'static>(
+	pub fn new<M: StepKind + 'static, S: Step<Kind = M> + 'static>(
 		step: S,
 	) -> Self
 	where
@@ -83,7 +113,7 @@ impl WrappedStep {
 		Self { step_ptr, vtable }
 	}
 
-	pub async fn execute<M: StepMode + 'static>(
+	pub async fn execute<M: StepKind + 'static>(
 		&mut self,
 		mut payload: M::Payload,
 		ctx: &mut M::Context,
@@ -110,7 +140,7 @@ impl WrappedStep {
 	}
 }
 
-unsafe fn step_fn_impl<M: StepMode + 'static, S: Step<Mode = M> + 'static>(
+unsafe fn step_fn_impl<M: StepKind + 'static, S: Step<Kind = M> + 'static>(
 	step_ptr: *mut u8,
 	payload_ptr: *mut u8,
 	ctx_ptr: *mut u8,

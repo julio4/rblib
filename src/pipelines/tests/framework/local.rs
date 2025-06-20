@@ -60,14 +60,13 @@ impl LocalNode {
 	pub async fn ethereum(pipeline: Pipeline) -> eyre::Result<Self> {
 		let task_manager = task_manager();
 		let config = default_node_config();
-		info!("Starting local Ethereum node with config: {config:#?}");
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
 		let node_handle = NodeBuilder::new(config.clone())
 			.testing_node(task_manager.executor())
 			.with_types::<EthereumNode>()
 			.with_components(
 				EthereumNode::components()
-					.payload(pipeline.into_service::<Ethereum, _, _, _>()),
+					.payload(pipeline.into_service::<EthereumMainnet, _, _, _>()),
 			)
 			.with_add_ons(EthereumAddOns::default())
 			.on_rpc_started(move |_, _| {
@@ -110,7 +109,9 @@ impl LocalNode {
 			.with_chain_id(self.chain_id())
 	}
 
-	pub async fn build_new_block(&self) -> eyre::Result<types::Block<Ethereum>> {
+	pub async fn build_new_block(
+		&self,
+	) -> eyre::Result<types::Block<EthereumMainnet>> {
 		self
 			.build_new_block_with_deadline(Duration::from_secs(2))
 			.await
@@ -119,7 +120,7 @@ impl LocalNode {
 	pub async fn build_new_block_with_deadline(
 		&self,
 		deadline: Duration,
-	) -> eyre::Result<types::Block<Ethereum>> {
+	) -> eyre::Result<types::Block<EthereumMainnet>> {
 		let ipc_path = self.config.rpc.auth_ipc_path.clone();
 		let ipc_client = reth_ipc::client::IpcClientBuilder::default()
 			.build(&ipc_path)
@@ -161,11 +162,29 @@ impl LocalNode {
 			},
 			Some(payload_attributes),
 		)
-		.await
-		.unwrap();
+		.await?;
+
+		if fcu_result.is_invalid() {
+			return Err(eyre::eyre!("Forkchoice update failed: {fcu_result:#?}"));
+		}
+
+		let payload_id = fcu_result.payload_id.expect(
+			"validated that it is a valid result and should have a payload ID",
+		);
 
 		// give the node some time to produce the block
 		tokio::time::sleep(deadline).await;
+
+		// Retrieve the payload using the payload ID
+		let getpayload_result = EngineApiClient::<EthEngineTypes>::get_payload_v4(
+			(&ipc_client).into(),
+			payload_id,
+		)
+		.await?;
+
+		info!("Payload ID: {payload_id}, Payload: {getpayload_result:#?}");
+
+		// set the newly produced payload as the next block
 
 		todo!()
 	}

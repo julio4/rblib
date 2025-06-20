@@ -4,14 +4,13 @@
 
 use {
 	crate::{
-		pipelines::step::{StepMode, WrappedStep},
+		pipelines::step::{StepKind, WrappedStep},
 		*,
 	},
 	alloc::{boxed::Box, vec::Vec},
 	core::marker::PhantomData,
 	pipelines_macros::impl_into_pipeline_steps,
-	reth::{api::FullNodeTypes, builder::components::PayloadServiceBuilder},
-	reth_transaction_pool::TransactionPool,
+	reth::builder::components::PayloadServiceBuilder,
 };
 
 mod exec;
@@ -51,9 +50,9 @@ pub struct Pipeline {
 impl Pipeline {
 	/// A step that happens before any transaction is added to the block, executes
 	/// as the first step in the pipeline.
-	pub fn with_prologue<Mode: StepMode>(
+	pub fn with_prologue<Mode: StepKind>(
 		self,
-		step: impl Step<Mode = Mode>,
+		step: impl Step<Kind = Mode>,
 	) -> Self {
 		let mut this = self;
 		this.prologue = Some(WrappedStep::new(step));
@@ -62,9 +61,9 @@ impl Pipeline {
 
 	/// A step that happens as the last step of the block after the whole payload
 	/// has been built.
-	pub fn with_epilogue<Mode: StepMode>(
+	pub fn with_epilogue<Mode: StepKind>(
 		self,
-		step: impl Step<Mode = Mode>,
+		step: impl Step<Kind = Mode>,
 	) -> Self {
 		let mut this = self;
 		this.epilogue = Some(WrappedStep::new(step));
@@ -74,7 +73,7 @@ impl Pipeline {
 	/// A step that runs with an input that is the result of the previous step.
 	/// The order of steps definition is important, as it determines the flow of
 	/// data through the pipeline.
-	pub fn with_step<Mode: StepMode>(self, step: impl Step<Mode = Mode>) -> Self {
+	pub fn with_step<Mode: StepKind>(self, step: impl Step<Kind = Mode>) -> Self {
 		let mut this = self;
 		this
 			.steps
@@ -109,9 +108,9 @@ impl Pipeline {
 		self,
 	) -> impl PayloadServiceBuilder<Node, Pool, EvmConfig>
 	where
-		Node: FullNodeTypes<Types = P::NodeTypes> + Send + Sync,
-		Pool: TransactionPool + Send + Sync,
-		EvmConfig: Send + Sync,
+		Node: service::traits::NodeBounds<P>,
+		Pool: service::traits::PoolBounds<P>,
+		EvmConfig: service::traits::EvmConfigBounds<P>,
 	{
 		service::PipelineServiceBuilder::<P>(self, PhantomData)
 	}
@@ -171,7 +170,7 @@ impl IntoPipeline<()> for Pipeline {
 	}
 }
 
-impl<M0: StepMode, S0: Step<Mode = M0>> IntoPipeline<()> for (S0,) {
+impl<M0: StepKind, S0: Step<Kind = M0>> IntoPipeline<()> for (S0,) {
 	fn into_pipeline(self) -> Pipeline {
 		Pipeline::default().with_step(self.0)
 	}

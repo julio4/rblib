@@ -14,11 +14,3 @@
 //!  - The PayloadAttributes supplied by the CL client
 //!  - ChainSpec
 //!  - Current blockchain state rooted at the parent block.
-
-use crate::*;
-
-struct ExecContext;
-
-pub async fn run(pipeline: Pipeline) {
-	let mut _pipeline = pipeline;
-}

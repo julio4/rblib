@@ -76,7 +76,7 @@ fn nested_many_concise() {
 fn flashblocks_example() {
 	struct WebSocketBeginBlock;
 	impl Step for WebSocketBeginBlock {
-		type Mode = Simulated;
+		type Kind = Simulated;
 
 		async fn step(
 			&mut self,
@@ -89,7 +89,7 @@ fn flashblocks_example() {
 
 	struct WebSocketEndBlock;
 	impl Step for WebSocketEndBlock {
-		type Mode = Simulated;
+		type Kind = Simulated;
 
 		async fn step(
 			&mut self,
@@ -102,7 +102,7 @@ fn flashblocks_example() {
 
 	struct FlashblockEpilogue;
 	impl Step for FlashblockEpilogue {
-		type Mode = Simulated;
+		type Kind = Simulated;
 
 		async fn step(
 			&mut self,
@@ -115,7 +115,7 @@ fn flashblocks_example() {
 
 	struct PublishToWebSocket;
 	impl Step for PublishToWebSocket {
-		type Mode = Simulated;
+		type Kind = Simulated;
 
 		async fn step(
 			&mut self,

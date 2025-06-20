@@ -2,7 +2,7 @@ use crate::*;
 
 pub struct OptimismPrologue;
 impl Step for OptimismPrologue {
-	type Mode = Static;
+	type Kind = Static;
 
 	async fn step(
 		&mut self,
@@ -15,7 +15,7 @@ impl Step for OptimismPrologue {
 
 pub struct BuilderEpilogue;
 impl Step for BuilderEpilogue {
-	type Mode = Simulated;
+	type Kind = Simulated;
 
 	async fn step(
 		&mut self,
@@ -28,7 +28,7 @@ impl Step for BuilderEpilogue {
 
 pub struct GatherBestTransactions;
 impl Step for GatherBestTransactions {
-	type Mode = Static;
+	type Kind = Static;
 
 	async fn step(
 		&mut self,
@@ -41,7 +41,7 @@ impl Step for GatherBestTransactions {
 
 pub struct PriorityFeeOrdering;
 impl Step for PriorityFeeOrdering {
-	type Mode = Static;
+	type Kind = Static;
 
 	async fn step(
 		&mut self,
@@ -54,7 +54,7 @@ impl Step for PriorityFeeOrdering {
 
 pub struct TotalProfitOrdering;
 impl Step for TotalProfitOrdering {
-	type Mode = Simulated;
+	type Kind = Simulated;
 
 	async fn step(
 		&mut self,
@@ -67,7 +67,7 @@ impl Step for TotalProfitOrdering {
 
 pub struct RevertProtection;
 impl Step for RevertProtection {
-	type Mode = Simulated;
+	type Kind = Simulated;
 
 	async fn step(
 		&mut self,
@@ -80,7 +80,7 @@ impl Step for RevertProtection {
 
 pub struct AppendNewTransactionFromPool;
 impl Step for AppendNewTransactionFromPool {
-	type Mode = Static;
+	type Kind = Static;
 
 	async fn step(
 		&mut self,

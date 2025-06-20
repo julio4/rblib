@@ -1,10 +1,13 @@
 #![cfg_attr(not(test), no_std)]
+
 extern crate alloc;
 
 use reth::{
 	api::{ConfigureEvm, NodeTypes, PayloadTypes},
 	chainspec::EthChainSpec,
 };
+
+use alloc::sync::Arc;
 
 mod payload;
 mod pipelines;
@@ -19,7 +22,7 @@ pub use optimism::Optimism;
 mod ethereum;
 
 #[cfg(feature = "ethereum")]
-pub use ethereum::Ethereum;
+pub use ethereum::EthereumMainnet;
 
 // Public API re-exports
 pub use {payload::*, pipelines::*};
@@ -51,11 +54,10 @@ pub trait Platform: core::fmt::Debug + Send + Sync + Unpin + 'static {
 		Primitives = types::Primitives<Self>,
 	>;
 
-	/// The chain specification type that is used by the platform.
-	type ChainSpec: EthChainSpec;
+	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig;
 
 	fn next_block_environment_context(
-		chainspec: &Self::ChainSpec,
+		chainspec: &types::ChainSpec<Self>,
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self>;
@@ -104,7 +106,12 @@ pub mod types {
 	pub type NextBlockEnvContext<P: Platform> =
 		<P::EvmConfig as ConfigureEvm>::NextBlockEnvCtx;
 
+	/// Extracts the type that represents the EVM environment for this platform.
 	pub type EvmEnv<P: Platform> = EvmEnvFor<P::EvmConfig>;
 
+	/// Extracts the error type used by the EVM configuration for this platform.
 	pub type EvmError<P: Platform> = <P::EvmConfig as ConfigureEvm>::Error;
+
+	/// Extracts the ChainSpec type from the platform definition.
+	pub type ChainSpec<P: Platform> = <P::NodeTypes as NodeTypes>::ChainSpec;
 }

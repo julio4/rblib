@@ -1,4 +1,4 @@
-use super::{sealed::Sealed, step::StepMode};
+use super::{sealed::Sealed, step::StepKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StaticPayload;
@@ -8,7 +8,7 @@ pub struct StaticContext;
 #[derive(Debug)]
 pub struct Static;
 
-impl StepMode for Static {
+impl StepKind for Static {
 	type Context = StaticContext;
 	type Payload = StaticPayload;
 }

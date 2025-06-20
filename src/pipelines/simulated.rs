@@ -1,4 +1,4 @@
-use super::{sealed, step::StepMode};
+use super::{sealed, step::StepKind};
 
 pub struct SimulatedPayload;
 pub struct SimulatedContext;
@@ -8,7 +8,7 @@ pub struct SimulatedContext;
 #[derive(Debug)]
 pub struct Simulated;
 
-impl StepMode for Simulated {
+impl StepKind for Simulated {
 	type Context = SimulatedContext;
 	type Payload = SimulatedPayload;
 }

@@ -51,13 +51,12 @@ impl<P: Platform> BlockContext<P> {
 		attribs: types::PayloadBuilderAttributes<P>,
 		base_state: StateProviderBox,
 		evm_config: P::EvmConfig,
-		chainspec: &P::ChainSpec,
+		chainspec: &types::ChainSpec<P>,
 	) -> Result<Self, Error<P>> {
 		let next_block_env = P::next_block_environment_context(
-			//
 			chainspec,
 			parent.header(),
-			&attribs,
+			&attribs, //
 		);
 
 		let evm_env = evm_config //
@@ -168,4 +167,13 @@ struct BlockContextInner<P: Platform> {
 	/// the payload. This type is used to create individual EVM instances that
 	/// execute transactions in the payload under construction.
 	evm_config: P::EvmConfig,
+}
+
+impl<P: Platform> core::fmt::Debug for BlockContext<P> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("BlockContext")
+			.field("parent", &self.inner.parent)
+			.field("attribs", &self.inner.attribs)
+			.finish()
+	}
 }

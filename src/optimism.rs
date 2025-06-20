@@ -1,20 +1,23 @@
 use {
 	super::{types, *},
-	reth_optimism_chainspec::OpChainSpec,
 	reth_optimism_forks::OpHardforks,
 	reth_optimism_node::{OpEvmConfig, OpNextBlockEnvAttributes, OpNode},
 };
 
+/// Platform definition for Optimism Rollup chains.
 #[derive(Debug)]
 pub struct Optimism;
 
 impl Platform for Optimism {
-	type ChainSpec = OpChainSpec;
 	type EvmConfig = OpEvmConfig;
 	type NodeTypes = OpNode;
 
+	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
+		OpEvmConfig::optimism(chainspec)
+	}
+
 	fn next_block_environment_context(
-		chainspec: &Self::ChainSpec,
+		chainspec: &types::ChainSpec<Self>,
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self> {

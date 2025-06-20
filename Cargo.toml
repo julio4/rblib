@@ -17,7 +17,7 @@ optimism = [
   "reth-optimism-chainspec",
   "reth-optimism-forks",
 ]
-ethereum = []
+ethereum = ["reth-ethereum"]
 
 [dependencies]
 # internal dependencies
@@ -37,6 +37,10 @@ reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", defaul
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 
+# ethereum dependencies (optional)
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true, features = [
+  "full",
+] }
 
 # optimism dependencies (optional)
 reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
@@ -48,10 +52,13 @@ reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4
 nanoid = "0.4"
 futures = "0.3"
 ctor = "0.4.2"
+secp256k1 = "0.30"
+sha3 = "0.10"
 tokio = { version = "1.45", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+alloy-genesis = "1.0"
 
-#reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
+reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", features = [

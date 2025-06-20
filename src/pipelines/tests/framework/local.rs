@@ -1,6 +1,20 @@
 use {
-	crate::Pipeline,
-	alloy::providers::{Identity, ProviderBuilder, RootProvider},
+	crate::{
+		pipelines::tests::{
+			framework::FUNDED_PRIVATE_KEYS,
+			Signer,
+			TransactionBuilder,
+			DEFAULT_BLOCK_GAS_LIMIT,
+			ONE_ETH,
+		},
+		*,
+	},
+	alloy::{
+		eips::BlockNumberOrTag,
+		primitives::{B256, U256},
+		providers::{Identity, Provider, ProviderBuilder, RootProvider},
+	},
+	alloy_genesis::{Genesis, GenesisAccount},
 	core::{
 		any::Any,
 		pin::Pin,
@@ -12,14 +26,24 @@ use {
 	reth::{
 		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
 		builder::{NodeBuilder, NodeConfig},
-		chainspec::ChainSpec,
+		chainspec::{ChainSpec, DEV, MAINNET},
 		core::exit::NodeExitFuture,
+		rpc::types::{engine::ForkchoiceState, Block},
 		tasks::TaskManager,
 	},
-	reth_ethereum::node::{node::EthereumAddOns, EthEngineTypes, EthereumNode},
+	reth_ethereum::node::{
+		engine::EthPayloadAttributes,
+		node::EthereumAddOns,
+		EthEngineTypes,
+		EthereumNode,
+	},
 	reth_rpc_api::{EngineApiClient, EthApiClient},
-	std::sync::Arc,
+	std::{
+		sync::Arc,
+		time::{Instant, SystemTime, UNIX_EPOCH},
+	},
 	tokio::sync::oneshot,
+	tracing::info,
 };
 
 pub struct LocalNode {
@@ -27,18 +51,23 @@ pub struct LocalNode {
 	node_handle: Box<dyn Any + Send>,
 	task_manager: Option<TaskManager>,
 	config: NodeConfig<ChainSpec>,
+	provider: RootProvider,
 }
 
 impl LocalNode {
-	pub async fn new(pipeline: Pipeline) -> eyre::Result<Self> {
+	const MIN_BLOCK_TIME: Duration = Duration::from_secs(1);
+
+	pub async fn ethereum(pipeline: Pipeline) -> eyre::Result<Self> {
 		let task_manager = task_manager();
 		let config = default_node_config();
+		info!("Starting local Ethereum node with config: {config:#?}");
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
 		let node_handle = NodeBuilder::new(config.clone())
 			.testing_node(task_manager.executor())
 			.with_types::<EthereumNode>()
 			.with_components(
-				EthereumNode::components().payload(pipeline.into_service()),
+				EthereumNode::components()
+					.payload(pipeline.into_service::<Ethereum, _, _, _>()),
 			)
 			.with_add_ons(EthereumAddOns::default())
 			.on_rpc_started(move |_, _| {
@@ -55,28 +84,91 @@ impl LocalNode {
 		// Wait for the RPC server to be ready before returning
 		rpc_ready_rx.await.expect("Failed to receive ready signal");
 
+		let provider = ProviderBuilder::<Identity, Identity>::default()
+			.connect_ipc(config.rpc.ipcpath.clone().into())
+			.await?;
+
 		Ok(Self {
 			config,
 			exit_future,
 			node_handle,
 			task_manager: Some(task_manager),
+			provider,
 		})
 	}
 
-	pub async fn provider(&self) -> eyre::Result<RootProvider> {
-		Ok(
-			ProviderBuilder::<Identity, Identity>::default()
-				.connect_ipc(self.config.rpc.ipcpath.clone().into())
-				.await?,
-		)
+	pub fn chain_id(&self) -> u64 {
+		self.config.chain.chain_id()
 	}
 
-	// pub fn engine_api(
-	// 	&self,
-	// ) -> impl EngineApiClient<EthEngineTypes> + Send + Sync + 'static {
-	// 	//&self.config.rpc.auth_ipc_path
-	// 	todo!()
-	// }
+	pub fn provider(&self) -> &RootProvider {
+		&self.provider
+	}
+
+	pub fn new_transaction(&self) -> TransactionBuilder {
+		TransactionBuilder::new(self.provider().clone())
+			.with_chain_id(self.chain_id())
+	}
+
+	pub async fn build_new_block(&self) -> eyre::Result<types::Block<Ethereum>> {
+		self
+			.build_new_block_with_deadline(Duration::from_secs(2))
+			.await
+	}
+
+	pub async fn build_new_block_with_deadline(
+		&self,
+		deadline: Duration,
+	) -> eyre::Result<types::Block<Ethereum>> {
+		let ipc_path = self.config.rpc.auth_ipc_path.clone();
+		let ipc_client = reth_ipc::client::IpcClientBuilder::default()
+			.build(&ipc_path)
+			.await
+			.expect("Failed to create ipc client");
+
+		let latest_block = self
+			.provider()
+			.get_block_by_number(BlockNumberOrTag::Latest)
+			.await?
+			.expect("Latest block should exist");
+
+		let latest_timestamp = Duration::from_secs(latest_block.header.timestamp);
+
+		// calculate the timestamp for the new block
+		let current_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?;
+		let elapsed_time = current_timestamp - latest_timestamp;
+		let block_deadline = deadline.max(Self::MIN_BLOCK_TIME);
+		let block_timestamp = latest_timestamp + block_deadline + elapsed_time;
+
+		info!(
+			"Building new block with timestamp: {}",
+			block_timestamp.as_secs()
+		);
+		let payload_attributes = EthPayloadAttributes {
+			timestamp: block_timestamp.as_secs(),
+			withdrawals: Some(vec![]),
+			parent_beacon_block_root: Some(B256::ZERO),
+			..Default::default()
+		};
+
+		// Start the production of a new block
+		let fcu_result = EngineApiClient::<EthEngineTypes>::fork_choice_updated_v3(
+			(&ipc_client).into(),
+			ForkchoiceState {
+				head_block_hash: latest_block.header.hash,
+				safe_block_hash: latest_block.header.hash,
+				finalized_block_hash: latest_block.header.hash,
+			},
+			Some(payload_attributes),
+		)
+		.await
+		.unwrap();
+
+		// give the node some time to produce the block
+		tokio::time::sleep(deadline).await;
+
+		todo!()
+	}
 }
 
 impl Drop for LocalNode {
@@ -140,7 +232,45 @@ pub fn default_node_config() -> NodeConfig<ChainSpec> {
 		static_files_path: None,
 	};
 
-	NodeConfig::new(Arc::new(ChainSpec::default()))
+	let prefunded_account = Signer::try_from_secret(
+		FUNDED_PRIVATE_KEYS[0]
+			.parse()
+			.expect("Invalid hardcoded private key"),
+	)
+	.expect("Failed to create signer from hardcoded private key");
+
+	let funded_accounts = FUNDED_PRIVATE_KEYS.iter().map(|prv| {
+		let address = Signer::try_from_secret(
+			prv.parse().expect("Invalid hardcoded private key"),
+		)
+		.expect("Failed to create signer from hardcoded private key")
+		.address;
+		let account =
+			GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH));
+		(address, account)
+	});
+
+	let mut chainspec = DEV.as_ref().clone();
+	chainspec.genesis = chainspec
+		.genesis
+		.extend_accounts(funded_accounts)
+		.with_gas_limit(DEFAULT_BLOCK_GAS_LIMIT);
+	chainspec.hardforks = MAINNET.hardforks.clone();
+
+	// .genesis
+	// .clone()
+
+	// .with_timestamp(
+	// 	SystemTime::now()
+	// 		.duration_since(UNIX_EPOCH)
+	// 		.unwrap()
+	// 		.as_secs(),
+	// );
+
+	// let mut chainspec = ChainSpec::from_genesis(genesis);
+	// chainspec.hardforks = MAINNET.hardforks.clone();
+
+	NodeConfig::new(Arc::new(chainspec))
 		.with_datadir_args(datadir)
 		.with_rpc(rpc)
 		.with_network(network)

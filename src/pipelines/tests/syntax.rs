@@ -1,4 +1,7 @@
-use super::{steps::*, *};
+use {
+	super::{steps::*, *},
+	crate::*,
+};
 
 #[test]
 fn only_steps() {

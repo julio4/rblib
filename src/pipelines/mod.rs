@@ -3,8 +3,12 @@
 //! This API is used to construct payload builders.
 
 use {
-	crate::pipelines::step::{StepMode, WrappedStep},
+	crate::{
+		pipelines::step::{StepMode, WrappedStep},
+		*,
+	},
 	alloc::{boxed::Box, vec::Vec},
+	core::marker::PhantomData,
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::{api::FullNodeTypes, builder::components::PayloadServiceBuilder},
 	reth_transaction_pool::TransactionPool,
@@ -101,15 +105,15 @@ impl Pipeline {
 
 	/// Converts the pipeline into a payload builder service instance that
 	/// can be used when constructing a reth node.
-	pub fn into_service<Node, Pool, EvmConfig>(
+	pub fn into_service<P: Platform, Node, Pool, EvmConfig>(
 		self,
 	) -> impl PayloadServiceBuilder<Node, Pool, EvmConfig>
 	where
-		Node: FullNodeTypes + Send + Sync,
+		Node: FullNodeTypes<Types = P::NodeTypes> + Send + Sync,
 		Pool: TransactionPool + Send + Sync,
 		EvmConfig: Send + Sync,
 	{
-		service::PipelineServiceBuilder(self)
+		service::PipelineServiceBuilder::<P>(self, PhantomData)
 	}
 }
 

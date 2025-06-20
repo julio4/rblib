@@ -1,5 +1,5 @@
 use {
-	super::{block::BlockContext, platform::types, span, Platform, Span},
+	crate::{payload::span, *},
 	alloc::sync::Arc,
 	alloy::primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
 	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
@@ -14,6 +14,7 @@ use {
 		},
 	},
 	thiserror::Error,
+	tracing::info,
 };
 
 #[allow(type_alias_bounds)]
@@ -143,7 +144,7 @@ impl<P: Platform> Checkpoint<P> {
 			.transact(recovered)
 			.map_err(|e| Error::<P>::EvmFactory(e))?;
 
-		println!("Transaction result: {transaction:#?} ----> {result:#?}");
+		info!("Transaction result: {transaction:#?} ----> {result:#?}");
 
 		Ok(Self {
 			inner: Arc::new(CheckpointInner {

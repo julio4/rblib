@@ -52,6 +52,11 @@ impl DBErrorMarker for StateError {}
 ///  - There is no public API to create a checkpoint directly. Checkpoints are
 ///    created by the [`BlockContext`] when it starts a new payload building
 ///    process or by mutatations applied to an already existing checkpoint.
+///
+///  - Checkpoints contain all the information needed to assemble a full block
+///    payload, they however cannot be used durectly to build a block. The block
+///    building process is very node-specific and is part of the pipelines api,
+///    which has more info and access to the underlying node facilities.
 pub struct Checkpoint<P: Platform> {
 	inner: Arc<CheckpointInner<P>>,
 }
@@ -121,6 +126,11 @@ impl<P: Platform> Checkpoint<P> {
 		Span::between(self, &self.root())
 			.expect("history is always linear between self and root")
 	}
+
+	/// Returns the block context that is the root of theis checkpoint.
+	pub fn block(&self) -> &BlockContext<P> {
+		&self.inner.block
+	}
 }
 
 /// Public builder API
@@ -173,14 +183,14 @@ impl<P: Platform> Checkpoint<P> {
 	/// This is an expensive operation and ideally it should be called only once
 	/// at the end of the payload building process, when all the
 	/// modifications to the payload are done.
-	pub fn build(self) -> Result<types::BuiltPayload<P>, PayloadBuilderError> {
-		let payload_id = self.inner.block.payload_id();
+	pub fn materialzie(
+		self,
+	) -> Result<types::BuiltPayload<P>, PayloadBuilderError> {
+		let chainspec = self.block_context().chainspec().as_ref();
+		let evm_config = self.block_context().evm_config().clone();
 
-		// select all checkpoints since the beginning of the block
-		// payload we're building, including the current one.
-		let span = self.history();
-
-		todo!("Checkpoint::build not implemented yet")
+		// P::into_built_payload(chainspec, evm_config, self)
+		todo!("materialzie Checkpoint into BuiltPayload not implemented yet");
 	}
 }
 

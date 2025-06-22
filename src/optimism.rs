@@ -1,5 +1,6 @@
 use {
 	super::{types, *},
+	alloc::sync::Arc,
 	reth_optimism_forks::OpHardforks,
 	reth_optimism_node::{OpEvmConfig, OpNextBlockEnvAttributes, OpNode},
 };
@@ -43,5 +44,22 @@ impl Platform for Optimism {
 				Default::default()
 			},
 		}
+	}
+
+	fn into_built_payload<Pool, Provider>(
+		chainspec: &types::ChainSpec<Self>,
+		evm_config: Self::EvmConfig,
+		transactions_pool: Pool,
+		provider: Provider,
+		checkpoint: payload::Checkpoint<Self>,
+	) -> Result<
+		types::BuiltPayload<Self>,
+		reth_payload_builder::PayloadBuilderError,
+	>
+	where
+		Pool: traits::PoolBounds<Self>,
+		Provider: traits::ProviderBounds<Self>,
+	{
+		todo!("Optimism::into_built_payload not implemented yet")
 	}
 }

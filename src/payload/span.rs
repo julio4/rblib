@@ -1,6 +1,8 @@
 use {
 	crate::{payload::checkpoint::Mutation, *},
-	alloc::{vec, vec::Vec},
+	alloc::vec::Vec,
+	alloy::primitives::address,
+	reth::primitives::Recovered,
 	thiserror::Error,
 };
 
@@ -39,7 +41,7 @@ impl<P: Platform> Span<P> {
 			// it's a single-checkpoint span,
 			// we can return it directly
 			return Ok(Self {
-				checkpoints: vec![start.clone()],
+				checkpoints: alloc::vec![start.clone()],
 			});
 		}
 
@@ -111,6 +113,8 @@ impl<P: Platform> Span<P> {
 
 	/// Iterates of all transactions in the span in chronological order as they
 	/// appear in the payload under construction.
+	///
+	/// This iterator returns a reference to each transaction.
 	pub fn transactions(&self) -> impl Iterator<Item = &types::Transaction<P>> {
 		self
 			.iter()
@@ -118,6 +122,19 @@ impl<P: Platform> Span<P> {
 				Mutation::Transaction { content, .. } => Some(content),
 				_ => None,
 			})
+	}
+
+	/// Iterates over all transactions in the span and recovers their senders.
+	/// This iterator returns a copy of each transaction.
+	pub fn transactions_recovered(
+		&self,
+	) -> impl Iterator<Item = Recovered<&types::Transaction<P>>> {
+		self.transactions().filter_map(|tx| {
+			Some(Recovered::new_unchecked(
+				tx,
+				address!("0x1234567890abcdef1234567890abcdef12345678"),
+			))
+		})
 	}
 }
 

@@ -17,7 +17,12 @@ optimism = [
   "reth-optimism-chainspec",
   "reth-optimism-forks",
 ]
-ethereum = ["reth-ethereum", "reth-ethereum-payload-builder"]
+
+ethereum = [
+  "reth-ethereum",
+  "reth-ethereum-payload-builder",
+  "reth-basic-payload-builder",
+]
 
 [dependencies]
 # internal dependencies
@@ -39,6 +44,7 @@ reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1
 
 # ethereum dependencies (optional)
 reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
+reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true, features = [
   "full",
 ] }

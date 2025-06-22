@@ -4,9 +4,9 @@
 use {
 	crate::*,
 	alloc::{boxed::Box, sync::Arc},
-	core::marker::PhantomData,
 	job::JobGenerator,
 	reth::{
+		api::NodeTypes,
 		builder::{components::PayloadServiceBuilder, BuilderContext},
 		providers::CanonStateSubscriptions,
 	},
@@ -16,10 +16,16 @@ use {
 
 mod job;
 
-pub(crate) struct PipelineServiceBuilder<P: Platform>(
-	pub Pipeline,
-	pub PhantomData<P>,
-);
+pub(crate) struct PipelineServiceBuilder<P: Platform> {
+	platform: P,
+	pipeline: Pipeline,
+}
+
+impl<P: Platform> PipelineServiceBuilder<P> {
+	pub fn new(pipeline: Pipeline, platform: P) -> Self {
+		Self { pipeline, platform }
+	}
+}
 
 impl<Plat, Node, Pool, EvmConfig> PayloadServiceBuilder<Node, Pool, EvmConfig>
 	for PipelineServiceBuilder<Plat>
@@ -36,18 +42,19 @@ where
 		_evm_config: EvmConfig,
 	) -> eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>>
 	{
-		let pipeline = self.0;
+		let pipeline = self.pipeline;
 		debug!("Spawning payload builder: {pipeline:#?}");
 
-		let service = Arc::new(ServiceContext {
+		let service = ServiceContext {
 			pool,
 			provider: ctx.provider().clone(),
 			evm_config: Plat::evm_config(ctx.chain_spec()),
 			chain_spec: ctx.chain_spec().clone(),
-		});
+			platform: self.platform,
+		};
 
 		let (service, builder) = PayloadBuilderService::new(
-			JobGenerator::new(Arc::new(pipeline), service),
+			JobGenerator::new(pipeline, service),
 			ctx.provider().canonical_state_stream(),
 		);
 
@@ -69,6 +76,7 @@ where
 	provider: Provider,
 	evm_config: Plat::EvmConfig,
 	chain_spec: Arc<types::ChainSpec<Plat>>,
+	platform: Plat,
 }
 
 impl<Plat, Provider, Pool> ServiceContext<Plat, Provider, Pool>
@@ -77,20 +85,24 @@ where
 	Provider: traits::ProviderBounds<Plat>,
 	Pool: traits::PoolBounds<Plat>,
 {
-	pub fn provider(&self) -> &Provider {
+	pub const fn provider(&self) -> &Provider {
 		&self.provider
 	}
 
-	pub fn pool(&self) -> &Pool {
+	pub const fn pool(&self) -> &Pool {
 		&self.pool
 	}
 
-	pub fn evm_config(&self) -> &Plat::EvmConfig {
+	pub const fn evm_config(&self) -> &Plat::EvmConfig {
 		&self.evm_config
 	}
 
-	pub fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
+	pub const fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
 		&self.chain_spec
+	}
+
+	pub const fn platform(&self) -> &Plat {
+		&self.platform
 	}
 }
 
@@ -101,7 +113,8 @@ pub mod traits {
 			api::FullNodeTypes,
 			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
 		},
-		reth_transaction_pool::TransactionPool,
+		reth_evm::ConfigureEvm,
+		reth_transaction_pool::{PoolTransaction, TransactionPool},
 	};
 
 	pub trait NodeBounds<P: Platform>:
@@ -130,10 +143,19 @@ pub mod traits {
 	{
 	}
 
-	pub trait PoolBounds<P: Platform>: TransactionPool + Unpin + 'static {}
+	pub trait PoolBounds<P: Platform>:
+		TransactionPool<
+			Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
+		> + Unpin
+		+ 'static
+	{
+	}
 
 	impl<T, P: Platform> PoolBounds<P> for T where
-		T: TransactionPool + Unpin + 'static
+		T: TransactionPool<
+				Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
+			> + Unpin
+			+ 'static
 	{
 	}
 

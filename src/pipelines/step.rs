@@ -54,7 +54,7 @@ pub enum ControlFlow<S: StepKind> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ModeType {
+pub(crate) enum Kind {
 	Static,
 	Simulated,
 }
@@ -71,7 +71,7 @@ struct StepVTable {
 		ctx_ptr: *mut u8,
 	) -> Pin<Box<dyn Future<Output = *mut u8> + Send>>,
 	drop_fn: unsafe fn(*mut u8),
-	mode: ModeType,
+	mode: Kind,
 	name: &'static str,
 }
 
@@ -99,11 +99,11 @@ impl WrappedStep {
 			mode: if core::any::TypeId::of::<M>()
 				== core::any::TypeId::of::<crate::pipelines::Static>()
 			{
-				ModeType::Static
+				Kind::Static
 			} else if core::any::TypeId::of::<M>()
 				== core::any::TypeId::of::<crate::pipelines::Simulated>()
 			{
-				ModeType::Simulated
+				Kind::Simulated
 			} else {
 				unreachable!("Unsupported StepMode type")
 			},
@@ -131,7 +131,7 @@ impl WrappedStep {
 		}
 	}
 
-	pub const fn mode(&self) -> ModeType {
+	pub const fn kind(&self) -> Kind {
 		self.vtable.mode
 	}
 
@@ -176,9 +176,9 @@ impl Drop for WrappedStep {
 
 impl Debug for WrappedStep {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		let mode = match self.mode() {
-			ModeType::Static => "Static",
-			ModeType::Simulated => "Simulated",
+		let mode = match self.kind() {
+			Kind::Static => "Static",
+			Kind::Simulated => "Simulated",
 		};
 
 		f.debug_struct("Step")

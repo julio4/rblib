@@ -26,7 +26,7 @@ use {
 	reth::{
 		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
 		builder::{NodeBuilder, NodeConfig},
-		chainspec::{ChainSpec, DEV, MAINNET},
+		chainspec::{ChainSpec, EthChainSpec, DEV, MAINNET},
 		core::exit::NodeExitFuture,
 		rpc::types::{engine::ForkchoiceState, Block},
 		tasks::TaskManager,
@@ -66,7 +66,7 @@ impl LocalNode {
 			.with_types::<EthereumNode>()
 			.with_components(
 				EthereumNode::components()
-					.payload(pipeline.into_service::<EthereumMainnet, _, _, _>()),
+					.payload(pipeline.into_service(EthereumMainnet)),
 			)
 			.with_add_ons(EthereumAddOns::default())
 			.on_rpc_started(move |_, _| {
@@ -275,19 +275,6 @@ pub fn default_node_config() -> NodeConfig<ChainSpec> {
 		.extend_accounts(funded_accounts)
 		.with_gas_limit(DEFAULT_BLOCK_GAS_LIMIT);
 	chainspec.hardforks = MAINNET.hardforks.clone();
-
-	// .genesis
-	// .clone()
-
-	// .with_timestamp(
-	// 	SystemTime::now()
-	// 		.duration_since(UNIX_EPOCH)
-	// 		.unwrap()
-	// 		.as_secs(),
-	// );
-
-	// let mut chainspec = ChainSpec::from_genesis(genesis);
-	// chainspec.hardforks = MAINNET.hardforks.clone();
 
 	NodeConfig::new(Arc::new(chainspec))
 		.with_datadir_args(datadir)

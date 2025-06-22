@@ -35,10 +35,14 @@ where
 	Pool: traits::PoolBounds<Plat>,
 {
 	pub fn new(
-		pipeline: Arc<Pipeline>,
-		service: Arc<ServiceContext<Plat, Provider, Pool>>,
+		pipeline: Pipeline,
+		service: ServiceContext<Plat, Provider, Pool>,
 	) -> Self {
 		info!("Creating new JobGenerator with pipeline: {pipeline:#?}");
+
+		let pipeline = Arc::new(pipeline);
+		let service = Arc::new(service);
+
 		Self { pipeline, service }
 	}
 }
@@ -79,7 +83,7 @@ where
 			attribs,
 			base_state,
 			self.service.evm_config().clone(),
-			self.service.chain_spec().as_ref(),
+			self.service.chain_spec().clone(),
 		)
 		.map_err(PayloadBuilderError::other)?;
 
@@ -185,5 +189,5 @@ fn build_empty_payload<P: Platform>(
 	info!("Building empty payload for pipeline: {:#?}", pipeline);
 
 	// start a new payload, don't add any transactions and build it immediately.
-	block_ctx.start().build().unwrap()
+	block_ctx.start().materialzie().unwrap()
 }

@@ -51,16 +51,16 @@ impl<P: Platform> BlockContext<P> {
 		attribs: types::PayloadBuilderAttributes<P>,
 		base_state: StateProviderBox,
 		evm_config: P::EvmConfig,
-		chainspec: &types::ChainSpec<P>,
+		chainspec: Arc<types::ChainSpec<P>>,
 	) -> Result<Self, Error<P>> {
-		let next_block_env = P::next_block_environment_context(
-			chainspec,
+		let block_env = P::next_block_environment_context(
+			&chainspec,
 			parent.header(),
 			&attribs, //
 		);
 
 		let evm_env = evm_config //
-			.next_evm_env(&parent, &next_block_env)
+			.next_evm_env(&parent, &block_env)
 			.map_err(Error::Evm)?;
 
 		let mut base_state = State::builder()
@@ -70,7 +70,7 @@ impl<P: Platform> BlockContext<P> {
 
 		// prepare the base state for the next block
 		evm_config
-			.builder_for_next_block(&mut base_state, &parent, next_block_env)
+			.builder_for_next_block(&mut base_state, &parent, block_env.clone())
 			.map_err(Error::Evm)?
 			.apply_pre_execution_changes()?;
 
@@ -81,6 +81,8 @@ impl<P: Platform> BlockContext<P> {
 				attribs,
 				base_state,
 				evm_config,
+				block_env,
+				chainspec,
 			}),
 		})
 	}
@@ -124,6 +126,20 @@ impl<P: Platform> BlockContext<P> {
 	pub fn evm_env(&self) -> &types::EvmEnv<P> {
 		&self.inner.evm_env
 	}
+
+	/// Returns the context required for configuring the environment of the next
+	/// block that is being built. This context contains information that
+	/// cannot be derived from the parent block header.
+	pub fn block_env(&self) -> &types::NextBlockEnvContext<P> {
+		&self.inner.block_env
+	}
+
+	/// Returns the chainspec that defines the chain and fork specific parameters
+	/// that are used to configure the EVM environment and the next block
+	/// environment for the block that is being built.
+	pub fn chainspec(&self) -> &Arc<types::ChainSpec<P>> {
+		&self.inner.chainspec
+	}
 }
 
 /// Public building API
@@ -154,6 +170,10 @@ struct BlockContextInner<P: Platform> {
 	/// updates that are defined in the chainspec.
 	evm_env: types::EvmEnv<P>,
 
+	/// Context required for configuring this block environment.
+	/// Contains information that can't be derived from the parent block.
+	block_env: types::NextBlockEnvContext<P>,
+
 	/// Access to the state of the environment rooted at the end of the parent
 	/// block for which the payload is being built. This state will be read when
 	/// there is an attempt to read a storage element that is not present in any
@@ -167,6 +187,11 @@ struct BlockContextInner<P: Platform> {
 	/// the payload. This type is used to create individual EVM instances that
 	/// execute transactions in the payload under construction.
 	evm_config: P::EvmConfig,
+
+	/// The chainspec that defines the chain and fork specific parameters that
+	/// are used to configure the EVM environment and the next block environment
+	/// for the block that is being built.
+	chainspec: Arc<types::ChainSpec<P>>,
 }
 
 impl<P: Platform> core::fmt::Debug for BlockContext<P> {

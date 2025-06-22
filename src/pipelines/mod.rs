@@ -23,6 +23,8 @@ mod step;
 #[cfg(test)]
 mod tests;
 
+// internal api
+pub(crate) use service::traits;
 // public API exports
 pub use {
 	limits::Limits,
@@ -106,13 +108,14 @@ impl Pipeline {
 	/// can be used when constructing a reth node.
 	pub fn into_service<P: Platform, Node, Pool, EvmConfig>(
 		self,
+		platform: P,
 	) -> impl PayloadServiceBuilder<Node, Pool, EvmConfig>
 	where
-		Node: service::traits::NodeBounds<P>,
-		Pool: service::traits::PoolBounds<P>,
-		EvmConfig: service::traits::EvmConfigBounds<P>,
+		Node: traits::NodeBounds<P>,
+		Pool: traits::PoolBounds<P>,
+		EvmConfig: traits::EvmConfigBounds<P>,
 	{
-		service::PipelineServiceBuilder::<P>(self, PhantomData)
+		service::PipelineServiceBuilder::<P>::new(self, platform)
 	}
 }
 

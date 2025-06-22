@@ -5,6 +5,7 @@ use {
 		primitives::{address, U256},
 		providers::Provider,
 	},
+	reth::api::Block,
 	tracing::info,
 };
 
@@ -32,6 +33,14 @@ async fn one_tx_included_in_one_block() {
 	let block = node.build_new_block().await.unwrap();
 
 	info!("Block built: {block:#?}");
+
+	assert!(
+		block
+			.body()
+			.transactions()
+			.any(|tx_in_block| tx_in_block.hash() == tx.tx_hash()),
+		"Transaction should be included in the block"
+	);
 }
 
 #[tokio::test]

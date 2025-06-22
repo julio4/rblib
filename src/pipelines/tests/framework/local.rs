@@ -10,7 +10,7 @@ use {
 		*,
 	},
 	alloy::{
-		eips::BlockNumberOrTag,
+		eips::{eip7685::Requests, BlockNumberOrTag},
 		primitives::{B256, U256},
 		providers::{Identity, Provider, ProviderBuilder, RootProvider},
 	},
@@ -184,9 +184,55 @@ impl LocalNode {
 
 		info!("Payload ID: {payload_id}, Payload: {getpayload_result:#?}");
 
-		// set the newly produced payload as the next block
+		let payload = getpayload_result.execution_payload.clone();
+		let new_block_hash = payload.payload_inner.payload_inner.block_hash;
 
-		todo!()
+		// Give the newly built payload to the EL node and let it validate it.
+		let new_payload_result = EngineApiClient::<EthEngineTypes>::new_payload_v4(
+			(&ipc_client).into(),
+			payload,
+			vec![],
+			B256::ZERO,
+			Default::default(),
+		)
+		.await?;
+
+		if new_payload_result.is_invalid() {
+			return Err(eyre::eyre!(
+				"Failed to set new payload: {new_payload_result:#?}"
+			));
+		}
+
+		// update the canonical chain with the new block without triggering new
+		// payload production
+		let fcu_result = EngineApiClient::<EthEngineTypes>::fork_choice_updated_v3(
+			(&ipc_client).into(),
+			ForkchoiceState {
+				head_block_hash: new_block_hash,
+				safe_block_hash: latest_block.header.hash,
+				finalized_block_hash: latest_block.header.hash,
+			},
+			None,
+		)
+		.await?;
+
+		if fcu_result.is_invalid() {
+			return Err(eyre::eyre!("Forkchoice update failed: {fcu_result:#?}"));
+		}
+
+		let block = self
+			.provider()
+			.get_block_by_number(BlockNumberOrTag::Latest)
+			.full()
+			.await?
+			.expect("New block should exist");
+
+		assert_eq!(
+			block.header.hash, new_block_hash,
+			"New block hash should match the one returned by the payload"
+		);
+
+		Ok(block.into())
 	}
 }
 

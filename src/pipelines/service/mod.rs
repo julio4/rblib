@@ -50,7 +50,6 @@ where
 			provider: ctx.provider().clone(),
 			evm_config: Plat::evm_config(ctx.chain_spec()),
 			chain_spec: ctx.chain_spec().clone(),
-			platform: self.platform,
 		};
 
 		let (service, builder) = PayloadBuilderService::new(
@@ -76,7 +75,6 @@ where
 	provider: Provider,
 	evm_config: Plat::EvmConfig,
 	chain_spec: Arc<types::ChainSpec<Plat>>,
-	platform: Plat,
 }
 
 impl<Plat, Provider, Pool> ServiceContext<Plat, Provider, Pool>
@@ -99,10 +97,6 @@ where
 
 	pub const fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
 		&self.chain_spec
-	}
-
-	pub const fn platform(&self) -> &Plat {
-		&self.platform
 	}
 }
 

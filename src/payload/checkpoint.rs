@@ -176,22 +176,6 @@ impl<P: Platform> Checkpoint<P> {
 	pub fn barrier(&self) -> Self {
 		Self::new_barrier(self)
 	}
-
-	/// Produces a built payload that can be submitted as the result of a block
-	/// building process.
-	///
-	/// This is an expensive operation and ideally it should be called only once
-	/// at the end of the payload building process, when all the
-	/// modifications to the payload are done.
-	pub fn materialzie(
-		self,
-	) -> Result<types::BuiltPayload<P>, PayloadBuilderError> {
-		let chainspec = self.block_context().chainspec().as_ref();
-		let evm_config = self.block_context().evm_config().clone();
-
-		// P::into_built_payload(chainspec, evm_config, self)
-		todo!("materialzie Checkpoint into BuiltPayload not implemented yet");
-	}
 }
 
 /// Internal API

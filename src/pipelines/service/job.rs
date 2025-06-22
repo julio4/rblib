@@ -54,7 +54,7 @@ where
 	Provider: traits::ProviderBounds<Plat>,
 	Pool: traits::PoolBounds<Plat>,
 {
-	type Job = PayloadJob<Plat>;
+	type Job = PayloadJob<Plat, Provider, Pool>;
 
 	fn new_payload_job(
 		&self,
@@ -78,6 +78,8 @@ where
 		let base_state =
 			self.service.provider().state_by_block_hash(header.hash())?;
 
+		// This is the beginning of the state manipulation API usage from within
+		// the pipelines API.
 		let block_ctx = BlockContext::new(
 			header,
 			attribs,
@@ -87,23 +89,50 @@ where
 		)
 		.map_err(PayloadBuilderError::other)?;
 
-		Ok(PayloadJob::new(Arc::clone(&self.pipeline), block_ctx))
+		let pipeline = Arc::clone(&self.pipeline);
+		let service_ctx = Arc::clone(&self.service);
+
+		Ok(PayloadJob::new(pipeline, block_ctx, service_ctx))
 	}
 }
 
-pub struct PayloadJob<P: Platform> {
+pub struct PayloadJob<P, Provider, Pool>
+where
+	P: Platform,
+	Pool: traits::PoolBounds<P>,
+	Provider: traits::ProviderBounds<P>,
+{
 	pipeline: Arc<Pipeline>,
 	block: BlockContext<P>,
+	service: Arc<ServiceContext<P, Provider, Pool>>,
 }
 
-impl<P: Platform> PayloadJob<P> {
-	pub fn new(pipeline: Arc<Pipeline>, block: BlockContext<P>) -> Self {
+impl<P, Provider, Pool> PayloadJob<P, Provider, Pool>
+where
+	P: Platform,
+	Pool: traits::PoolBounds<P>,
+	Provider: traits::ProviderBounds<P>,
+{
+	pub fn new(
+		pipeline: Arc<Pipeline>,
+		block: BlockContext<P>,
+		service: Arc<ServiceContext<P, Provider, Pool>>,
+	) -> Self {
 		info!("Creating new PayloadJob with block context: {block:#?}");
-		Self { pipeline, block }
+		Self {
+			pipeline,
+			block,
+			service,
+		}
 	}
 }
 
-impl<P: Platform> RethPayloadJobTrait for PayloadJob<P> {
+impl<P, Provider, Pool> RethPayloadJobTrait for PayloadJob<P, Provider, Pool>
+where
+	P: Platform,
+	Pool: traits::PoolBounds<P>,
+	Provider: traits::ProviderBounds<P>,
+{
 	type BuiltPayload = types::BuiltPayload<P>;
 	type PayloadAttributes = types::PayloadBuilderAttributes<P>;
 	type ResolvePayloadFuture = PayloadJobResolveFuture<P>;
@@ -129,10 +158,11 @@ impl<P: Platform> RethPayloadJobTrait for PayloadJob<P> {
 					self.block.attributes().payload_id()
 				);
 				(
-					PayloadJobResolveFuture::Ready(Some(Ok(build_empty_payload(
+					PayloadJobResolveFuture::Ready(Some(build_empty_payload(
 						&self.pipeline,
 						&self.block,
-					)))),
+						&self.service,
+					))),
 					KeepPayloadJobAlive::No,
 				)
 			}
@@ -150,7 +180,12 @@ impl<P: Platform> RethPayloadJobTrait for PayloadJob<P> {
 	}
 }
 
-impl<P: Platform> Future for PayloadJob<P> {
+impl<P, Provider, Pool> Future for PayloadJob<P, Provider, Pool>
+where
+	P: Platform,
+	Pool: traits::PoolBounds<P>,
+	Provider: traits::ProviderBounds<P>,
+{
 	type Output = Result<(), PayloadBuilderError>;
 
 	fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -180,14 +215,21 @@ impl<P: Platform> Future for PayloadJobResolveFuture<P> {
 	}
 }
 
-fn build_empty_payload<P: Platform>(
+fn build_empty_payload<P, Provider, Pool>(
 	pipeline: &Pipeline,
 	block_ctx: &BlockContext<P>,
-) -> types::BuiltPayload<P> {
+	service: &ServiceContext<P, Provider, Pool>,
+) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
+where
+	P: Platform,
+	Pool: traits::PoolBounds<P>,
+	Provider: traits::ProviderBounds<P>,
+{
 	// This function should build an empty payload based on the pipeline and
 	// attributes. For now, we return a placeholder.
 	info!("Building empty payload for pipeline: {:#?}", pipeline);
 
 	// start a new payload, don't add any transactions and build it immediately.
-	block_ctx.start().materialzie().unwrap()
+	let checkpoint = block_ctx.start();
+	P::into_built_payload(checkpoint, service.pool(), service.provider())
 }

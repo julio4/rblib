@@ -49,11 +49,9 @@ impl Platform for EthereumMainnet {
 	}
 
 	fn into_built_payload<Pool, Provider>(
-		chain_spec: &types::ChainSpec<Self>,
-		evm_config: Self::EvmConfig,
-		transactions_pool: Pool,
-		provider: Provider,
 		checkpoint: payload::Checkpoint<Self>,
+		transaction_pool: &Pool,
+		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
 		reth_payload_builder::PayloadBuilderError,
@@ -62,6 +60,7 @@ impl Platform for EthereumMainnet {
 		Pool: PoolBounds<Self>,
 		Provider: ProviderBounds<Self>,
 	{
+		let evm_config = checkpoint.block().evm_config().clone();
 		let payload_config = PayloadConfig {
 			parent_header: Arc::new(checkpoint.block().parent().clone()),
 			attributes: checkpoint.block().attributes().clone(),
@@ -85,7 +84,7 @@ impl Platform for EthereumMainnet {
 		default_ethereum_payload(
 			evm_config,
 			provider,
-			transactions_pool,
+			transaction_pool,
 			builder_config,
 			build_args,
 			|_| transactions,

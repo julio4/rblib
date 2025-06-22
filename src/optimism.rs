@@ -47,11 +47,9 @@ impl Platform for Optimism {
 	}
 
 	fn into_built_payload<Pool, Provider>(
-		chainspec: &types::ChainSpec<Self>,
-		evm_config: Self::EvmConfig,
-		transactions_pool: Pool,
-		provider: Provider,
 		checkpoint: payload::Checkpoint<Self>,
+		transaction_pool: &Pool,
+		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
 		reth_payload_builder::PayloadBuilderError,

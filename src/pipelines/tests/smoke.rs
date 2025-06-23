@@ -20,26 +20,44 @@ async fn one_tx_included_in_one_block() {
 
 	let node = LocalNode::ethereum(pipeline).await.unwrap();
 
-	let tx = node
-		.new_transaction()
-		.with_value(100_000_000u128)
-		.with_to(address!("0xF0109fC8DF283027b6285cc889F5aA624EaC1F55"))
-		.send()
-		.await
-		.unwrap();
+	let mut transfers = vec![];
+	for _ in 0..10 {
+		transfers.push(
+			*node
+				.new_transaction()
+				.random_valid_transfer()
+				.send()
+				.await
+				.unwrap()
+				.tx_hash(),
+		);
+	}
 
-	info!("Transaction sent: {tx:#?}");
+	let mut reverts = vec![];
+	for _ in 0..4 {
+		reverts.push(
+			*node
+				.new_transaction()
+				.random_reverting_transaction()
+				.send()
+				.await
+				.unwrap()
+				.tx_hash(),
+		);
+	}
 
 	let block = node.build_new_block().await.unwrap();
 
 	info!("Block built: {block:#?}");
 
 	assert!(
-		block
-			.body()
-			.transactions()
-			.any(|tx_in_block| tx_in_block.hash() == tx.tx_hash()),
-		"Transaction should be included in the block"
+		block.includes(&transfers),
+		"Block should include all valid transfers"
+	);
+
+	assert!(
+		!block.includes(&reverts),
+		"Block should not include any reverts"
 	);
 }
 

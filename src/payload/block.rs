@@ -1,6 +1,5 @@
 use {
 	crate::*,
-	alloc::sync::Arc,
 	reth::{
 		api::{ConfigureEvm, PayloadBuilderAttributes, PayloadBuilderError},
 		payload::PayloadId,
@@ -9,6 +8,7 @@ use {
 		revm::{database::StateProviderDatabase, State},
 	},
 	reth_evm::{block::BlockExecutionError, execute::BlockBuilder},
+	std::sync::Arc,
 	thiserror::Error,
 };
 

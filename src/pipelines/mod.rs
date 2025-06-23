@@ -7,13 +7,15 @@ use {
 		pipelines::step::{StepKind, WrappedStep},
 		*,
 	},
-	alloc::{boxed::Box, vec::Vec},
-	core::marker::PhantomData,
+	alloy::hex,
+	core::fmt::Display,
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::builder::components::PayloadServiceBuilder,
+	std::sync::OnceLock,
 };
 
 mod exec;
+mod job;
 mod limits;
 mod service;
 mod simulated;
@@ -46,6 +48,7 @@ pub struct Pipeline {
 	prologue: Option<WrappedStep>,
 	steps: Vec<StepOrPipeline>,
 	limits: Option<Box<dyn Limits>>,
+	unique_id: OnceLock<usize>,
 }
 
 /// Public API
@@ -136,6 +139,15 @@ impl Pipeline {
 	pub(crate) fn limits(&self) -> Option<&dyn Limits> {
 		self.limits.as_deref()
 	}
+
+	/// A unique identifier of the pipieline instance.
+	///
+	/// This is used mostly for debug printing and logging purposes.
+	/// Do not rely on this value for any logic, as it is not guaranteed to be
+	/// unique across different runs of the program.
+	pub(crate) fn unique_id(&self) -> usize {
+		*self.unique_id.get_or_init(|| self as *const Self as usize)
+	}
 }
 
 pub(crate) enum StepOrPipeline {
@@ -182,9 +194,21 @@ impl<M0: StepKind, S0: Step<Kind = M0>> IntoPipeline<()> for (S0,) {
 // Generate implementations for tuples of steps up to 32 elements
 impl_into_pipeline_steps!(32);
 
+impl Display for Pipeline {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(
+			f,
+			"Pipeline(0x{}, {} steps)",
+			hex::encode(self.unique_id().to_le_bytes()),
+			self.steps.len()
+		)
+	}
+}
+
 impl core::fmt::Debug for Pipeline {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Pipeline")
+			.field("unique_id", &hex::encode(self.unique_id().to_le_bytes()))
 			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
 			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
 			.field("steps", &self.steps)

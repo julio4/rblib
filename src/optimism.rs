@@ -1,8 +1,8 @@
 use {
 	super::{types, *},
-	alloc::sync::Arc,
 	reth_optimism_forks::OpHardforks,
 	reth_optimism_node::{OpEvmConfig, OpNextBlockEnvAttributes, OpNode},
+	std::sync::Arc,
 };
 
 /// Platform definition for Optimism Rollup chains.
@@ -47,9 +47,9 @@ impl Platform for Optimism {
 	}
 
 	fn into_built_payload<Pool, Provider>(
-		checkpoint: payload::Checkpoint<Self>,
-		transaction_pool: &Pool,
-		provider: &Provider,
+		_checkpoint: payload::Checkpoint<Self>,
+		_transaction_pool: &Pool,
+		_provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
 		reth_payload_builder::PayloadBuilderError,

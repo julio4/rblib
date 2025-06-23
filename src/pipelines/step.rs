@@ -1,6 +1,5 @@
 use {
 	super::sealed,
-	alloc::boxed::Box,
 	core::{fmt::Debug, future::Future, pin::Pin, ptr::NonNull},
 };
 

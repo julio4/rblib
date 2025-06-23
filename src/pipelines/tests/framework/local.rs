@@ -13,6 +13,7 @@ use {
 		eips::{eip7685::Requests, BlockNumberOrTag},
 		primitives::{B256, U256},
 		providers::{Identity, Provider, ProviderBuilder, RootProvider},
+		rpc::types::{Block, Transaction},
 	},
 	alloy_genesis::{Genesis, GenesisAccount},
 	core::{
@@ -28,7 +29,7 @@ use {
 		builder::{NodeBuilder, NodeConfig},
 		chainspec::{ChainSpec, EthChainSpec, DEV, MAINNET},
 		core::exit::NodeExitFuture,
-		rpc::types::{engine::ForkchoiceState, Block},
+		rpc::types::engine::ForkchoiceState,
 		tasks::TaskManager,
 	},
 	reth_ethereum::node::{
@@ -109,9 +110,7 @@ impl LocalNode {
 			.with_chain_id(self.chain_id())
 	}
 
-	pub async fn build_new_block(
-		&self,
-	) -> eyre::Result<types::Block<EthereumMainnet>> {
+	pub async fn build_new_block(&self) -> eyre::Result<Block<Transaction>> {
 		self
 			.build_new_block_with_deadline(Duration::from_secs(2))
 			.await
@@ -120,7 +119,7 @@ impl LocalNode {
 	pub async fn build_new_block_with_deadline(
 		&self,
 		deadline: Duration,
-	) -> eyre::Result<types::Block<EthereumMainnet>> {
+	) -> eyre::Result<Block<Transaction>> {
 		let ipc_path = self.config.rpc.auth_ipc_path.clone();
 		let ipc_client = reth_ipc::client::IpcClientBuilder::default()
 			.build(&ipc_path)
@@ -141,10 +140,6 @@ impl LocalNode {
 		let block_deadline = deadline.max(Self::MIN_BLOCK_TIME);
 		let block_timestamp = latest_timestamp + block_deadline + elapsed_time;
 
-		info!(
-			"Building new block with timestamp: {}",
-			block_timestamp.as_secs()
-		);
 		let payload_attributes = EthPayloadAttributes {
 			timestamp: block_timestamp.as_secs(),
 			withdrawals: Some(vec![]),
@@ -181,8 +176,6 @@ impl LocalNode {
 			payload_id,
 		)
 		.await?;
-
-		info!("Payload ID: {payload_id}, Payload: {getpayload_result:#?}");
 
 		let payload = getpayload_result.execution_payload.clone();
 		let new_block_hash = payload.payload_inner.payload_inner.block_hash;
@@ -296,13 +289,6 @@ pub fn default_node_config() -> NodeConfig<ChainSpec> {
 			.expect("Failed to parse data dir path"),
 		static_files_path: None,
 	};
-
-	let prefunded_account = Signer::try_from_secret(
-		FUNDED_PRIVATE_KEYS[0]
-			.parse()
-			.expect("Invalid hardcoded private key"),
-	)
-	.expect("Failed to create signer from hardcoded private key");
 
 	let funded_accounts = FUNDED_PRIVATE_KEYS.iter().map(|prv| {
 		let address = Signer::try_from_secret(

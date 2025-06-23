@@ -1,10 +1,13 @@
 use {
 	super::*,
 	crate::traits::{PoolBounds, ProviderBounds},
-	alloc::{boxed::Box, sync::Arc},
 	core::marker::PhantomData,
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
-	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
+	reth_ethereum::{
+		evm::EthEvmConfig,
+		node::EthereumNode,
+		primitives::SignerRecoverable,
+	},
 	reth_ethereum_payload_builder::{
 		default_ethereum_payload,
 		EthereumBuilderConfig,
@@ -12,6 +15,7 @@ use {
 	reth_evm::NextBlockEnvAttributes,
 	reth_payload_builder::PayloadBuilderError,
 	reth_transaction_pool::{
+		error::InvalidPoolTransactionError,
 		identifier::TransactionId,
 		BestTransactions,
 		PoolTransaction,
@@ -19,6 +23,7 @@ use {
 		TransactionPool,
 		ValidPoolTransaction,
 	},
+	std::sync::Arc,
 };
 
 /// Platform definition for ethereum mainnet.
@@ -74,7 +79,7 @@ impl Platform for EthereumMainnet {
 		);
 
 		let builder_config = EthereumBuilderConfig::new();
-		let transactions: alloc::vec::Vec<_> =
+		let transactions: Vec<_> =
 			checkpoint.history().transactions().cloned().collect();
 		let transactions = Box::new(PreselectedBestTransactions::<Self, Pool>(
 			transactions,
@@ -95,7 +100,7 @@ impl Platform for EthereumMainnet {
 }
 
 struct PreselectedBestTransactions<Plat, Pool>(
-	alloc::vec::Vec<types::Transaction<Plat>>,
+	Vec<types::Transaction<Plat>>,
 	PhantomData<Pool>,
 )
 where
@@ -107,21 +112,11 @@ where
 	Plat: Platform,
 	Pool: PoolBounds<Plat>,
 {
-	fn no_updates(&mut self) {
-		todo!()
-	}
+	fn no_updates(&mut self) {}
 
-	fn set_skip_blobs(&mut self, skip_blobs: bool) {
-		todo!()
-	}
+	fn set_skip_blobs(&mut self, _: bool) {}
 
-	fn mark_invalid(
-		&mut self,
-		transaction: &Self::Item,
-		kind: reth_transaction_pool::error::InvalidPoolTransactionError,
-	) {
-		todo!()
-	}
+	fn mark_invalid(&mut self, _: &Self::Item, _: InvalidPoolTransactionError) {}
 }
 
 impl<Plat, Pool> Iterator for PreselectedBestTransactions<Plat, Pool>
@@ -133,7 +128,6 @@ where
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let transaction = self.0.pop()?;
-		use reth_ethereum::primitives::SignerRecoverable;
 
 		let Ok(pooled) = <<Pool as TransactionPool>::Transaction as PoolTransaction>::try_from_consensus(
 			transaction.try_into_recovered().expect("Transaction should be valid at this point"),

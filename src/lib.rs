@@ -1,9 +1,12 @@
-//#![cfg_attr(not(test), no_std)]
-
-extern crate alloc;
-
+// Public API re-exports
 mod payload;
+pub use payload::*;
+
+#[cfg(feature = "pipelines")]
 mod pipelines;
+
+#[cfg(feature = "pipelines")]
+pub use pipelines::*;
 
 #[cfg(feature = "optimism")]
 mod optimism;
@@ -17,8 +20,6 @@ mod ethereum;
 #[cfg(feature = "ethereum")]
 pub use ethereum::EthereumMainnet;
 
-// Public API re-exports
-pub use {payload::*, pipelines::*};
 
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.
@@ -48,7 +49,7 @@ pub trait Platform: Sized + core::fmt::Debug + Send + Sync + Unpin + 'static {
 		NextBlockEnvCtx: Send + Sync + 'static,
 	>;
 
-	fn evm_config(chainspec: alloc::sync::Arc<types::ChainSpec<Self>>) -> Self::EvmConfig;
+	fn evm_config(chainspec: std::sync::Arc<types::ChainSpec<Self>>) -> Self::EvmConfig;
 
 	fn next_block_environment_context(
 		chainspec: &types::ChainSpec<Self>,

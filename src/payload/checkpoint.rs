@@ -1,10 +1,9 @@
 use {
 	crate::{payload::span, *},
-	alloc::sync::Arc,
 	alloy::primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
 	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
 	reth::{
-		api::{ConfigureEvm, PayloadBuilderError},
+		api::ConfigureEvm,
 		core::primitives::SignedTransaction,
 		providers::ProviderError,
 		revm::{
@@ -13,6 +12,7 @@ use {
 			DatabaseRef,
 		},
 	},
+	std::sync::Arc,
 	thiserror::Error,
 	tracing::info,
 };
@@ -304,34 +304,27 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	}
 
 	/// Gets account code by its hash.
-	fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+	fn code_by_hash_ref(
+		&self,
+		_code_hash: B256,
+	) -> Result<Bytecode, Self::Error> {
 		todo!()
 	}
 
 	/// Gets storage value of address at index.
 	fn storage_ref(
 		&self,
-		address: Address,
-		index: U256,
+		_address: Address,
+		_index: U256,
 	) -> Result<StorageValue, Self::Error> {
 		todo!()
 	}
 
 	/// Gets block hash by block number.
-	fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+	fn block_hash_ref(&self, _number: u64) -> Result<B256, Self::Error> {
 		todo!()
 	}
 }
-
-#[allow(type_alias_bounds)]
-type TypedError<P: Platform> =
-	Error<
-		<
-			<
-				<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
-			>::EvmFactory as EvmFactory
-		>::Error<StateError>
-	>;
 
 #[allow(type_alias_bounds)]
 type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<

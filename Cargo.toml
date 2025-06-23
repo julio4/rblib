@@ -10,7 +10,8 @@ description = "SDK for building ethereum compatible block builders"
 exclude = [".github/"]
 
 [features]
-default = ["optimism", "ethereum"]
+default = ["optimism", "ethereum", "pipelines"]
+
 optimism = [
   "reth-optimism-primitives",
   "reth-optimism-node",
@@ -24,6 +25,8 @@ ethereum = [
   "reth-basic-payload-builder",
 ]
 
+pipelines = ["tokio", "futures", "reth-errors"]
+
 [dependencies]
 # internal dependencies
 pipelines-macros = { path = "src/pipelines/macros" }
@@ -36,8 +39,12 @@ eyre = "0.6"
 thiserror = { version = "2.0", default-features = false }
 tracing = "0.1"
 
+futures = { version = "0.3", optional = true }
+tokio = { version = "1.45", features = ["full"], optional = true }
+
 # Reth dependencies
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
+
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
@@ -55,9 +62,11 @@ reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.
 reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
 
+# pipelines only
+reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false, optional = true }
+
 [dev-dependencies]
 nanoid = "0.4"
-futures = "0.3"
 ctor = "0.4.2"
 secp256k1 = "0.30"
 sha3 = "0.10"

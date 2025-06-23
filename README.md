@@ -8,7 +8,7 @@ SDK for building payload builders.
 Minimal library usage example that creates a fully functional block builder using a reth node for ethereum mainnet:
 
 ```rust
-use rblib::*Pipeline*;
+use rblib::*;
 
 fn main() {
   let pipeline = Pipeline::default()

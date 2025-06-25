@@ -2,12 +2,7 @@ use {
 	super::signer::Signer,
 	crate::pipelines::tests::framework::FUNDED_PRIVATE_KEYS,
 	alloy::{
-		consensus::{
-			EthereumTxEnvelope,
-			SignableTransaction,
-			TxEip1559,
-			TxEnvelope,
-		},
+		consensus::{SignableTransaction, TxEip1559, TxEnvelope},
 		eips::{eip1559::MIN_PROTOCOL_BASE_FEE, BlockNumberOrTag, Encodable2718},
 		hex,
 		network::Ethereum,
@@ -161,7 +156,6 @@ impl TransactionBuilder {
 	pub async fn send(self) -> eyre::Result<PendingTransactionBuilder<Ethereum>> {
 		let provider = self.provider.clone();
 		let transaction = self.build().await;
-		let txn_hash = transaction.tx_hash();
 		let transaction_encoded = transaction.encoded_2718();
 
 		Ok(

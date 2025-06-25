@@ -1,14 +1,6 @@
 use {
 	alloy::primitives::{Address, Signature, B256, U256},
-	reth_optimism_primitives::OpTransactionSigned,
-	secp256k1::{
-		rand::rngs::OsRng,
-		Message,
-		PublicKey,
-		Secp256k1,
-		SecretKey,
-		SECP256K1,
-	},
+	secp256k1::{Message, PublicKey, SecretKey, SECP256K1},
 	sha3::{Digest, Keccak256},
 	std::str::FromStr,
 };
@@ -68,21 +60,6 @@ impl FromStr for Signer {
 		Self::try_from_secret(B256::from_str(s)?)
 			.map_err(|e| eyre::eyre!("invalid secret key {:?}", e.to_string()))
 	}
-}
-
-pub fn generate_ethereum_keypair() -> (SecretKey, PublicKey, Address) {
-	let secp = Secp256k1::new();
-
-	// Generate cryptographically secure random private key
-	let private_key = SecretKey::new(&mut OsRng);
-
-	// Derive public key
-	let public_key = PublicKey::from_secret_key(&secp, &private_key);
-
-	// Derive Ethereum address
-	let address = public_key_to_address(&public_key);
-
-	(private_key, public_key, address)
 }
 
 /// Converts a public key to an Ethereum address

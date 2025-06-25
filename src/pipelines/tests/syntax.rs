@@ -1,7 +1,4 @@
-use {
-	super::{steps::*, *},
-	crate::*,
-};
+use {super::steps::*, crate::*};
 
 #[test]
 fn only_steps() {
@@ -46,12 +43,12 @@ fn nested_one_concise_static() {
 
 #[test]
 fn nested_one_concise_simulated() {
-	let _top_level = Pipeline::default()
+	let top_level = Pipeline::default()
 		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(Loop, (RevertProtection,));
 
-	assert!(true, "Pipeline created successfully");
+	println!("{top_level:#?}");
 }
 
 #[test]

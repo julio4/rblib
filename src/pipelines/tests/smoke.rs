@@ -1,13 +1,26 @@
 use {
 	super::{framework::*, steps::*},
 	crate::*,
-	alloy::{
-		primitives::{address, U256},
-		providers::Provider,
-	},
-	reth::api::Block,
 	tracing::info,
 };
+
+#[tokio::test]
+async fn empty_pipeline_builds_empty_payload() {
+	let empty_pipeline = Pipeline::default();
+	let node = LocalNode::ethereum(empty_pipeline).await.unwrap();
+	for _ in 0..10 {
+		let _ = node
+			.new_transaction()
+			.random_valid_transfer()
+			.send()
+			.await
+			.unwrap();
+	}
+	let block = node.build_new_block().await.unwrap();
+
+	assert_eq!(block.header.number, 1);
+	assert!(block.transactions.is_empty(), "Block should be empty");
+}
 
 #[tokio::test]
 async fn one_tx_included_in_one_block() {

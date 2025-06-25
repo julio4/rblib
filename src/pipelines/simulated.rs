@@ -1,6 +1,9 @@
 use super::{sealed, step::StepKind};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimulatedPayload;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimulatedContext;
 
 /// Simulated steps have access to the payload execution results and have the

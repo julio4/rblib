@@ -57,7 +57,7 @@ pub trait Platform: Sized + core::fmt::Debug + Send + Sync + Unpin + 'static {
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self>;
 
-	fn into_built_payload<Pool, Provider>(
+	fn construct_payload<Pool, Provider>(
 		checkpoint: payload::Checkpoint<Self>,
 		transaction_pool: &Pool,
 		provider: &Provider,

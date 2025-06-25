@@ -1,6 +1,13 @@
 use {
 	super::sealed,
-	core::{fmt::Debug, future::Future, pin::Pin, ptr::NonNull},
+	crate::{Simulated, Static},
+	core::{
+		any::{type_name, TypeId},
+		fmt::{self, Debug},
+		future::Future,
+		pin::Pin,
+		ptr::NonNull,
+	},
 };
 
 /// Defines the kind of step of a pipeline.
@@ -53,7 +60,7 @@ pub enum ControlFlow<S: StepKind> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Kind {
+pub(crate) enum KindTag {
 	Static,
 	Simulated,
 }
@@ -62,20 +69,22 @@ pub(crate) enum Kind {
 ///
 /// This is used internally in the pipeline implementation to abstract the
 /// underlying developer friendly typed version of the step.
+#[derive(Clone)]
 struct StepVTable {
 	#[expect(clippy::type_complexity)]
 	step_fn: unsafe fn(
-		step_ptr: *mut u8,
-		payload_ptr: *mut u8,
+		step_ptr: *const u8,
+		payload_ptr: *const u8,
 		ctx_ptr: *mut u8,
-	) -> Pin<Box<dyn Future<Output = *mut u8> + Send>>,
+	) -> Pin<Box<dyn Future<Output = *const u8> + Send>>,
 	drop_fn: unsafe fn(*mut u8),
-	mode: Kind,
+	mode: KindTag,
 	name: &'static str,
 }
 
 /// Wraps a step in a type-erased manner, allowing it to be stored in a
 /// heterogeneous collection of steps inside a pipeline.
+#[derive(Clone)]
 pub(crate) struct WrappedStep {
 	step_ptr: NonNull<u8>,
 	vtable: StepVTable,
@@ -95,29 +104,25 @@ impl WrappedStep {
 		let vtable = StepVTable {
 			step_fn: step_fn_impl::<M, S>,
 			drop_fn: drop_fn_impl::<S>,
-			mode: if core::any::TypeId::of::<M>()
-				== core::any::TypeId::of::<crate::pipelines::Static>()
-			{
-				Kind::Static
-			} else if core::any::TypeId::of::<M>()
-				== core::any::TypeId::of::<crate::pipelines::Simulated>()
-			{
-				Kind::Simulated
+			mode: if TypeId::of::<M>() == TypeId::of::<Static>() {
+				KindTag::Static
+			} else if TypeId::of::<M>() == TypeId::of::<Simulated>() {
+				KindTag::Simulated
 			} else {
 				unreachable!("Unsupported StepMode type")
 			},
-			name: core::any::type_name::<S>(),
+			name: type_name::<S>(),
 		};
 
 		Self { step_ptr, vtable }
 	}
 
 	pub async fn execute<M: StepKind + 'static>(
-		&mut self,
-		mut payload: M::Payload,
+		&self,
+		payload: M::Payload,
 		ctx: &mut M::Context,
 	) -> ControlFlow<M> {
-		let payload_ptr = &mut payload as *mut M::Payload as *mut u8;
+		let payload_ptr = &payload as *const M::Payload as *const u8;
 		let ctx_ptr = ctx as *mut M::Context as *mut u8;
 
 		unsafe {
@@ -130,7 +135,7 @@ impl WrappedStep {
 		}
 	}
 
-	pub const fn kind(&self) -> Kind {
+	pub const fn kind(&self) -> KindTag {
 		self.vtable.mode
 	}
 
@@ -140,10 +145,10 @@ impl WrappedStep {
 }
 
 unsafe fn step_fn_impl<M: StepKind + 'static, S: Step<Kind = M> + 'static>(
-	step_ptr: *mut u8,
-	payload_ptr: *mut u8,
+	step_ptr: *const u8,
+	payload_ptr: *const u8,
 	ctx_ptr: *mut u8,
-) -> Pin<Box<dyn Future<Output = *mut u8> + Send>>
+) -> Pin<Box<dyn Future<Output = *const u8> + Send>>
 where
 	M::Payload: 'static,
 	M::Context: 'static,
@@ -156,7 +161,7 @@ where
 		Box::pin(async move {
 			let control_flow = step.step(payload, ctx).await;
 			// Box the result and return as type-erased pointer
-			Box::into_raw(Box::new(control_flow)) as *mut u8
+			Box::into_raw(Box::new(control_flow)) as *const u8
 		})
 	}
 }
@@ -174,10 +179,10 @@ impl Drop for WrappedStep {
 }
 
 impl Debug for WrappedStep {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let mode = match self.kind() {
-			Kind::Static => "Static",
-			Kind::Simulated => "Simulated",
+			KindTag::Static => "Static",
+			KindTag::Simulated => "Simulated",
 		};
 
 		f.debug_struct("Step")

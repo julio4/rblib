@@ -1,14 +1,10 @@
 use {
-	super::{TransactionBuilder, FUNDED_PRIVATE_KEYS},
-	crate::pipelines::tests::{Signer, ONE_ETH},
+	super::TransactionBuilder,
 	alloy::{
-		consensus::{EthereumTxEnvelope, TxEip4844},
 		hex,
-		primitives::{Address, BlockHash, TxHash},
+		primitives::{Address, TxHash},
 		rpc::types::{Block, BlockTransactionHashes, Transaction},
 	},
-	reth_ethereum::primitives::SignerRecoverable,
-	secp256k1::rand,
 };
 
 pub trait TransactionBuilderExt {

@@ -120,20 +120,25 @@ impl Pipeline {
 	{
 		service::PipelineServiceBuilder::<P>::new(self, platform)
 	}
+
+	/// Returns true if the pipieline has no steps, prologue or epilogue.
+	pub fn is_empty(&self) -> bool {
+		self.prologue.is_none() && self.epilogue.is_none() && self.steps.is_empty()
+	}
 }
 
 /// Internal API
 impl Pipeline {
-	pub(crate) fn prologue(&mut self) -> Option<&mut WrappedStep> {
-		self.prologue.as_mut()
+	pub(crate) fn prologue(&self) -> Option<&WrappedStep> {
+		self.prologue.as_ref()
 	}
 
-	pub(crate) fn epilogue(&mut self) -> Option<&mut WrappedStep> {
-		self.epilogue.as_mut()
+	pub(crate) fn epilogue(&self) -> Option<&WrappedStep> {
+		self.epilogue.as_ref()
 	}
 
-	pub(crate) fn steps(&mut self) -> &mut [StepOrPipeline] {
-		&mut self.steps
+	pub(crate) fn steps(&self) -> &[StepOrPipeline] {
+		&self.steps
 	}
 
 	pub(crate) fn limits(&self) -> Option<&dyn Limits> {
@@ -147,6 +152,31 @@ impl Pipeline {
 	/// unique across different runs of the program.
 	pub(crate) fn unique_id(&self) -> usize {
 		*self.unique_id.get_or_init(|| self as *const Self as usize)
+	}
+
+	/// Returns the path to the first step in the pipeline.
+	/// Returns `None` if the pipeline is empty.
+	pub(crate) fn first_step_path(&self) -> Option<Vec<usize>> {
+		if self.is_empty() {
+			return None;
+		}
+
+		let mut path = vec![0];
+		if let Some(first_step) = self.steps.first() {
+			path.extend(first_step.first_step());
+		}
+		Some(path)
+	}
+
+	/// Returns a reference to a wrapped step by its index path.
+	pub(crate) fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep> {
+		if path.is_empty() {
+			return None;
+		}
+
+		let index = path[0];
+		let item = self.steps.get(index)?;
+		item.step_by_path(&path[1..])
 	}
 }
 
@@ -164,6 +194,43 @@ impl core::fmt::Debug for StepOrPipeline {
 				.field(behavior)
 				.field(pipeline)
 				.finish(),
+		}
+	}
+}
+
+impl StepOrPipeline {
+	/// Returns a reference to a wrapped step by its indecies path.
+	/// Each level of the path corresponds to a step in a nested pipeline,
+	/// it is expected that level-1 will always be a nested pipeline.
+	pub fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep> {
+		if path.is_empty() {
+			return match self {
+				StepOrPipeline::Step(step) => Some(step),
+				StepOrPipeline::Pipeline(_, _) => None,
+			};
+		}
+
+		match self {
+			StepOrPipeline::Step(_) => None,
+			StepOrPipeline::Pipeline(_, pipeline) => {
+				let index = path[0];
+				let item = pipeline.steps.get(index)?;
+				item.step_by_path(&path[1..])
+			}
+		}
+	}
+
+	/// Returns the initial path of the first step in this step or pipeline.
+	pub fn first_step(&self) -> Vec<usize> {
+		match self {
+			StepOrPipeline::Step(_) => vec![],
+			StepOrPipeline::Pipeline(_, pipeline) => {
+				let mut path = vec![0];
+				if let Some(first_step) = pipeline.steps.first() {
+					path.extend(first_step.first_step());
+				}
+				path
+			}
 		}
 	}
 }
@@ -219,4 +286,109 @@ impl core::fmt::Debug for Pipeline {
 
 mod sealed {
 	pub trait Sealed {}
+}
+
+#[cfg(test)]
+mod test {
+	use {super::*, crate::pipelines::tests::steps::*};
+
+	#[test]
+	fn step_by_path_flat() {
+		let pipeline = Pipeline::default()
+			.with_epilogue(BuilderEpilogue)
+			.with_step(GatherBestTransactions)
+			.with_step(PriorityFeeOrdering)
+			.with_step(TotalProfitOrdering)
+			.with_step(RevertProtection);
+
+		assert!(pipeline.step_by_path(&[]).is_none());
+		assert_eq!(pipeline.first_step_path(), Some(vec![0]));
+
+		assert!(pipeline.step_by_path(&[0]).is_some());
+		assert!(pipeline
+			.step_by_path(&[0])
+			.unwrap()
+			.name()
+			.ends_with("GatherBestTransactions"));
+		assert!(pipeline.step_by_path(&[1]).is_some());
+		assert!(pipeline
+			.step_by_path(&[1])
+			.unwrap()
+			.name()
+			.ends_with("PriorityFeeOrdering"));
+		assert!(pipeline.step_by_path(&[2]).is_some());
+		assert!(pipeline
+			.step_by_path(&[2])
+			.unwrap()
+			.name()
+			.ends_with("TotalProfitOrdering"),);
+
+		assert!(pipeline.step_by_path(&[3]).is_some());
+		assert!(pipeline
+			.step_by_path(&[3])
+			.unwrap()
+			.name()
+			.ends_with("RevertProtection"));
+
+		assert!(pipeline.step_by_path(&[4]).is_none());
+		assert!(pipeline.step_by_path(&[1, 2]).is_none());
+	}
+
+	#[test]
+	fn step_by_path_nested() {
+		let pipeline = Pipeline::default()
+			.with_epilogue(BuilderEpilogue)
+			.with_step(OptimismPrologue)
+			.with_pipeline(
+				Loop,
+				(
+					GatherBestTransactions,
+					PriorityFeeOrdering,
+					TotalProfitOrdering,
+				),
+			)
+			.with_step(RevertProtection);
+
+		assert!(pipeline.step_by_path(&[]).is_none());
+
+		assert_eq!(pipeline.first_step_path(), Some(vec![0]));
+		assert!(pipeline.step_by_path(&[0]).is_some());
+
+		assert!(pipeline
+			.step_by_path(&[0])
+			.unwrap()
+			.name()
+			.ends_with("OptimismPrologue"));
+
+		assert!(pipeline.step_by_path(&[1]).is_none());
+		assert!(pipeline.step_by_path(&[1, 0]).is_some());
+		assert!(pipeline.step_by_path(&[1, 0, 0]).is_none());
+		assert!(pipeline
+			.step_by_path(&[1, 0])
+			.unwrap()
+			.name()
+			.ends_with("GatherBestTransactions"));
+		assert!(pipeline.step_by_path(&[1, 1]).is_some());
+		assert!(pipeline
+			.step_by_path(&[1, 1])
+			.unwrap()
+			.name()
+			.ends_with("PriorityFeeOrdering"));
+		assert!(pipeline.step_by_path(&[1, 2]).is_some());
+		assert!(pipeline
+			.step_by_path(&[1, 2])
+			.unwrap()
+			.name()
+			.ends_with("TotalProfitOrdering"));
+		assert!(pipeline.step_by_path(&[1, 3]).is_none());
+		assert!(pipeline.step_by_path(&[2]).is_some());
+		assert!(pipeline
+			.step_by_path(&[2])
+			.unwrap()
+			.name()
+			.ends_with("RevertProtection"));
+		assert!(pipeline.step_by_path(&[3]).is_none());
+		assert!(pipeline.step_by_path(&[1, 4]).is_none());
+		assert!(pipeline.step_by_path(&[1, 0, 1]).is_none());
+	}
 }

@@ -46,7 +46,7 @@ impl Platform for Optimism {
 		}
 	}
 
-	fn into_built_payload<Pool, Provider>(
+	fn construct_payload<Pool, Provider>(
 		_checkpoint: payload::Checkpoint<Self>,
 		_transaction_pool: &Pool,
 		_provider: &Provider,

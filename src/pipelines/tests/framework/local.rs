@@ -10,12 +10,12 @@ use {
 		*,
 	},
 	alloy::{
-		eips::{eip7685::Requests, BlockNumberOrTag},
+		eips::BlockNumberOrTag,
 		primitives::{B256, U256},
 		providers::{Identity, Provider, ProviderBuilder, RootProvider},
 		rpc::types::{Block, Transaction},
 	},
-	alloy_genesis::{Genesis, GenesisAccount},
+	alloy_genesis::GenesisAccount,
 	core::{
 		any::Any,
 		pin::Pin,
@@ -38,13 +38,12 @@ use {
 		EthEngineTypes,
 		EthereumNode,
 	},
-	reth_rpc_api::{EngineApiClient, EthApiClient},
+	reth_rpc_api::EngineApiClient,
 	std::{
 		sync::Arc,
-		time::{Instant, SystemTime, UNIX_EPOCH},
+		time::{SystemTime, UNIX_EPOCH},
 	},
 	tokio::sync::oneshot,
-	tracing::info,
 };
 
 pub struct LocalNode {

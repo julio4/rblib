@@ -4,6 +4,4 @@ mod framework;
 mod smoke;
 mod syntax;
 
-pub mod steps;
-
 pub use framework::*;

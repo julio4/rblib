@@ -22,6 +22,7 @@ mod service;
 mod simulated;
 mod r#static;
 mod step;
+pub mod steps;
 
 #[cfg(test)]
 mod tests;
@@ -30,8 +31,8 @@ mod tests;
 pub use {
 	context::StepContext,
 	limits::Limits,
-	r#static::{Static, StaticContext, StaticPayload},
-	simulated::{Simulated, SimulatedContext, SimulatedPayload},
+	r#static::{Static, StaticPayload},
+	simulated::{Simulated, SimulatedPayload},
 	step::{ControlFlow, Step},
 	Behavior::{Loop, Once},
 };
@@ -331,7 +332,7 @@ mod sealed {
 
 #[cfg(test)]
 mod test {
-	use {super::*, crate::pipelines::tests::steps::*};
+	use super::{steps::*, *};
 
 	#[test]
 	fn step_by_path_flat() {

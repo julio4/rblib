@@ -21,7 +21,6 @@ mod ethereum;
 pub use ethereum::EthereumMainnet;
 
 
-
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.
 ///
@@ -31,7 +30,7 @@ pub use ethereum::EthereumMainnet;
 /// construction.
 ///
 /// This trait should be customized for every context this API is embedded in.
-pub trait Platform: Sized + Clone + core::fmt::Debug + Send + Sync + Unpin + 'static {
+pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + Unpin + 'static {
 	/// Type that configures the essential types of an Ethereum-like node.
 	///
 	/// Implementations of this trait describe all types that are used by the

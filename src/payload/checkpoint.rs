@@ -2,6 +2,7 @@ use {
 	crate::{payload::span, *},
 	alloy::primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
 	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
+	core::fmt::Debug,
 	reth::{
 		api::ConfigureEvm,
 		core::primitives::SignedTransaction,
@@ -220,6 +221,7 @@ impl<P: Platform> Checkpoint<P> {
 }
 
 /// Describes the type of state mutation that created a given checkpoint.
+#[derive(Debug)]
 pub(super) enum Mutation<P: Platform> {
 	/// A barrier was inserted on top of the previous checkpoint.
 	///
@@ -323,6 +325,16 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	/// Gets block hash by block number.
 	fn block_hash_ref(&self, _number: u64) -> Result<B256, Self::Error> {
 		todo!()
+	}
+}
+
+impl<P: Platform> Debug for Checkpoint<P> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("Checkpoint")
+			.field("depth", &self.depth())
+			.field("block", &self.block())
+			.field("mutation", &self.mutation())
+			.finish()
 	}
 }
 

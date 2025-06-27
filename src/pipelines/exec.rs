@@ -36,7 +36,7 @@ use {
 	futures::FutureExt,
 	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
-	tracing::info,
+	tracing::{debug, info},
 };
 
 /// This type is responsible for executing a single run of a pipeline.
@@ -78,10 +78,12 @@ impl<
 
 				let input = match step.kind() {
 					// If the step is static, we can use the static context and payload.
-					KindTag::Static => StepInput::Static(StaticPayload),
+					KindTag::Static => StepInput::Static(StaticPayload::<P>::default()),
 					// If the step is simulated, we can use the simulated context and
 					// payload.
-					KindTag::Simulated => StepInput::Simulated(SimulatedPayload),
+					KindTag::Simulated => {
+						StepInput::Simulated(SimulatedPayload::new(block.start()))
+					}
 				};
 
 				Cursor::BeforeStep(path, input)
@@ -89,6 +91,11 @@ impl<
 			None => {
 				// If the pipeline is empty, we can build an empty payload and complete
 				// the pipeline immediately. There is nothing to execute.
+				debug!(
+					"empty pipeline, building empty payloads for attributes: {:?}",
+					block.attributes()
+				);
+
 				Cursor::<P>::Completed(
 					P::construct_payload(
 						block.start(),
@@ -134,12 +141,12 @@ impl<
 		Pool: traits::PoolBounds<P>,
 	> PipelineExecutor<P, Provider, Pool>
 {
-	async fn run_step(
+	async fn execute_step(
 		step: WrappedStep<P>,
-		input: StepInput,
+		input: StepInput<P>,
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
-	) -> StepOutput {
+	) -> StepOutput<P> {
 		let context = StepContext::new(block.clone(), service.clone());
 		match (step.kind(), input) {
 			(KindTag::Static, StepInput::Static(payload)) => {
@@ -162,7 +169,7 @@ impl<
 	fn advance_cursor(
 		&self,
 		current_step_path: &[usize],
-		output: StepOutput,
+		output: StepOutput<P>,
 	) -> Cursor<P> {
 		todo!("advance_cursor")
 	}
@@ -202,7 +209,7 @@ where
 				 implementation.",
 			);
 
-			let running_future = Self::run_step(
+			let running_future = Self::execute_step(
 				step.clone(),
 				input,
 				executor.block.clone(),
@@ -243,7 +250,7 @@ enum Cursor<P: Platform> {
 	/// in the next iteration. It's a vector because the pipeline can have
 	/// nested pipelines, each nesting level will add its own index to the
 	/// vector.
-	BeforeStep(Vec<usize>, StepInput),
+	BeforeStep(Vec<usize>, StepInput<P>),
 
 	/// The pipeline finished executing all steps or encountered an error.
 	/// This state resolved the executor future with the result of the
@@ -261,7 +268,7 @@ enum Cursor<P: Platform> {
 	/// and the pinned future that is executing the step.
 	InProgress(
 		Vec<usize>,
-		Pin<Box<dyn Future<Output = StepOutput> + Send + Sync + 'static>>,
+		Pin<Box<dyn Future<Output = StepOutput<P>> + Send + Sync + 'static>>,
 	),
 
 	/// The pipeline is currently preparing to execute the next step.
@@ -270,39 +277,14 @@ enum Cursor<P: Platform> {
 	PreparingStep,
 }
 
-enum StepInput {
-	Static(StaticPayload),
-	Simulated(SimulatedPayload),
+enum StepInput<P: Platform> {
+	Static(StaticPayload<P>),
+	Simulated(SimulatedPayload<P>),
 }
 
-enum StepOutput {
-	Static(ControlFlow<Static>),
-	Simulated(ControlFlow<Simulated>),
-}
-
-fn build_empty_payload<P, Provider, Pool>(
-	executor: &mut PipelineExecutor<P, Provider, Pool>,
-) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
-where
-	P: Platform,
-	Pool: traits::PoolBounds<P>,
-	Provider: traits::ProviderBounds<P>,
-{
-	// This function should build an empty payload based on the pipeline and
-	// attributes. For now, we return a placeholder.
-	info!(
-		"Building empty payload for pipeline: {} and attributes: {:?}",
-		executor.pipeline(),
-		executor.block().attributes()
-	);
-
-	// start a new payload, don't add any transactions and build it immediately.
-	let checkpoint = executor.block().start();
-	P::construct_payload(
-		checkpoint,
-		executor.service().pool(),
-		executor.service().provider(),
-	)
+enum StepOutput<P: Platform> {
+	Static(ControlFlow<P, Static>),
+	Simulated(ControlFlow<P, Simulated>),
 }
 
 /// This is a hack to allow cloning of the `PayloadBuilderError`.

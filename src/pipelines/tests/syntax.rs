@@ -1,7 +1,4 @@
-use {
-	super::steps::*,
-	crate::{pipelines::StepContext, *},
-};
+use crate::{steps::*, *};
 
 #[test]
 fn only_steps() {
@@ -80,9 +77,9 @@ fn flashblocks_example() {
 
 		async fn step<P: Platform>(
 			&mut self,
-			_payload: SimulatedPayload,
+			_payload: SimulatedPayload<P>,
 			_ctx: &StepContext<P>,
-		) -> ControlFlow<Simulated> {
+		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
@@ -93,9 +90,9 @@ fn flashblocks_example() {
 
 		async fn step<P: Platform>(
 			&mut self,
-			_payload: SimulatedPayload,
+			_payload: SimulatedPayload<P>,
 			_ctx: &StepContext<P>,
-		) -> ControlFlow<Simulated> {
+		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
@@ -106,9 +103,9 @@ fn flashblocks_example() {
 
 		async fn step<P: Platform>(
 			&mut self,
-			_payload: SimulatedPayload,
+			_payload: SimulatedPayload<P>,
 			_ctx: &StepContext<P>,
-		) -> ControlFlow<Simulated> {
+		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
@@ -119,16 +116,20 @@ fn flashblocks_example() {
 
 		async fn step<P: Platform>(
 			&mut self,
-			_payload: SimulatedPayload,
+			_payload: SimulatedPayload<P>,
 			_ctx: &StepContext<P>,
-		) -> ControlFlow<Simulated> {
+		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
 
 	#[derive(Debug)]
 	struct FlashblockLimits;
-	impl Limits for FlashblockLimits {}
+	impl Limits for FlashblockLimits {
+		fn gas_limit(&self) -> u64 {
+			todo!()
+		}
+	}
 
 	fn make_pipeline<P: Platform>() -> Pipeline<P> {
 		Pipeline::<P>::default()

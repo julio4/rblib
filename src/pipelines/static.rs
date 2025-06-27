@@ -1,17 +1,20 @@
-use super::{sealed::Sealed, step::StepKind};
+use {
+	super::{sealed::Sealed, step::StepKind},
+	crate::{types, Platform},
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StaticPayload;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StaticContext;
-
+/// This type is used to represent a static step in the pipeline.
+///
+/// Static steps do not execute their transactions and do not have access to
+/// previous execution results. They only receive and produce static lists of
+/// transactions.
 #[derive(Debug)]
 pub struct Static;
-
+impl Sealed for Static {}
 impl StepKind for Static {
-	type Context = StaticContext;
-	type Payload = StaticPayload;
+	type Payload<P: Platform> = StaticPayload<P>;
 }
 
-impl Sealed for Static {}
+/// A static payload is just a vector of transactions, no extra data about the
+/// result of the execution are available.
+pub type StaticPayload<P> = Vec<types::Transaction<P>>;

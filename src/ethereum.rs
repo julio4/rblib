@@ -1,7 +1,6 @@
 use {
 	super::*,
 	crate::traits::{PoolBounds, ProviderBounds},
-	core::marker::PhantomData,
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
 	reth_ethereum::{
 		evm::EthEvmConfig,
@@ -21,14 +20,13 @@ use {
 		EthPooledTransaction,
 		PoolTransaction,
 		TransactionOrigin,
-		TransactionPool,
 		ValidPoolTransaction,
 	},
 	std::sync::Arc,
 };
 
 /// Platform definition for ethereum mainnet.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EthereumMainnet;
 
 impl Platform for EthereumMainnet {
@@ -83,10 +81,8 @@ impl Platform for EthereumMainnet {
 		let builder_config = EthereumBuilderConfig::new();
 		let transactions: Vec<_> =
 			checkpoint.history().transactions().cloned().collect();
-		let transactions = Box::new(PreselectedBestTransactions::<Self, Pool>(
-			transactions,
-			PhantomData,
-		));
+		let transactions =
+			Box::new(PreselectedBestTransactions::<Self>(transactions));
 
 		default_ethereum_payload(
 			evm_config,
@@ -101,19 +97,8 @@ impl Platform for EthereumMainnet {
 	}
 }
 
-struct PreselectedBestTransactions<Plat, Pool>(
-	Vec<types::Transaction<Plat>>,
-	PhantomData<Pool>,
-)
-where
-	Plat: Platform,
-	Pool: PoolBounds<Plat>;
-
-impl<Plat, Pool> BestTransactions for PreselectedBestTransactions<Plat, Pool>
-where
-	Plat: Platform,
-	Pool: PoolBounds<Plat>,
-{
+struct PreselectedBestTransactions<P: Platform>(Vec<types::Transaction<P>>);
+impl<P: Platform> BestTransactions for PreselectedBestTransactions<P> {
 	fn no_updates(&mut self) {}
 
 	fn set_skip_blobs(&mut self, _: bool) {}
@@ -121,19 +106,17 @@ where
 	fn mark_invalid(&mut self, _: &Self::Item, _: InvalidPoolTransactionError) {}
 }
 
-impl<Plat, Pool> Iterator for PreselectedBestTransactions<Plat, Pool>
-where
-	Plat: Platform,
-	Pool: PoolBounds<Plat>,
-{
-	type Item = Arc<ValidPoolTransaction<<Pool as TransactionPool>::Transaction>>;
+impl<P: Platform> Iterator for PreselectedBestTransactions<P> {
+	type Item = Arc<ValidPoolTransaction<P::PooledTransaction>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let transaction = self.0.pop()?;
 
-		let Ok(pooled) = <<Pool as TransactionPool>::Transaction as PoolTransaction>::try_from_consensus(
-			transaction.try_into_recovered().expect("Transaction should be valid at this point"),
-		)else {
+		let Ok(pooled) = P::PooledTransaction::try_from_consensus(
+			transaction
+				.try_into_recovered()
+				.expect("Transaction should be valid at this point"),
+		) else {
 			unreachable!("Transaction should be valid at this point");
 		};
 

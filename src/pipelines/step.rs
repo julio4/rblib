@@ -22,8 +22,7 @@ use {
 /// This trait cannot be implemented by users of this library and only the
 /// two provided implementations are available.
 pub trait StepKind: sealed::Sealed + Debug + Sync + Send + 'static {
-	type Payload: Send + Sync;
-	type Context: Send + Sync;
+	type Payload<P: Platform>: Send + Sync + 'static;
 }
 
 pub trait Step: Send + Sync + 'static {
@@ -32,15 +31,15 @@ pub trait Step: Send + Sync + 'static {
 	/// Gets called every time this step is executed in the pipeline.
 	fn step<P: Platform>(
 		&mut self,
-		payload: <Self::Kind as StepKind>::Payload,
+		payload: <Self::Kind as StepKind>::Payload<P>,
 		ctx: &StepContext<P>,
-	) -> impl Future<Output = ControlFlow<Self::Kind>> + Send + Sync;
+	) -> impl Future<Output = ControlFlow<P, Self::Kind>> + Send + Sync;
 }
 
 /// This type is returned from every step in the pipeline and it controls the
 /// next action of the pipeline execution.
 #[derive(Debug)]
-pub enum ControlFlow<S: StepKind> {
+pub enum ControlFlow<P: Platform, S: StepKind> {
 	/// Terminate the pipeline execution with an error.
 	/// No valid payload will be produced by this pipeline run.
 	Fail(Box<dyn core::error::Error>),
@@ -50,15 +49,15 @@ pub enum ControlFlow<S: StepKind> {
 	/// If the step is inside a `Loop` sub-pipeline, it will leave the loop
 	/// and progress to next steps immediately after the loop with the output
 	/// carried by this variant.
-	Break(S::Payload),
+	Break(S::Payload<P>),
 
 	/// Continues the pipeline execution to the next step with the given payload
 	/// version
-	Ok(S::Payload),
+	Ok(S::Payload<P>),
 
 	/// This step is only valid in a `Loop` sub-pipeline, it will jump to the
 	/// first step of the loop with the given payload version.
-	Continue(S::Payload),
+	Continue(S::Payload<P>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,13 +103,7 @@ impl<P: Platform> Clone for WrappedStep<P> {
 }
 
 impl<P: Platform> WrappedStep<P> {
-	pub fn new<M: StepKind + 'static, S: Step<Kind = M> + 'static>(
-		step: S,
-	) -> Self
-	where
-		M::Payload: 'static,
-		M::Context: 'static,
-	{
+	pub fn new<M: StepKind, S: Step<Kind = M>>(step: S) -> Self {
 		let boxed_step = Box::new(step);
 		let step_ptr = NonNull::new(Box::into_raw(boxed_step) as *mut u8).unwrap();
 
@@ -134,12 +127,12 @@ impl<P: Platform> WrappedStep<P> {
 		}
 	}
 
-	pub async fn execute<M: StepKind + 'static>(
+	pub async fn execute<M: StepKind>(
 		&self,
-		payload: M::Payload,
+		payload: M::Payload<P>,
 		ctx: &StepContext<P>,
-	) -> ControlFlow<M> {
-		let payload_ptr = &payload as *const M::Payload as *const u8;
+	) -> ControlFlow<P, M> {
+		let payload_ptr = &payload as *const M::Payload<P> as *const u8;
 		let ctx_ptr = ctx as *const StepContext<P> as *mut u8;
 
 		unsafe {
@@ -147,7 +140,7 @@ impl<P: Platform> WrappedStep<P> {
 				(self.vtable.step_fn)(self.step_ptr.as_ptr(), payload_ptr, ctx_ptr)
 					.await;
 			// Cast the type-erased pointer back to the concrete ControlFlow<M>
-			let control_flow = Box::from_raw(result_ptr as *mut ControlFlow<M>);
+			let control_flow = Box::from_raw(result_ptr as *mut ControlFlow<P, M>);
 			*control_flow
 		}
 	}
@@ -161,22 +154,14 @@ impl<P: Platform> WrappedStep<P> {
 	}
 }
 
-unsafe fn step_fn_impl<
-	P: Platform,
-	M: StepKind + 'static,
-	S: Step<Kind = M> + 'static,
->(
+unsafe fn step_fn_impl<P: Platform, M: StepKind, S: Step<Kind = M>>(
 	step_ptr: *const u8,
 	payload_ptr: *const u8,
 	ctx_ptr: *const u8,
-) -> Pin<Box<dyn Future<Output = *const u8> + Send + Sync>>
-where
-	M::Payload: 'static,
-	M::Context: 'static,
-{
+) -> Pin<Box<dyn Future<Output = *const u8> + Send + Sync>> {
 	unsafe {
 		let step = &mut *(step_ptr as *mut S);
-		let payload = core::ptr::read(payload_ptr as *mut M::Payload);
+		let payload = core::ptr::read(payload_ptr as *mut M::Payload<P>);
 		let ctx = &*(ctx_ptr as *const StepContext<P>);
 
 		Box::pin(async move {
@@ -185,16 +170,6 @@ where
 			Box::into_raw(Box::new(control_flow)) as *const u8
 		}) as Pin<Box<dyn Future<Output = *const u8> + Send + Sync>>
 	}
-}
-
-unsafe fn on_spawn_fn_impl<M: StepKind + 'static, S: Step<Kind = M> + 'static>(
-	_step_ptr: *mut u8,
-	_builder_ctx_ptr: *const u8,
-	_pool_ptr: *const u8,
-) where
-	M::Payload: 'static,
-	M::Context: 'static,
-{
 }
 
 unsafe fn drop_fn_impl<S>(step_ptr: *mut u8) {

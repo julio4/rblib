@@ -11,7 +11,7 @@ use {
 };
 
 /// Platform definition for Optimism Rollup chains.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Optimism;
 
 impl Platform for Optimism {

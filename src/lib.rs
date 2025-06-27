@@ -120,3 +120,81 @@ pub mod types {
 	/// Extracts the ChainSpec type from the platform definition.
 	pub type ChainSpec<P: Platform> = <P::NodeTypes as reth::api::NodeTypes>::ChainSpec;
 }
+
+
+pub mod traits {
+	#![allow(type_alias_bounds)]
+	
+	use {
+		crate::*,
+		reth::{
+			api::FullNodeTypes,
+			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
+		},
+		reth_evm::ConfigureEvm,
+		reth_transaction_pool::{PoolTransaction, TransactionPool},
+	};
+
+	pub trait NodeBounds<P: Platform>:
+		FullNodeTypes<Types = P::NodeTypes>
+	{
+	}
+
+	impl<T, P: Platform> NodeBounds<P> for T where
+		T: FullNodeTypes<Types = P::NodeTypes>
+	{
+	}
+
+	pub trait ProviderBounds<P: Platform>:
+		StateProviderFactory
+		+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
+		+ BlockReaderIdExt<Header = types::Header<P>>
+		+ Clone
+		+ Send
+		+ Sync
+		+ 'static
+	{
+	}
+
+	impl<T, P: Platform> ProviderBounds<P> for T where
+		T: StateProviderFactory
+			+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
+			+ BlockReaderIdExt<Header = types::Header<P>>
+			+ Clone
+			+ Send
+			+ Sync
+			+ 'static
+	{
+	}
+
+	pub trait PoolBounds<P: Platform>:
+		TransactionPool<
+			Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
+		> + Unpin
+		+ 'static
+	{
+	}
+
+	impl<T, P: Platform> PoolBounds<P> for T where
+		T: TransactionPool<
+				Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
+			> + Unpin
+			+ 'static
+	{
+	}
+
+	pub trait PooledTransactionBounds<P: Platform>:
+		PoolTransaction<Consensus = types::Transaction<P>> + Send + Sync + 'static
+	{
+	}
+
+	pub trait EvmConfigBounds<P: Platform>:
+		ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
+	{
+	}
+
+	impl<T, P: Platform> EvmConfigBounds<P> for T where
+		T: ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
+	{
+	}
+}

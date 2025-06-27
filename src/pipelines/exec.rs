@@ -23,13 +23,13 @@ use {
 		Pipeline,
 		Platform,
 		Simulated,
-		SimulatedContext,
 		SimulatedPayload,
 		Static,
-		StaticContext,
 		StaticPayload,
+		StepContext,
 	},
 	core::{
+		fmt::{Debug, Display},
 		pin::Pin,
 		task::{Context, Poll},
 	},
@@ -50,8 +50,8 @@ where
 	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
-	pipeline: Arc<Pipeline>,
-	block: Arc<BlockContext<P>>,
+	pipeline: Arc<Pipeline<P>>,
+	block: BlockContext<P>,
 	service: Arc<ServiceContext<P, Provider, Pool>>,
 	cursor: Cursor<P>,
 }
@@ -63,8 +63,8 @@ impl<
 	> PipelineExecutor<P, Provider, Pool>
 {
 	pub fn run(
-		pipeline: Arc<Pipeline>,
-		block: Arc<BlockContext<P>>,
+		pipeline: Arc<Pipeline<P>>,
+		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
 		info!("pipeline execution started");
@@ -78,12 +78,10 @@ impl<
 
 				let input = match step.kind() {
 					// If the step is static, we can use the static context and payload.
-					KindTag::Static => StepInput::Static(StaticContext, StaticPayload),
+					KindTag::Static => StepInput::Static(StaticPayload),
 					// If the step is simulated, we can use the simulated context and
 					// payload.
-					KindTag::Simulated => {
-						StepInput::Simulated(SimulatedContext, SimulatedPayload)
-					}
+					KindTag::Simulated => StepInput::Simulated(SimulatedPayload),
 				};
 
 				Cursor::BeforeStep(path, input)
@@ -110,7 +108,7 @@ impl<
 		}
 	}
 
-	pub fn pipeline(&self) -> &Pipeline {
+	pub fn pipeline(&self) -> &Pipeline<P> {
 		&self.pipeline
 	}
 
@@ -136,24 +134,28 @@ impl<
 		Pool: traits::PoolBounds<P>,
 	> PipelineExecutor<P, Provider, Pool>
 {
-	async fn run_step(step: WrappedStep, input: StepInput) -> StepOutput {
-		todo!()
-		// match (step.kind(), input) {
-		// 	(KindTag::Static, StepInput::Static(ctx, payload)) => {
-		// 		let result = step.execute::<Static>(payload, &mut ctx).await;
-		// 		StepOutput::Static(result)
-		// 	}
-		// 	(KindTag::Simulated, StepInput::Simulated(ctx, payload)) => {
-		// 		let result = step.execute::<Simulated>(payload, &mut ctx).await;
-		// 		StepOutput::Simulated(result)
-		// 	}
-		// 	(_, _) => {
-		// 		unreachable!(
-		// 			"Step kind and input type mismatch. This is a bug in the \
-		// 			 PipelineExecutor implementation."
-		// 		)
-		// 	}
-		// }
+	async fn run_step(
+		step: WrappedStep<P>,
+		input: StepInput,
+		block_ctx: BlockContext<P>,
+	) -> StepOutput {
+		let context = StepContext::new(block_ctx);
+		match (step.kind(), input) {
+			(KindTag::Static, StepInput::Static(payload)) => {
+				let result = step.execute::<Static>(payload, &context).await;
+				StepOutput::Static(result)
+			}
+			(KindTag::Simulated, StepInput::Simulated(payload)) => {
+				let result = step.execute::<Simulated>(payload, &context).await;
+				StepOutput::Simulated(result)
+			}
+			(_, _) => {
+				unreachable!(
+					"Step kind and input type mismatch. This is a bug in the \
+					 PipelineExecutor implementation."
+				)
+			}
+		}
 	}
 
 	fn advance_cursor(
@@ -199,7 +201,9 @@ where
 				 implementation.",
 			);
 
-			let running_future = Self::run_step(step.clone(), input);
+			let running_future =
+				Self::run_step(step.clone(), input, executor.block.clone());
+
 			executor.cursor = Cursor::InProgress(path, Box::pin(running_future));
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
@@ -262,8 +266,8 @@ enum Cursor<P: Platform> {
 }
 
 enum StepInput {
-	Static(StaticContext, StaticPayload),
-	Simulated(SimulatedContext, SimulatedPayload),
+	Static(StaticPayload),
+	Simulated(SimulatedPayload),
 }
 
 enum StepOutput {
@@ -317,13 +321,15 @@ impl Clone for ClonablePayloadBuilderError {
 			PayloadBuilderError::MissingPayload => {
 				Self(PayloadBuilderError::MissingPayload)
 			}
-			PayloadBuilderError::Internal(reth_error) => {
-				Self(PayloadBuilderError::Internal(todo!()))
-			}
-			PayloadBuilderError::EvmExecutionError(error) => {
-				todo!()
-			}
-			PayloadBuilderError::Other(error) => todo!(),
+			PayloadBuilderError::Internal(reth_error) => Self(
+				PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string())),
+			),
+			PayloadBuilderError::EvmExecutionError(error) => Self(
+				PayloadBuilderError::other(WrappedErrorMessage(error.to_string())),
+			),
+			PayloadBuilderError::Other(error) => Self(PayloadBuilderError::other(
+				WrappedErrorMessage(error.to_string()),
+			)),
 		}
 	}
 }
@@ -333,3 +339,15 @@ impl From<ClonablePayloadBuilderError> for PayloadBuilderError {
 		error.0
 	}
 }
+struct WrappedErrorMessage(String);
+impl Display for WrappedErrorMessage {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+impl Debug for WrappedErrorMessage {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+impl std::error::Error for WrappedErrorMessage {}

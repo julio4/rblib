@@ -48,16 +48,18 @@ use {
 
 pub struct LocalNode {
 	exit_future: NodeExitFuture,
-	node_handle: Box<dyn Any + Send>,
 	task_manager: Option<TaskManager>,
 	config: NodeConfig<ChainSpec>,
 	provider: RootProvider,
+	_node_handle: Box<dyn Any + Send>, // keeps reth alive
 }
 
 impl LocalNode {
 	const MIN_BLOCK_TIME: Duration = Duration::from_secs(1);
 
-	pub async fn ethereum(pipeline: Pipeline) -> eyre::Result<Self> {
+	pub async fn ethereum(
+		pipeline: Pipeline<EthereumMainnet>,
+	) -> eyre::Result<Self> {
 		let task_manager = task_manager();
 		let config = default_node_config();
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
@@ -65,8 +67,7 @@ impl LocalNode {
 			.testing_node(task_manager.executor())
 			.with_types::<EthereumNode>()
 			.with_components(
-				EthereumNode::components()
-					.payload(pipeline.into_service(EthereumMainnet)),
+				EthereumNode::components().payload(pipeline.into_service()),
 			)
 			.with_add_ons(EthereumAddOns::default())
 			.on_rpc_started(move |_, _| {
@@ -90,7 +91,7 @@ impl LocalNode {
 		Ok(Self {
 			config,
 			exit_future,
-			node_handle,
+			_node_handle: node_handle,
 			task_manager: Some(task_manager),
 			provider,
 		})
@@ -148,7 +149,7 @@ impl LocalNode {
 
 		// Start the production of a new block
 		let fcu_result = EngineApiClient::<EthEngineTypes>::fork_choice_updated_v3(
-			(&ipc_client).into(),
+			&ipc_client,
 			ForkchoiceState {
 				head_block_hash: latest_block.header.hash,
 				safe_block_hash: latest_block.header.hash,
@@ -171,7 +172,7 @@ impl LocalNode {
 
 		// Retrieve the payload using the payload ID
 		let getpayload_result = EngineApiClient::<EthEngineTypes>::get_payload_v4(
-			(&ipc_client).into(),
+			&ipc_client,
 			payload_id,
 		)
 		.await?;
@@ -181,7 +182,7 @@ impl LocalNode {
 
 		// Give the newly built payload to the EL node and let it validate it.
 		let new_payload_result = EngineApiClient::<EthEngineTypes>::new_payload_v4(
-			(&ipc_client).into(),
+			&ipc_client,
 			payload,
 			vec![],
 			B256::ZERO,
@@ -198,7 +199,7 @@ impl LocalNode {
 		// update the canonical chain with the new block without triggering new
 		// payload production
 		let fcu_result = EngineApiClient::<EthEngineTypes>::fork_choice_updated_v3(
-			(&ipc_client).into(),
+			&ipc_client,
 			ForkchoiceState {
 				head_block_hash: new_block_hash,
 				safe_block_hash: latest_block.header.hash,
@@ -224,7 +225,7 @@ impl LocalNode {
 			"New block hash should match the one returned by the payload"
 		);
 
-		Ok(block.into())
+		Ok(block)
 	}
 }
 

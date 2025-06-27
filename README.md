@@ -9,26 +9,29 @@ Minimal library usage example that creates a fully functional block builder usin
 
 ```rust
 use rblib::*;
+use {reth::cli::Cli, reth_ethereum::node::{node::EthereumAddOns, EthereumNode}};
 
 fn main() {
-  let pipeline = Pipeline::default()
-    .with_epilogue(BuilderEpilogue)
-    .with_step(GatherBestTransactions)
-    .with_step(PriorityFeeOrdering)
-    .with_step(TotalProfitOrdering)
-    .with_step(RevertProtection);
+ let pipeline = Pipeline::<EthereumMainnet>::default()
+  .with_epilogue(BuilderEpilogue)
+  .with_step(GatherBestTransactions)
+  .with_step(PriorityFeeOrdering)
+  .with_step(TotalProfitOrdering)
+  .with_step(RevertProtection);
 
-  Cli::parse_args()
-    .run(|builder, _| async move {
-      let handle = builder
-        .with_types::<EthereumNode>()
-        .with_components(EthereumNode::components().payload(pipeline.into_service()))
-        .with_add_ons(EthereumAddOns::default())
-        .launch()
-        .await?;
+ Cli::parse_args()
+  .run(|builder, _| async move {
+   let handle = builder
+    .with_types::<EthereumNode>()
+    .with_components(
+     EthereumNode::components().payload(pipeline.into_service()),
+    )
+    .with_add_ons(EthereumAddOns::default())
+    .launch()
+    .await?;
 
-      handle.wait_for_node_exit().await
-    })
-    .unwrap();
+   handle.wait_for_node_exit().await
+  })
+  .unwrap();
 }
 ```

@@ -82,20 +82,25 @@ async fn reth_minimal_integration_example() {
 		reth_ethereum::node::{node::EthereumAddOns, EthereumNode},
 	};
 
-	let pipeline = Pipeline::default()
+	let pipeline = Pipeline::<EthereumMainnet>::default()
+		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
-		.with_step(GatherBestTransactions)
-		.with_step(PriorityFeeOrdering)
-		.with_step(TotalProfitOrdering)
-		.with_step(RevertProtection);
+		.with_pipeline(
+			Loop,
+			(
+				AppendNewTransactionFromPool,
+				PriorityFeeOrdering,
+				TotalProfitOrdering,
+				RevertProtection,
+			),
+		);
 
 	Cli::parse_args()
 		.run(|builder, _| async move {
 			let handle = builder
 				.with_types::<EthereumNode>()
 				.with_components(
-					EthereumNode::components()
-						.payload(pipeline.into_service(EthereumMainnet)),
+					EthereumNode::components().payload(pipeline.into_service()),
 				)
 				.with_add_ons(EthereumAddOns::default())
 				.launch()

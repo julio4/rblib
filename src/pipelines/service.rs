@@ -3,10 +3,9 @@
 
 use {
 	crate::{pipelines::job::PayloadJob, *},
-	core::marker::PhantomData,
 	reth::{
 		api::{NodeTypes, PayloadBuilderAttributes},
-		builder::{components::PayloadServiceBuilder, BuilderContext},
+		builder::{components::PayloadServiceBuilder, BuilderContext, NodeConfig},
 		providers::CanonStateSubscriptions,
 	},
 	reth_payload_builder::{
@@ -25,16 +24,12 @@ use {
 /// will be responsible for creating new [`PayloadJob`] instances
 /// whenever a new payload request comes in from the CL Node.
 pub(crate) struct PipelineServiceBuilder<P: Platform> {
-	pipeline: Pipeline,
-	_phantom: PhantomData<P>,
+	pipeline: Pipeline<P>,
 }
 
 impl<P: Platform> PipelineServiceBuilder<P> {
-	pub fn new(pipeline: Pipeline, _: P) -> Self {
-		Self {
-			pipeline,
-			_phantom: PhantomData,
-		}
+	pub fn new(pipeline: Pipeline<P>) -> Self {
+		Self { pipeline }
 	}
 }
 
@@ -53,14 +48,20 @@ where
 		_evm_config: EvmConfig,
 	) -> eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>>
 	{
-		let pipeline = self.pipeline;
+		let mut pipeline = self.pipeline;
+
 		debug!("Spawning payload builder service for: {pipeline:#?}");
+		pipeline.for_each_step(&mut |step| {
+			debug!("Initializing step: {step:#?}");
+			step.on_spawn(ctx, pool.clone());
+		});
+		debug!("Pipeline steps initialized");
 
 		let service = ServiceContext {
 			pool,
 			provider: ctx.provider().clone(),
 			evm_config: Plat::evm_config(ctx.chain_spec()),
-			chain_spec: ctx.chain_spec().clone(),
+			node_config: ctx.config().clone(),
 		};
 
 		let (service, builder) = PayloadBuilderService::new(
@@ -88,7 +89,7 @@ where
 	pool: Pool,
 	provider: Provider,
 	evm_config: Plat::EvmConfig,
-	chain_spec: Arc<types::ChainSpec<Plat>>,
+	node_config: NodeConfig<types::ChainSpec<Plat>>,
 }
 
 impl<Plat, Provider, Pool> ServiceContext<Plat, Provider, Pool>
@@ -109,8 +110,12 @@ where
 		&self.evm_config
 	}
 
+	pub const fn node_config(&self) -> &NodeConfig<types::ChainSpec<Plat>> {
+		&self.node_config
+	}
+
 	pub const fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
-		&self.chain_spec
+		&self.node_config().chain
 	}
 }
 
@@ -127,7 +132,7 @@ where
 	Provider: traits::ProviderBounds<Plat>,
 	Pool: traits::PoolBounds<Plat>,
 {
-	pipeline: Arc<Pipeline>,
+	pipeline: Arc<Pipeline<Plat>>,
 	service: Arc<ServiceContext<Plat, Provider, Pool>>,
 }
 
@@ -138,7 +143,7 @@ where
 	Pool: traits::PoolBounds<Plat>,
 {
 	pub fn new(
-		pipeline: Pipeline,
+		pipeline: Pipeline<Plat>,
 		service: ServiceContext<Plat, Provider, Pool>,
 	) -> Self {
 		let pipeline = Arc::new(pipeline);
@@ -194,75 +199,5 @@ where
 		let service_ctx = Arc::clone(&self.service);
 
 		Ok(PayloadJob::new(pipeline, block_ctx, service_ctx))
-	}
-}
-
-pub mod traits {
-	use {
-		crate::*,
-		reth::{
-			api::FullNodeTypes,
-			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
-		},
-		reth_evm::ConfigureEvm,
-		reth_transaction_pool::{PoolTransaction, TransactionPool},
-	};
-
-	pub trait NodeBounds<P: Platform>:
-		FullNodeTypes<Types = P::NodeTypes>
-	{
-	}
-
-	impl<T, P: Platform> NodeBounds<P> for T where
-		T: FullNodeTypes<Types = P::NodeTypes>
-	{
-	}
-
-	pub trait ProviderBounds<P: Platform>:
-		StateProviderFactory
-		+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
-		+ BlockReaderIdExt<Header = types::Header<P>>
-		+ Clone
-		+ Send
-		+ Sync
-		+ 'static
-	{
-	}
-
-	impl<T, P: Platform> ProviderBounds<P> for T where
-		T: StateProviderFactory
-			+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
-			+ BlockReaderIdExt<Header = types::Header<P>>
-			+ Clone
-			+ Send
-			+ Sync
-			+ 'static
-	{
-	}
-
-	pub trait PoolBounds<P: Platform>:
-		TransactionPool<
-			Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
-		> + Unpin
-		+ 'static
-	{
-	}
-
-	impl<T, P: Platform> PoolBounds<P> for T where
-		T: TransactionPool<
-				Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
-			> + Unpin
-			+ 'static
-	{
-	}
-
-	pub trait EvmConfigBounds<P: Platform>:
-		ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
-	{
-	}
-
-	impl<T, P: Platform> EvmConfigBounds<P> for T where
-		T: ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
-	{
 	}
 }

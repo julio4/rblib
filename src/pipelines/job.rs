@@ -34,7 +34,7 @@ where
 	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
-	block: Arc<BlockContext<P>>,
+	block: BlockContext<P>,
 	fut: ExecutorFuture<P, Provider, Pool>,
 }
 
@@ -45,14 +45,13 @@ where
 	Provider: traits::ProviderBounds<P>,
 {
 	pub fn new(
-		pipeline: Arc<Pipeline>,
+		pipeline: Arc<Pipeline<P>>,
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		let block = Arc::new(block);
 		let fut = ExecutorFuture::new(PipelineExecutor::run(
 			Arc::clone(&pipeline),
-			Arc::clone(&block),
+			block.clone(),
 			Arc::clone(&service),
 		));
 

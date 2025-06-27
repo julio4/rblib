@@ -47,6 +47,7 @@ impl Signer {
 		Ok(signature)
 	}
 
+	#[allow(dead_code)]
 	pub fn random() -> Self {
 		Self::try_from_secret(B256::random())
 			.expect("failed to create random signer")

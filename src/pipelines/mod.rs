@@ -14,6 +14,7 @@ use {
 	std::sync::OnceLock,
 };
 
+mod context;
 mod exec;
 mod job;
 mod limits;
@@ -25,10 +26,9 @@ mod step;
 #[cfg(test)]
 mod tests;
 
-// internal api
-pub(crate) use service::traits;
 // public API exports
 pub use {
+	context::StepContext,
 	limits::Limits,
 	r#static::{Static, StaticContext, StaticPayload},
 	simulated::{Simulated, SimulatedContext, SimulatedPayload},
@@ -42,17 +42,28 @@ pub enum Behavior {
 	Loop,
 }
 
-#[derive(Default)]
-pub struct Pipeline {
-	epilogue: Option<WrappedStep>,
-	prologue: Option<WrappedStep>,
-	steps: Vec<StepOrPipeline>,
+pub struct Pipeline<P: Platform> {
+	epilogue: Option<WrappedStep<P>>,
+	prologue: Option<WrappedStep<P>>,
+	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Box<dyn Limits>>,
 	unique_id: OnceLock<usize>,
 }
 
+impl<P: Platform> Default for Pipeline<P> {
+	fn default() -> Self {
+		Self {
+			epilogue: None,
+			prologue: None,
+			steps: Vec::new(),
+			limits: None,
+			unique_id: OnceLock::new(),
+		}
+	}
+}
+
 /// Public API
-impl Pipeline {
+impl<P: Platform> Pipeline<P> {
 	/// A step that happens before any transaction is added to the block, executes
 	/// as the first step in the pipeline.
 	pub fn with_prologue<Mode: StepKind>(
@@ -90,7 +101,7 @@ impl Pipeline {
 	pub fn with_pipeline<T>(
 		self,
 		behavior: Behavior,
-		nested: impl IntoPipeline<T>,
+		nested: impl IntoPipeline<P, T>,
 	) -> Self {
 		let mut this = self;
 		let nested_pipeline = nested.into_pipeline();
@@ -109,16 +120,15 @@ impl Pipeline {
 
 	/// Converts the pipeline into a payload builder service instance that
 	/// can be used when constructing a reth node.
-	pub fn into_service<P: Platform, Node, Pool, EvmConfig>(
+	pub fn into_service<Node, Pool, EvmConfig>(
 		self,
-		platform: P,
 	) -> impl PayloadServiceBuilder<Node, Pool, EvmConfig>
 	where
 		Node: traits::NodeBounds<P>,
 		Pool: traits::PoolBounds<P>,
 		EvmConfig: traits::EvmConfigBounds<P>,
 	{
-		service::PipelineServiceBuilder::<P>::new(self, platform)
+		service::PipelineServiceBuilder::new(self)
 	}
 
 	/// Returns true if the pipieline has no steps, prologue or epilogue.
@@ -128,16 +138,16 @@ impl Pipeline {
 }
 
 /// Internal API
-impl Pipeline {
-	pub(crate) fn prologue(&self) -> Option<&WrappedStep> {
+impl<P: Platform> Pipeline<P> {
+	pub(crate) fn prologue(&self) -> Option<&WrappedStep<P>> {
 		self.prologue.as_ref()
 	}
 
-	pub(crate) fn epilogue(&self) -> Option<&WrappedStep> {
+	pub(crate) fn epilogue(&self) -> Option<&WrappedStep<P>> {
 		self.epilogue.as_ref()
 	}
 
-	pub(crate) fn steps(&self) -> &[StepOrPipeline] {
+	pub(crate) fn steps(&self) -> &[StepOrPipeline<P>] {
 		&self.steps
 	}
 
@@ -169,7 +179,7 @@ impl Pipeline {
 	}
 
 	/// Returns a reference to a wrapped step by its index path.
-	pub(crate) fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep> {
+	pub(crate) fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep<P>> {
 		if path.is_empty() {
 			return None;
 		}
@@ -178,14 +188,41 @@ impl Pipeline {
 		let item = self.steps.get(index)?;
 		item.step_by_path(&path[1..])
 	}
+
+	/// Executes a closure for each step in the pipeline, including prologue and
+	/// epilogue.
+	///
+	/// This is used by the executor to call maintenance methods at various points
+	/// in the node lifecycle, such as `on_spawn`.
+	pub(crate) fn for_each_step<F>(&mut self, f: &mut F)
+	where
+		F: FnMut(&mut WrappedStep<P>),
+	{
+		if let Some(prologue) = &mut self.prologue {
+			f(prologue);
+		}
+
+		for step_or_pipeline in &mut self.steps {
+			match step_or_pipeline {
+				StepOrPipeline::Step(step) => f(step),
+				StepOrPipeline::Pipeline(_, pipeline) => {
+					pipeline.for_each_step(f);
+				}
+			}
+		}
+
+		if let Some(epilogue) = &mut self.epilogue {
+			f(epilogue);
+		}
+	}
 }
 
-pub(crate) enum StepOrPipeline {
-	Step(WrappedStep),
-	Pipeline(Behavior, Pipeline),
+pub(crate) enum StepOrPipeline<P: Platform> {
+	Step(WrappedStep<P>),
+	Pipeline(Behavior, Pipeline<P>),
 }
 
-impl core::fmt::Debug for StepOrPipeline {
+impl<P: Platform> core::fmt::Debug for StepOrPipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			StepOrPipeline::Step(step) => step.fmt(f),
@@ -198,11 +235,11 @@ impl core::fmt::Debug for StepOrPipeline {
 	}
 }
 
-impl StepOrPipeline {
+impl<P: Platform> StepOrPipeline<P> {
 	/// Returns a reference to a wrapped step by its indecies path.
 	/// Each level of the path corresponds to a step in a nested pipeline,
 	/// it is expected that level-1 will always be a nested pipeline.
-	pub fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep> {
+	pub fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep<P>> {
 		if path.is_empty() {
 			return match self {
 				StepOrPipeline::Step(step) => Some(step),
@@ -235,25 +272,29 @@ impl StepOrPipeline {
 	}
 }
 
-pub trait IntoPipeline<Marker = ()> {
-	fn into_pipeline(self) -> Pipeline;
+pub trait IntoPipeline<P: Platform, Marker = ()> {
+	fn into_pipeline(self) -> Pipeline<P>;
 }
 
 struct Sentinel;
-impl<F: FnOnce(Pipeline) -> Pipeline> IntoPipeline<Sentinel> for F {
-	fn into_pipeline(self) -> Pipeline {
-		self(Pipeline::default())
+impl<P: Platform, F: FnOnce(Pipeline<P>) -> Pipeline<P>>
+	IntoPipeline<P, Sentinel> for F
+{
+	fn into_pipeline(self) -> Pipeline<P> {
+		self(Pipeline::<P>::default())
 	}
 }
 
-impl IntoPipeline<()> for Pipeline {
-	fn into_pipeline(self) -> Pipeline {
+impl<P: Platform> IntoPipeline<P, ()> for Pipeline<P> {
+	fn into_pipeline(self) -> Pipeline<P> {
 		self
 	}
 }
 
-impl<M0: StepKind, S0: Step<Kind = M0>> IntoPipeline<()> for (S0,) {
-	fn into_pipeline(self) -> Pipeline {
+impl<P: Platform, M0: StepKind, S0: Step<Kind = M0>> IntoPipeline<P, ()>
+	for (S0,)
+{
+	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self.0)
 	}
 }
@@ -261,7 +302,7 @@ impl<M0: StepKind, S0: Step<Kind = M0>> IntoPipeline<()> for (S0,) {
 // Generate implementations for tuples of steps up to 32 elements
 impl_into_pipeline_steps!(32);
 
-impl Display for Pipeline {
+impl<P: Platform> Display for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		write!(
 			f,
@@ -272,7 +313,7 @@ impl Display for Pipeline {
 	}
 }
 
-impl core::fmt::Debug for Pipeline {
+impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Pipeline")
 			.field("unique_id", &hex::encode(self.unique_id().to_le_bytes()))
@@ -294,7 +335,7 @@ mod test {
 
 	#[test]
 	fn step_by_path_flat() {
-		let pipeline = Pipeline::default()
+		let pipeline = Pipeline::<EthereumMainnet>::default()
 			.with_epilogue(BuilderEpilogue)
 			.with_step(GatherBestTransactions)
 			.with_step(PriorityFeeOrdering)
@@ -336,7 +377,7 @@ mod test {
 
 	#[test]
 	fn step_by_path_nested() {
-		let pipeline = Pipeline::default()
+		let pipeline = Pipeline::<EthereumMainnet>::default()
 			.with_epilogue(BuilderEpilogue)
 			.with_step(OptimismPrologue)
 			.with_pipeline(

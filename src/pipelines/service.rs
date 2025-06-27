@@ -48,14 +48,8 @@ where
 		_evm_config: EvmConfig,
 	) -> eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>>
 	{
-		let mut pipeline = self.pipeline;
-
+		let pipeline = self.pipeline;
 		debug!("Spawning payload builder service for: {pipeline:#?}");
-		pipeline.for_each_step(&mut |step| {
-			debug!("Initializing step: {step:#?}");
-			step.on_spawn(ctx, pool.clone());
-		});
-		debug!("Pipeline steps initialized");
 
 		let service = ServiceContext {
 			pool,

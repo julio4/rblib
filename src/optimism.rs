@@ -1,17 +1,23 @@
 use {
 	super::{types, *},
 	reth_optimism_forks::OpHardforks,
-	reth_optimism_node::{OpEvmConfig, OpNextBlockEnvAttributes, OpNode},
+	reth_optimism_node::{
+		txpool::OpPooledTransaction,
+		OpEvmConfig,
+		OpNextBlockEnvAttributes,
+		OpNode,
+	},
 	std::sync::Arc,
 };
 
 /// Platform definition for Optimism Rollup chains.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Optimism;
 
 impl Platform for Optimism {
 	type EvmConfig = OpEvmConfig;
 	type NodeTypes = OpNode;
+	type PooledTransaction = OpPooledTransaction;
 
 	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
 		OpEvmConfig::optimism(chainspec)

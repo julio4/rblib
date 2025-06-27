@@ -21,6 +21,7 @@ mod ethereum;
 pub use ethereum::EthereumMainnet;
 
 
+
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.
 ///
@@ -30,7 +31,7 @@ pub use ethereum::EthereumMainnet;
 /// construction.
 ///
 /// This trait should be customized for every context this API is embedded in.
-pub trait Platform: Sized + core::fmt::Debug + Send + Sync + Unpin + 'static {
+pub trait Platform: Sized + Clone + core::fmt::Debug + Send + Sync + Unpin + 'static {
 	/// Type that configures the essential types of an Ethereum-like node.
 	///
 	/// Implementations of this trait describe all types that are used by the
@@ -48,6 +49,11 @@ pub trait Platform: Sized + core::fmt::Debug + Send + Sync + Unpin + 'static {
 		Primitives = types::Primitives<Self>,
 		NextBlockEnvCtx: Send + Sync + 'static,
 	>;
+
+	/// Type that represents transactions that are inside the transaction pool.
+	type PooledTransaction:  reth_transaction_pool::EthPoolTransaction<
+		Consensus = types::Transaction<Self>,
+	> + Send + Sync + 'static;
 
 	fn evm_config(chainspec: std::sync::Arc<types::ChainSpec<Self>>) -> Self::EvmConfig;
 
@@ -169,7 +175,7 @@ pub mod traits {
 
 	pub trait PoolBounds<P: Platform>:
 		TransactionPool<
-			Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
+			Transaction = P::PooledTransaction,
 		> + Unpin
 		+ 'static
 	{
@@ -177,7 +183,7 @@ pub mod traits {
 
 	impl<T, P: Platform> PoolBounds<P> for T where
 		T: TransactionPool<
-				Transaction: PoolTransaction<Consensus = types::Transaction<P>>,
+				Transaction = P::PooledTransaction,
 			> + Unpin
 			+ 'static
 	{

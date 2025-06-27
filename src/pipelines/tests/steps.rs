@@ -1,4 +1,8 @@
-use crate::{pipelines::StepContext, *};
+use {
+	crate::{pipelines::StepContext, *},
+	reth_transaction_pool::TransactionPool,
+	tracing::info,
+};
 
 pub struct OptimismPrologue;
 impl Step for OptimismPrologue {
@@ -33,9 +37,12 @@ impl Step for GatherBestTransactions {
 	async fn step<P: Platform>(
 		&mut self,
 		_payload: StaticPayload,
-		_ctx: &StepContext<P>,
+		ctx: &StepContext<P>,
 	) -> ControlFlow<Static> {
-		// we need here access to the transaction pool
+		let size = ctx.pool().pool_size();
+		let txs = ctx.pool().all_transactions();
+		info!(">---> Transaction pool size: {size:?}");
+		info!(">---> Transaction pool transactions: {txs:?}");
 		todo!("Gathering best transactions from the pool")
 	}
 }

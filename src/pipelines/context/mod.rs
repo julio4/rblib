@@ -1,17 +1,29 @@
 use {
-	crate::{types, BlockContext, Platform},
+	crate::{pipelines::service::ServiceContext, traits, BlockContext, Platform},
+	pool::TransactionPool,
 	reth::providers::StateProvider,
-	reth_transaction_pool::{BestTransactions, PoolTransaction},
 	std::sync::Arc,
 };
 
+mod pool;
+
 pub struct StepContext<Plat: Platform> {
 	block: BlockContext<Plat>,
+	pool: TransactionPool<Plat>,
 }
 
 impl<P: Platform> StepContext<P> {
-	pub fn new(block: BlockContext<P>) -> Self {
-		Self { block }
+	pub fn new<Pool, Provider>(
+		block: BlockContext<P>,
+		service: Arc<ServiceContext<P, Provider, Pool>>,
+	) -> Self
+	where
+		Pool: traits::PoolBounds<P>,
+		Provider: traits::ProviderBounds<P>,
+	{
+		let pool = TransactionPool::new(service.pool().clone());
+
+		Self { block, pool }
 	}
 
 	/// Access to the state of the chain at the begining of block that we are
@@ -26,13 +38,8 @@ impl<P: Platform> StepContext<P> {
 		self.block.base_state()
 	}
 
-	pub fn pool_transactions(
-		&self,
-	) -> Box<
-		dyn BestTransactions<
-			Item: Arc<impl PoolTransaction<Consensus = types::Transaction<P>>>,
-		>,
-	> {
-		todo!()
+	/// Access to the transaction pool
+	pub fn pool(&self) -> &impl traits::PoolBounds<P> {
+		&self.pool
 	}
 }

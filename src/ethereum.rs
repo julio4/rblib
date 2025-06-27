@@ -18,6 +18,7 @@ use {
 		error::InvalidPoolTransactionError,
 		identifier::TransactionId,
 		BestTransactions,
+		EthPooledTransaction,
 		PoolTransaction,
 		TransactionOrigin,
 		TransactionPool,
@@ -27,12 +28,13 @@ use {
 };
 
 /// Platform definition for ethereum mainnet.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EthereumMainnet;
 
 impl Platform for EthereumMainnet {
 	type EvmConfig = EthEvmConfig;
 	type NodeTypes = EthereumNode;
+	type PooledTransaction = EthPooledTransaction;
 
 	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
 		EthEvmConfig::new(chainspec)

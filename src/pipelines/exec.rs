@@ -137,9 +137,10 @@ impl<
 	async fn run_step(
 		step: WrappedStep<P>,
 		input: StepInput,
-		block_ctx: BlockContext<P>,
+		block: BlockContext<P>,
+		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> StepOutput {
-		let context = StepContext::new(block_ctx);
+		let context = StepContext::new(block.clone(), service.clone());
 		match (step.kind(), input) {
 			(KindTag::Static, StepInput::Static(payload)) => {
 				let result = step.execute::<Static>(payload, &context).await;
@@ -201,8 +202,12 @@ where
 				 implementation.",
 			);
 
-			let running_future =
-				Self::run_step(step.clone(), input, executor.block.clone());
+			let running_future = Self::run_step(
+				step.clone(),
+				input,
+				executor.block.clone(),
+				executor.service.clone(),
+			);
 
 			executor.cursor = Cursor::InProgress(path, Box::pin(running_future));
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again

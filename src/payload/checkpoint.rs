@@ -1,11 +1,15 @@
 use {
 	crate::{payload::span, *},
-	alloy::primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
+	alloy::{
+		consensus::Transaction,
+		primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
+	},
 	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
 	core::fmt::Debug,
 	reth::{
 		api::ConfigureEvm,
 		core::primitives::SignedTransaction,
+		primitives::Recovered,
 		providers::ProviderError,
 		revm::{
 			db::{DBErrorMarker, WrapDatabaseRef},
@@ -132,6 +136,23 @@ impl<P: Platform> Checkpoint<P> {
 	pub fn block(&self) -> &BlockContext<P> {
 		&self.inner.block
 	}
+
+	/// Gas used by this checkpoint.
+	pub fn gas_used(&self) -> u64 {
+		match self.mutation() {
+			Mutation::Barrier => 0,
+			Mutation::Transaction { result, .. } => result.result.gas_used(),
+		}
+	}
+
+	/// If this checkpoint is a blob transaction, returns the blob gas used for
+	/// the blob.
+	pub fn blob_gas_used(&self) -> Option<u64> {
+		match self.mutation() {
+			Mutation::Barrier => None,
+			Mutation::Transaction { recovered, .. } => recovered.blob_gas_used(),
+		}
+	}
 }
 
 /// Public builder API
@@ -140,7 +161,7 @@ impl<P: Platform> Checkpoint<P> {
 		&self,
 		transaction: types::Transaction<P>,
 	) -> Result<Self, Error<P>> {
-		let Ok(recovered) = transaction.clone().try_into_recovered() else {
+		let Ok(recovered) = transaction.try_into_recovered() else {
 			return Err(Error::InvalidSignature);
 		};
 
@@ -152,20 +173,17 @@ impl<P: Platform> Checkpoint<P> {
 		);
 
 		let result = evm
-			.transact(recovered)
+			.transact(&recovered)
 			.map_err(|e| Error::<P>::EvmFactory(e))?;
 
-		info!("Transaction result: {transaction:#?} ----> {result:#?}");
+		info!("Transaction result: {recovered:#?} ----> {result:#?}");
 
 		Ok(Self {
 			inner: Arc::new(CheckpointInner {
 				block: self.inner.block.clone(),
 				prev: Some(Arc::clone(&self.inner)),
 				depth: self.inner.depth + 1,
-				mutation: Mutation::Transaction {
-					content: transaction,
-					result,
-				},
+				mutation: Mutation::Transaction { recovered, result },
 			}),
 		})
 	}
@@ -238,7 +256,7 @@ pub(super) enum Mutation<P: Platform> {
 	/// A new transaction was applied on top of the previous checkpoint.
 	Transaction {
 		/// The transaction that was applied on top of the previous checkpoint.
-		content: types::Transaction<P>,
+		recovered: Recovered<types::Transaction<P>>,
 
 		/// The result of executing the transaction, including the state changes
 		/// and the result of the execution.

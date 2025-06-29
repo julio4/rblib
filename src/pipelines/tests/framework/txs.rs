@@ -135,7 +135,7 @@ impl TransactionBuilder {
 					.expect("latest block should exist")
 					.header
 					.base_fee_per_gas
-					.unwrap_or(MIN_PROTOCOL_BASE_FEE as u64);
+					.unwrap_or(MIN_PROTOCOL_BASE_FEE);
 
 				max(previous_base_fee as u128, MIN_PROTOCOL_BASE_FEE as u128)
 			}

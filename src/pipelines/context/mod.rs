@@ -1,7 +1,14 @@
 use {
-	crate::{pipelines::service::ServiceContext, traits, BlockContext, Platform},
+	crate::{
+		pipelines::service::ServiceContext,
+		traits,
+		types,
+		BlockContext,
+		Limits,
+		Platform,
+	},
 	pool::TransactionPool,
-	reth::providers::StateProvider,
+	reth::{primitives::SealedHeader, providers::StateProvider},
 	std::sync::Arc,
 };
 
@@ -41,5 +48,14 @@ impl<P: Platform> StepContext<P> {
 	/// Access to the transaction pool
 	pub fn pool(&self) -> &impl traits::PoolBounds<P> {
 		&self.pool
+	}
+
+	/// Parent block header of the block that we are building.
+	pub fn parent(&self) -> &SealedHeader<types::Header<P>> {
+		self.block.parent()
+	}
+
+	pub fn limits(&self) -> &dyn Limits {
+		todo!("step context limits");
 	}
 }

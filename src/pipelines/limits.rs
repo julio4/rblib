@@ -11,7 +11,7 @@ pub trait Limits: Debug + Send + Sync + 'static {
 	/// The maximum number of transactions that can be included in the block.
 	/// This is not a standard Etheremum limit, but implementations of this trait
 	/// may choose to enforce it.
-	fn max_transactions(&self) -> Option<u64> {
+	fn max_transactions(&self) -> Option<usize> {
 		None
 	}
 
@@ -28,8 +28,8 @@ pub trait Limits: Debug + Send + Sync + 'static {
 	}
 
 	/// The maximum cumulative size of all blobs in the block.
-	fn max_total_blobs_size(&self) -> Option<u64> {
-		Some(self.max_blob_size() * self.max_blob_transactions())
+	fn max_total_blobs_size(&self) -> u64 {
+		self.max_blob_size() * self.max_blob_transactions()
 	}
 }
 

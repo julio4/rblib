@@ -60,6 +60,14 @@ pub enum ControlFlow<P: Platform, S: StepKind> {
 	Continue(S::Payload<P>),
 }
 
+impl<P: Platform, S: StepKind, E: core::error::Error + 'static> From<E>
+	for ControlFlow<P, S>
+{
+	fn from(value: E) -> Self {
+		ControlFlow::Fail(Box::new(value))
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KindTag {
 	Static,

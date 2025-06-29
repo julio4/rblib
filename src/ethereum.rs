@@ -1,12 +1,9 @@
 use {
 	super::*,
 	crate::traits::{PoolBounds, ProviderBounds},
+	reth::primitives::Recovered,
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
-	reth_ethereum::{
-		evm::EthEvmConfig,
-		node::EthereumNode,
-		primitives::SignerRecoverable,
-	},
+	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
 	reth_ethereum_payload_builder::{
 		default_ethereum_payload,
 		EthereumBuilderConfig,
@@ -97,7 +94,9 @@ impl Platform for EthereumMainnet {
 	}
 }
 
-struct PreselectedBestTransactions<P: Platform>(Vec<types::Transaction<P>>);
+struct PreselectedBestTransactions<P: Platform>(
+	Vec<Recovered<types::Transaction<P>>>,
+);
 impl<P: Platform> BestTransactions for PreselectedBestTransactions<P> {
 	fn no_updates(&mut self) {}
 
@@ -112,11 +111,8 @@ impl<P: Platform> Iterator for PreselectedBestTransactions<P> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let transaction = self.0.pop()?;
 
-		let Ok(pooled) = P::PooledTransaction::try_from_consensus(
-			transaction
-				.try_into_recovered()
-				.expect("Transaction should be valid at this point"),
-		) else {
+		let Ok(pooled) = P::PooledTransaction::try_from_consensus(transaction)
+		else {
 			unreachable!("Transaction should be valid at this point");
 		};
 

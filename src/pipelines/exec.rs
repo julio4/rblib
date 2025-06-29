@@ -81,9 +81,7 @@ impl<
 					KindTag::Static => StepInput::Static(StaticPayload::<P>::default()),
 					// If the step is simulated, we can use the simulated context and
 					// payload.
-					KindTag::Simulated => {
-						StepInput::Simulated(SimulatedPayload::new(block.start()))
-					}
+					KindTag::Simulated => StepInput::Simulated(block.start()),
 				};
 
 				Cursor::BeforeStep(path, input)

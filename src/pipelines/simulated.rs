@@ -12,14 +12,8 @@ impl StepKind for Simulated {
 	type Payload<P: Platform> = SimulatedPayload<P>;
 }
 
-#[derive(Debug)]
-pub struct SimulatedPayload<P: Platform> {
-	checkpoint: Checkpoint<P>,
-}
-
-impl<P: Platform> SimulatedPayload<P> {
-	/// Creates a new simulated payload with the given checkpoint.
-	pub fn new(checkpoint: Checkpoint<P>) -> Self {
-		Self { checkpoint }
-	}
-}
+/// A simulated payload is a state checkpoint that contains a history of all
+/// state mutations that were applied to it so far. It can be used to create new
+/// versions of the payload by applying new transactions to it or going back to
+/// previous checkpoints.
+pub type SimulatedPayload<P> = Checkpoint<P>;

@@ -1,6 +1,5 @@
 use {
 	crate::{payload::checkpoint::Mutation, *},
-	alloy::primitives::address,
 	reth::primitives::Recovered,
 	thiserror::Error,
 };
@@ -90,6 +89,9 @@ impl<P: Platform> Span<P> {
 /// Iteration
 impl<P: Platform> Span<P> {
 	/// The number of checkpoints in the span.
+	/// This number is not always equal to the number of transactions because
+	/// this will also include checkpoints that are not only transactions but also
+	/// barriers or other meta checkpoints.
 	pub fn len(&self) -> usize {
 		self.checkpoints.len()
 	}
@@ -114,26 +116,50 @@ impl<P: Platform> Span<P> {
 	/// appear in the payload under construction.
 	///
 	/// This iterator returns a reference to each transaction.
-	pub fn transactions(&self) -> impl Iterator<Item = &types::Transaction<P>> {
+	pub fn transactions(
+		&self,
+	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
 		self
 			.iter()
 			.filter_map(|checkpoint| match checkpoint.mutation() {
-				Mutation::Transaction { content, .. } => Some(content),
+				Mutation::Transaction {
+					recovered: content, ..
+				} => Some(content),
 				_ => None,
 			})
 	}
 
-	/// Iterates over all transactions in the span and recovers their senders.
-	/// This iterator returns a copy of each transaction.
-	pub fn transactions_recovered(
+	/// Iterates over all blob transactions in the span.
+	pub fn blobs(
 		&self,
-	) -> impl Iterator<Item = Recovered<&types::Transaction<P>>> {
-		self.transactions().map(|tx| {
-			Recovered::new_unchecked(
-				tx,
-				address!("0x1234567890abcdef1234567890abcdef12345678"),
-			)
-		})
+	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
+		self
+			.iter()
+			.filter_map(|checkpoint| match checkpoint.mutation() {
+				Mutation::Transaction { recovered, .. } => Some(recovered),
+				_ => None,
+			})
+	}
+}
+
+/// Stats
+impl<P: Platform> Span<P> {
+	/// Returns the total gas used by all checkpoints in the span.
+	pub fn gas_used(&self) -> u64 {
+		self
+			.checkpoints
+			.iter()
+			.map(|checkpoint| checkpoint.gas_used())
+			.sum()
+	}
+
+	/// Returns the total blob gas used by all blob transactions in the span.
+	pub fn blob_gas_used(&self) -> u64 {
+		self
+			.checkpoints
+			.iter()
+			.filter_map(|checkpoint| checkpoint.blob_gas_used())
+			.sum()
 	}
 }
 

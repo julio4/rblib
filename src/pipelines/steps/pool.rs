@@ -21,8 +21,6 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 		payload: SimulatedPayload<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P, Simulated> {
-		tokio::task::yield_now().await;
-
 		let mut payload = payload;
 		let mut txs = ctx.pool().best_transactions();
 

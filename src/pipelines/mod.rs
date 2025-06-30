@@ -118,7 +118,7 @@ impl<P: Platform> Pipeline<P> {
 	/// Sets payload building limits for the pipeline.
 	pub fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Self {
 		let mut this = self;
-		this.limits = Some(Box::new(limits));
+		this.limits = Some(Box::new(limits) as Box<dyn LimitsFactory<P>>);
 		this
 	}
 
@@ -239,8 +239,8 @@ impl<P: Platform> core::fmt::Debug for StepOrPipeline<P> {
 			StepOrPipeline::Step(step) => step.fmt(f),
 			StepOrPipeline::Pipeline(behavior, pipeline) => f
 				.debug_tuple("Pipeline")
-				.field(behavior)
-				.field(pipeline)
+				.field(behavior as &dyn core::fmt::Debug)
+				.field(pipeline as &dyn core::fmt::Debug)
 				.finish(),
 		}
 	}
@@ -335,13 +335,23 @@ impl<P: Platform> Display for Pipeline<P> {
 impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Pipeline")
-			.field("unique_id", &hex::encode(self.unique_id().to_le_bytes()))
-			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
-			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
-			.field("steps", &self.steps)
+			.field(
+				"unique_id",
+				&hex::encode(self.unique_id().to_le_bytes()) as &dyn core::fmt::Debug,
+			)
+			.field(
+				"prologue",
+				&self.prologue.as_ref().map(|p| p.name()) as &dyn core::fmt::Debug,
+			)
+			.field(
+				"epilogue",
+				&self.epilogue.as_ref().map(|e| e.name()) as &dyn core::fmt::Debug,
+			)
+			.field("steps", &self.steps as &dyn core::fmt::Debug)
 			.field(
 				"limits",
-				&self.limits.as_ref().map(|l| type_name_of_val(&l)),
+				&self.limits.as_ref().map(|l| type_name_of_val(&l))
+					as &dyn core::fmt::Debug,
 			)
 			.finish()
 	}

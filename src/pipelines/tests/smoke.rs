@@ -34,11 +34,12 @@ async fn one_tx_included_in_one_block() {
 	let node = LocalNode::ethereum(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
-	for _ in 0..10 {
+	for i in 0..10 {
 		transfers.push(
 			*node
 				.new_transaction()
 				.random_valid_transfer()
+				.with_value(i)
 				.send()
 				.await
 				.unwrap()
@@ -47,11 +48,12 @@ async fn one_tx_included_in_one_block() {
 	}
 
 	let mut reverts = vec![];
-	for _ in 0..4 {
+	for i in 0..4 {
 		reverts.push(
 			*node
 				.new_transaction()
 				.random_reverting_transaction()
+				.with_value(3000 + i)
 				.send()
 				.await
 				.unwrap()

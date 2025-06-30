@@ -1,5 +1,6 @@
 use {
 	super::{types, *},
+	reth::primitives::Recovered,
 	reth_optimism_forks::OpHardforks,
 	reth_optimism_node::{
 		txpool::OpPooledTransaction,
@@ -15,6 +16,7 @@ use {
 pub struct Optimism;
 
 impl Platform for Optimism {
+	type DefaultLimits = OptimismDefaultLimits;
 	type EvmConfig = OpEvmConfig;
 	type NodeTypes = OpNode;
 	type PooledTransaction = OpPooledTransaction;
@@ -53,7 +55,8 @@ impl Platform for Optimism {
 	}
 
 	fn construct_payload<Pool, Provider>(
-		_checkpoint: payload::Checkpoint<Self>,
+		_block: &BlockContext<Self>,
+		_transactions: Vec<Recovered<types::Transaction<Self>>>,
 		_transaction_pool: &Pool,
 		_provider: &Provider,
 	) -> Result<
@@ -65,5 +68,17 @@ impl Platform for Optimism {
 		Provider: traits::ProviderBounds<Self>,
 	{
 		todo!("Optimism::into_built_payload not implemented yet")
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct OptimismDefaultLimits;
+impl<P: Platform> LimitsFactory<P> for OptimismDefaultLimits {
+	fn create(
+		&self,
+		_block: &BlockContext<P>,
+		_enclosing: Option<&Limits>,
+	) -> Limits {
+		todo!("OptimismDefaultLimits::create not implemented yet")
 	}
 }

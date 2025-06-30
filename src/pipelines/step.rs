@@ -69,6 +69,34 @@ impl<P: Platform, S: StepKind, E: core::error::Error + 'static> From<E>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlFlowKind {
+	Ok,
+	Continue,
+	Break,
+	Fail,
+}
+
+impl<P: Platform, S: StepKind> ControlFlow<P, S> {
+	pub fn try_into_payload(self) -> Result<S::Payload<P>, Self> {
+		match self {
+			ControlFlow::Ok(payload)
+			| ControlFlow::Break(payload)
+			| ControlFlow::Continue(payload) => Ok(payload),
+			_ => Err(self),
+		}
+	}
+
+	pub const fn kind(&self) -> ControlFlowKind {
+		match self {
+			ControlFlow::Ok(_) => ControlFlowKind::Ok,
+			ControlFlow::Continue(_) => ControlFlowKind::Continue,
+			ControlFlow::Break(_) => ControlFlowKind::Break,
+			ControlFlow::Fail(_) => ControlFlowKind::Fail,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KindTag {
 	Static,
 	Simulated,
@@ -187,6 +215,10 @@ unsafe fn drop_fn_impl<S>(step_ptr: *mut u8) {
 impl<P: Platform> Drop for WrappedStep<P> {
 	fn drop(&mut self) {
 		unsafe {
+			tracing::warn!(
+				">--!--> Step of type {} is being dropped.",
+				type_name::<Self>()
+			);
 			(self.vtable.drop_fn)(self.step_ptr.as_ptr());
 		}
 	}

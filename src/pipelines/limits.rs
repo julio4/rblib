@@ -1,46 +1,67 @@
-use core::fmt::Debug;
+use {
+	crate::{BlockContext, Platform},
+	alloy::eips::eip7840::BlobParams,
+	std::time::Instant,
+};
 
-/// This trait defines the limits that can be applied to the block building
-/// process.
-pub trait Limits: Debug + Send + Sync + 'static {
-	/// The maximum cumulative gas that can be used in the block.
-	/// This includes all transactions, epilogues, prologues, and other
-	/// gas-consuming operations.
-	fn gas_limit(&self) -> u64;
-
-	/// The maximum number of transactions that can be included in the block.
-	/// This is not a standard Etheremum limit, but implementations of this trait
-	/// may choose to enforce it.
-	fn max_transactions(&self) -> Option<usize> {
-		None
-	}
-
-	/// The maximum size of a blob in a single transaction.
-	fn max_blob_size(&self) -> u64 {
-		// per EIP-4844, the maximum blob size is 128kB
-		128 * 1024
-	}
-
-	/// The maximum number of blob transactions that can be included in the block.
-	fn max_blob_transactions(&self) -> u64 {
-		// per EIP-4844, the maximum number of blob transactions is 6
-		6
-	}
-
-	/// The maximum cumulative size of all blobs in the block.
-	fn max_total_blobs_size(&self) -> u64 {
-		self.max_blob_size() * self.max_blob_transactions()
-	}
+pub trait LimitsFactory<P: Platform>: Send + Sync + 'static {
+	/// Configure the limits for the block payload under construction.
+	///
+	/// As an input this method takes the block context that we're producing a
+	/// payload for and optionally any limits imposed by enclosing pipelines.
+	fn create(
+		&self,
+		block: &BlockContext<P>,
+		enclosing: Option<&Limits>,
+	) -> Limits;
 }
 
 #[derive(Debug, Clone)]
-pub struct StaticLimits {
+pub struct Limits {
 	/// The maximum cumulative gas that can be used in the block.
+	/// This includes all transactions, epilogues, prologues, and other
+	/// gas-consuming operations.
 	pub gas_limit: u64,
+
+	/// Limits for blob transactions in the block.
+	pub blob_params: Option<BlobParams>,
+
+	/// The maximum number of transactions that can be included in the block.
+	///
+	/// This is not a standard known ethereum limit, however it can be imposed by
+	/// custom limits factories.
+	pub max_transactions: Option<usize>,
+
+	/// The time by which the payload must be built.
+	///
+	/// In most cases, the pipeline executor will stop iterating over loops if
+	/// the deadline is reached, however for long running steps, its recommended
+	/// to have deadline-aware logic inside the step itself.
+	pub deadline: Option<Instant>,
 }
 
-impl Limits for StaticLimits {
-	fn gas_limit(&self) -> u64 {
-		self.gas_limit
+impl Limits {
+	pub fn new(gas_limit: u64) -> Self {
+		Self {
+			gas_limit,
+			blob_params: None,
+			deadline: None,
+			max_transactions: None,
+		}
+	}
+
+	pub fn with_blob_params(mut self, blob_params: BlobParams) -> Self {
+		self.blob_params = Some(blob_params);
+		self
+	}
+
+	pub fn with_max_transactions(mut self, max_transactions: usize) -> Self {
+		self.max_transactions = Some(max_transactions);
+		self
+	}
+
+	pub fn with_deadline(mut self, deadline: Instant) -> Self {
+		self.deadline = Some(deadline);
+		self
 	}
 }

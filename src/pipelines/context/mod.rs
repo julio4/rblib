@@ -5,6 +5,7 @@ use {
 		types,
 		BlockContext,
 		Limits,
+		Pipeline,
 		Platform,
 	},
 	pool::TransactionPool,
@@ -17,12 +18,16 @@ mod pool;
 pub struct StepContext<Plat: Platform> {
 	block: BlockContext<Plat>,
 	pool: TransactionPool<Plat>,
+	pipeline: Arc<Pipeline<Plat>>,
+	limits: Limits,
 }
 
 impl<P: Platform> StepContext<P> {
 	pub fn new<Pool, Provider>(
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
+		pipeline: Arc<Pipeline<P>>,
+		limits: Limits,
 	) -> Self
 	where
 		Pool: traits::PoolBounds<P>,
@@ -30,7 +35,12 @@ impl<P: Platform> StepContext<P> {
 	{
 		let pool = TransactionPool::new(service.pool().clone());
 
-		Self { block, pool }
+		Self {
+			block,
+			pool,
+			pipeline,
+			limits,
+		}
 	}
 
 	/// Access to the state of the chain at the begining of block that we are
@@ -45,17 +55,22 @@ impl<P: Platform> StepContext<P> {
 		self.block.base_state()
 	}
 
-	/// Access to the transaction pool
-	pub fn pool(&self) -> &impl traits::PoolBounds<P> {
-		&self.pool
-	}
-
 	/// Parent block header of the block that we are building.
 	pub fn parent(&self) -> &SealedHeader<types::Header<P>> {
 		self.block.parent()
 	}
 
-	pub fn limits(&self) -> &dyn Limits {
-		todo!("step context limits");
+	/// Access to the pipeline that is immedately enclosing this step.
+	pub fn pipeline(&self) -> &Pipeline<P> {
+		&self.pipeline
+	}
+
+	/// Access to the transaction pool
+	pub const fn pool(&self) -> &impl traits::PoolBounds<P> {
+		&self.pool
+	}
+
+	pub const fn limits(&self) -> &Limits {
+		&self.limits
 	}
 }

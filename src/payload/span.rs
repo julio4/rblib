@@ -105,7 +105,7 @@ impl<P: Platform> Span<P> {
 	/// Returns an iterator over the checkpoints in the span.
 	/// The iteration order is from the ancestor checkpoint to the descendant
 	/// checkpoint.
-	pub fn iter(&self) -> impl Iterator<Item = &Checkpoint<P>> {
+	pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Checkpoint<P>> {
 		Iter {
 			checkpoints: &self.checkpoints,
 			index: 0,

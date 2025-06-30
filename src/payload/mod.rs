@@ -6,7 +6,11 @@ mod block;
 mod checkpoint;
 mod span;
 
-pub use {block::BlockContext, checkpoint::Checkpoint, span::Span};
+pub use {
+	block::{BlockContext, Error as BlockError},
+	checkpoint::{Checkpoint, Error as CheckpointError},
+	span::{Error as SpanError, Span},
+};
 
 #[cfg(test)]
 mod tests;

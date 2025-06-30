@@ -6,10 +6,10 @@ impl Step for PriorityFeeOrdering {
 
 	async fn step<P: Platform>(
 		&mut self,
-		_payload: StaticPayload<P>,
+		payload: StaticPayload<P>,
 		_ctx: &StepContext<P>,
 	) -> ControlFlow<P, Static> {
-		todo!()
+		todo!("priority fee ordering for {payload:?}")
 	}
 }
 
@@ -19,9 +19,9 @@ impl Step for TotalProfitOrdering {
 
 	async fn step<P: Platform>(
 		&mut self,
-		_payload: SimulatedPayload<P>,
+		payload: SimulatedPayload<P>,
 		_ctx: &StepContext<P>,
 	) -> ControlFlow<P, Simulated> {
-		todo!()
+		todo!("total profit ordering for {payload:?}")
 	}
 }

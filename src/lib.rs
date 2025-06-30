@@ -54,6 +54,12 @@ pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + U
 		Consensus = types::Transaction<Self>,
 	> + Send + Sync + 'static;
 
+	/// Type that can provide limits for the payload building process.
+	/// If no limits are set on a pipeline, a default instance of this type
+	/// will be used.
+	type DefaultLimits: LimitsFactory<Self> + Default + Send + Sync + 'static;
+
+	/// Instantiate the EVM configuration for the platform with a given chain specification.
 	fn evm_config(chainspec: std::sync::Arc<types::ChainSpec<Self>>) -> Self::EvmConfig;
 
 	fn next_block_environment_context(
@@ -63,7 +69,8 @@ pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + U
 	) -> types::NextBlockEnvContext<Self>;
 
 	fn construct_payload<Pool, Provider>(
-		checkpoint: payload::Checkpoint<Self>,
+		block: &BlockContext<Self>,
+		transactions: Vec<reth::primitives::Recovered<types::Transaction<Self>>>,
 		transaction_pool: &Pool,
 		provider: &Provider,
 	) -> Result<

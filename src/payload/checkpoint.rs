@@ -5,7 +5,7 @@ use {
 		primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
 	},
 	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
-	core::fmt::Debug,
+	core::fmt::{Debug, Display},
 	reth::{
 		api::ConfigureEvm,
 		core::primitives::SignedTransaction,
@@ -17,9 +17,9 @@ use {
 			DatabaseRef,
 		},
 	},
+	reth_evm::EvmError,
 	std::sync::Arc,
 	thiserror::Error,
-	tracing::info,
 };
 
 #[allow(type_alias_bounds)]
@@ -29,6 +29,10 @@ pub type EvmFactoryError<P: Platform> =
 			<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
 		>::EvmFactory as EvmFactory
 	>::Error<StateError>;
+
+#[allow(type_alias_bounds)]
+pub type InvalidTransactionError<P: Platform> =
+	<EvmFactoryError<P> as EvmError>::InvalidTransaction;
 
 #[derive(Debug, Error)]
 pub enum Error<P: Platform> {
@@ -43,6 +47,9 @@ pub enum Error<P: Platform> {
 
 	#[error("Evm factory error: {0}")]
 	EvmFactory(EvmFactoryError<P>),
+
+	#[error("Invalid transaction: {0}")]
+	InvalidTransaction(InvalidTransactionError<P>),
 }
 
 #[derive(Debug, Clone, Error)]
@@ -140,8 +147,8 @@ impl<P: Platform> Checkpoint<P> {
 	/// Gas used by this checkpoint.
 	pub fn gas_used(&self) -> u64 {
 		match self.mutation() {
-			Mutation::Barrier => 0,
 			Mutation::Transaction { result, .. } => result.result.gas_used(),
+			_ => 0,
 		}
 	}
 
@@ -149,8 +156,17 @@ impl<P: Platform> Checkpoint<P> {
 	/// the blob.
 	pub fn blob_gas_used(&self) -> Option<u64> {
 		match self.mutation() {
-			Mutation::Barrier => None,
 			Mutation::Transaction { recovered, .. } => recovered.blob_gas_used(),
+			_ => None,
+		}
+	}
+
+	/// Returns the execution result of the transaction that created this
+	/// checkpoint, if it is a transaction checkpoint.
+	pub fn result(&self) -> Option<&ExecutionResult<P>> {
+		match self.mutation() {
+			Mutation::Transaction { result, .. } => Some(&result.result),
+			_ => None,
 		}
 	}
 }
@@ -172,11 +188,12 @@ impl<P: Platform> Checkpoint<P> {
 			self.block_context().evm_env().clone(),
 		);
 
-		let result = evm
-			.transact(&recovered)
-			.map_err(|e| Error::<P>::EvmFactory(e))?;
-
-		info!("Transaction result: {recovered:#?} ----> {result:#?}");
+		let result = evm.transact(&recovered).map_err(|err| {
+			match err.try_into_invalid_tx_err() {
+				Ok(invalid_tx) => Error::InvalidTransaction(invalid_tx),
+				Err(e) => Error::EvmFactory(e),
+			}
+		})?;
 
 		Ok(Self {
 			inner: Arc::new(CheckpointInner {
@@ -229,6 +246,7 @@ impl<P: Platform> Checkpoint<P> {
 		}
 	}
 
+	/// The block that is the root of this checkpoint.
 	pub(super) fn block_context(&self) -> &BlockContext<P> {
 		&self.inner.block
 	}
@@ -281,6 +299,36 @@ struct CheckpointInner<P: Platform> {
 	mutation: Mutation<P>,
 }
 
+impl<P: Platform> From<Checkpoint<P>> for Vec<types::Transaction<P>> {
+	/// Converts a checkpoint into a vector of transactions that were applied to
+	/// it.
+	fn from(checkpoint: Checkpoint<P>) -> Self {
+		let mut output = Vec::with_capacity(checkpoint.depth());
+
+		if let Mutation::Transaction { recovered, .. } = checkpoint.mutation() {
+			output.push(recovered.clone_inner());
+		}
+		tracing::info!(">>>---> 1");
+		let mut current = checkpoint;
+		while let Some(prev) = current.prev() {
+			tracing::info!(">>>---> 2");
+			if let Mutation::Transaction { recovered, .. } = prev.mutation() {
+				tracing::info!(">>>---> 3");
+				output.push(recovered.clone_inner());
+			}
+			current = prev;
+			tracing::info!(">>>---> 4");
+		}
+
+		tracing::info!(">---> txs: {output:#?}");
+
+		// reverse to have transactions in the order they were applied
+		output.reverse();
+
+		output
+	}
+}
+
 impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	/// The database error type.
 	type Error = StateError;
@@ -290,14 +338,17 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		&self,
 		address: Address,
 	) -> Result<Option<AccountInfo>, Self::Error> {
-		for checkpoint in self.history() {
+		// we want to probe the history of checkpoints in reverse order,
+		// starting from the most recent one, to find the first checkpoint
+		// that has touched the given address.
+		for checkpoint in self.history().into_iter().rev() {
 			match checkpoint.mutation() {
-				Mutation::Barrier => continue,
 				Mutation::Transaction { result, .. } => {
 					if let Some(account) = result.state.get(&address) {
 						return Ok(Some(account.info.clone()));
 					}
 				}
+				_ => continue,
 			};
 		}
 
@@ -356,6 +407,33 @@ impl<P: Platform> Debug for Checkpoint<P> {
 	}
 }
 
+impl<P: Platform> Display for Checkpoint<P> {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(
+			f,
+			"[{}] {} {}",
+			self.depth(),
+			match self.mutation() {
+				Mutation::Barrier => "barrier".to_string(),
+				Mutation::Transaction { recovered, .. } =>
+					recovered.tx_hash().to_string(),
+			},
+			match self.mutation() {
+				Mutation::Barrier => String::new(),
+				Mutation::Transaction { result, .. } => format!(
+					"({}, {} gas)",
+					match result.result {
+						ExecutionResult::<P>::Success { .. } => "success",
+						ExecutionResult::<P>::Revert { .. } => "revert",
+						ExecutionResult::<P>::Halt { .. } => "halt",
+					},
+					result.result.gas_used()
+				),
+			}
+		)
+	}
+}
+
 #[allow(type_alias_bounds)]
 type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<
 	<
@@ -364,3 +442,13 @@ type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<
 		>::EvmFactory as EvmFactory
 	>::HaltReason
 >;
+
+#[allow(type_alias_bounds)]
+type ExecutionResult<P: Platform> = reth::revm::context::result::ExecutionResult
+	<
+		<
+			<
+				<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
+			>::EvmFactory as EvmFactory
+		>::HaltReason
+	>;

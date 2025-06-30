@@ -1,4 +1,7 @@
-use crate::{steps::*, *};
+use {
+	crate::{steps::*, *},
+	core::time::Duration,
+};
 
 #[test]
 fn only_steps() {
@@ -110,7 +113,7 @@ fn flashblocks_example() {
 		}
 	}
 
-	struct PublishToWebSocket;
+	struct PublishToWebSocket(FlashblocksConfig);
 	impl Step for PublishToWebSocket {
 		type Kind = Simulated;
 
@@ -124,21 +127,31 @@ fn flashblocks_example() {
 	}
 
 	#[derive(Debug)]
-	struct FlashblockLimits;
-	impl Limits for FlashblockLimits {
-		fn gas_limit(&self) -> u64 {
+	struct FlashblockLimits(FlashblocksConfig);
+	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
+		fn create(
+			&self,
+			_block: &BlockContext<P>,
+			_enclosing: Option<&Limits>,
+		) -> Limits {
 			todo!()
 		}
 	}
 
-	fn make_pipeline<P: Platform>() -> Pipeline<P> {
+	#[derive(Debug, Clone)]
+	struct FlashblocksConfig {
+		count: usize,
+		interval: Duration,
+	}
+
+	fn make_pipeline<P: Platform>(config: FlashblocksConfig) -> Pipeline<P> {
 		Pipeline::<P>::default()
 			.with_prologue(OptimismPrologue)
 			.with_epilogue(BuilderEpilogue)
 			.with_step(WebSocketBeginBlock)
 			.with_pipeline(Loop, |nested: Pipeline<P>| {
 				nested
-					.with_limits(FlashblockLimits)
+					.with_limits(FlashblockLimits(config.clone()))
 					.with_epilogue(FlashblockEpilogue)
 					.with_pipeline(
 						Loop,
@@ -149,10 +162,15 @@ fn flashblocks_example() {
 							RevertProtection,
 						),
 					)
-					.with_step(PublishToWebSocket)
+					.with_step(PublishToWebSocket(config))
 			})
 			.with_step(WebSocketEndBlock)
 	}
 
-	println!("{:#?}", make_pipeline::<EthereumMainnet>());
+	let config = FlashblocksConfig {
+		count: 5,
+		interval: Duration::from_millis(200),
+	};
+
+	println!("{:#?}", make_pipeline::<EthereumMainnet>(config));
 }

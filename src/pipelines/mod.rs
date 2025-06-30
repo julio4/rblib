@@ -8,7 +8,7 @@ use {
 		*,
 	},
 	alloy::hex,
-	core::fmt::Display,
+	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::builder::components::PayloadServiceBuilder,
 	std::sync::OnceLock,
@@ -30,7 +30,7 @@ mod tests;
 // public API exports
 pub use {
 	context::StepContext,
-	limits::Limits,
+	limits::{Limits, LimitsFactory},
 	r#static::{Static, StaticPayload},
 	simulated::{Simulated, SimulatedPayload},
 	step::{ControlFlow, Step},
@@ -47,7 +47,7 @@ pub struct Pipeline<P: Platform> {
 	epilogue: Option<WrappedStep<P>>,
 	prologue: Option<WrappedStep<P>>,
 	steps: Vec<StepOrPipeline<P>>,
-	limits: Option<Box<dyn Limits>>,
+	limits: Option<Box<dyn LimitsFactory<P>>>,
 	unique_id: OnceLock<usize>,
 }
 
@@ -113,7 +113,7 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// Sets payload building limits for the pipeline.
-	pub fn with_limits<L: Limits>(self, limits: L) -> Self {
+	pub fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Self {
 		let mut this = self;
 		this.limits = Some(Box::new(limits));
 		this
@@ -152,7 +152,7 @@ impl<P: Platform> Pipeline<P> {
 		&self.steps
 	}
 
-	pub(crate) fn limits(&self) -> Option<&dyn Limits> {
+	pub(crate) fn limits(&self) -> Option<&dyn LimitsFactory<P>> {
 		self.limits.as_deref()
 	}
 
@@ -188,6 +188,37 @@ impl<P: Platform> Pipeline<P> {
 		let index = path[0];
 		let item = self.steps.get(index)?;
 		item.step_by_path(&path[1..])
+	}
+
+	/// Returns a reference to the enclosing pipeline for a step by its index
+	/// path.
+	pub(crate) fn pipeline_for_step<'a>(
+		&'a self,
+		path: &[usize],
+	) -> Option<(&'a Pipeline<P>, Behavior)> {
+		if path.is_empty() {
+			return None;
+		}
+
+		fn visit<'a, P: Platform>(
+			path: &[usize],
+			pipeline: &'a Pipeline<P>,
+			enclosing_behavior: Behavior,
+		) -> Option<(&'a Pipeline<P>, Behavior)> {
+			match pipeline.steps.get(path[0])? {
+				StepOrPipeline::Step(_) => Some((pipeline, enclosing_behavior)),
+				StepOrPipeline::Pipeline(behavior, pipeline) => {
+					if path.len() == 1 {
+						Some((pipeline, *behavior))
+					} else {
+						pipeline.pipeline_for_step(&path[1..])
+					}
+				}
+			}
+		}
+
+		// top-level pipeline is always `Once` behavior
+		visit(path, self, Once)
 	}
 
 	/// Executes a closure for each step in the pipeline, including prologue and
@@ -321,7 +352,10 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
 			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
 			.field("steps", &self.steps)
-			.field("limits", &self.limits)
+			.field(
+				"limits",
+				&self.limits.as_ref().map(|l| type_name_of_val(&l)),
+			)
 			.finish()
 	}
 }

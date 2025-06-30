@@ -14,19 +14,9 @@ use {
 	crate::{
 		pipelines::{
 			service::ServiceContext,
-			step::{KindTag, WrappedStep},
+			step::{ControlFlowKind, KindTag},
 		},
-		traits,
-		types,
-		BlockContext,
-		ControlFlow,
-		Pipeline,
-		Platform,
-		Simulated,
-		SimulatedPayload,
-		Static,
-		StaticPayload,
-		StepContext,
+		*,
 	},
 	core::{
 		fmt::{Debug, Display},
@@ -50,10 +40,8 @@ where
 	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
-	pipeline: Arc<Pipeline<P>>,
-	block: BlockContext<P>,
-	service: Arc<ServiceContext<P, Provider, Pool>>,
 	cursor: Cursor<P>,
+	context: ExecContext<P, Provider, Pool>,
 }
 
 impl<
@@ -96,7 +84,8 @@ impl<
 
 				Cursor::<P>::Completed(
 					P::construct_payload(
-						block.start(),
+						&block,
+						Vec::new(),
 						service.pool(),
 						service.provider(),
 					)
@@ -106,23 +95,25 @@ impl<
 		};
 
 		Self {
-			pipeline,
-			block,
-			service,
 			cursor,
+			context: ExecContext {
+				pipeline,
+				block,
+				service,
+			},
 		}
 	}
 
 	pub fn pipeline(&self) -> &Pipeline<P> {
-		&self.pipeline
+		&self.context.pipeline
 	}
 
 	pub fn block(&self) -> &BlockContext<P> {
-		&self.block
+		&self.context.block
 	}
 
 	pub fn service(&self) -> &ServiceContext<P, Provider, Pool> {
-		&self.service
+		&self.context.service
 	}
 
 	pub fn execute(
@@ -139,37 +130,205 @@ impl<
 		Pool: traits::PoolBounds<P>,
 	> PipelineExecutor<P, Provider, Pool>
 {
-	async fn execute_step(
-		step: WrappedStep<P>,
+	/// This method creates a future that encapsulates the execution an an async
+	/// step.
+	///
+	/// It will prepare the step context and all the information a pipeline step
+	/// needs to execute, then create a future object that will be stored in the
+	/// cursor and polled whenever the executor is polled.
+	fn execute_step(
+		&self,
+		path: &[usize],
 		input: StepInput<P>,
-		block: BlockContext<P>,
-		service: Arc<ServiceContext<P, Provider, Pool>>,
-	) -> StepOutput<P> {
-		let context = StepContext::new(block.clone(), service.clone());
-		match (step.kind(), input) {
-			(KindTag::Static, StepInput::Static(payload)) => {
-				let result = step.execute::<Static>(payload, &context).await;
-				StepOutput::Static(result)
-			}
-			(KindTag::Simulated, StepInput::Simulated(payload)) => {
-				let result = step.execute::<Simulated>(payload, &context).await;
-				StepOutput::Simulated(result)
-			}
-			(_, _) => {
-				unreachable!(
-					"Step kind and input type mismatch. This is a bug in the \
-					 PipelineExecutor implementation."
-				)
+	) -> impl Future<Output = StepOutput<P>> + 'static + Send + Sync {
+		let block = self.context.block.clone();
+		let service = Arc::clone(&self.context.service);
+		let pipeline = Arc::clone(&self.context.pipeline);
+		let step = pipeline.step_by_path(path).cloned().expect(
+			"Step path is unreachable. This is a bug in the pipeline executor \
+			 implementation.",
+		);
+
+		let limits = match pipeline.limits() {
+			Some(limits) => limits.create(&block, None),
+			None => P::DefaultLimits::default().create(&block, None),
+		};
+
+		let context = StepContext::new(block, service, pipeline, limits);
+
+		async move {
+			match (step.kind(), input) {
+				(KindTag::Static, StepInput::Static(payload)) => {
+					step
+						.execute::<Static>(payload, &context)
+						.map(StepOutput::Static)
+						.await
+				}
+				(KindTag::Simulated, StepInput::Simulated(payload)) => {
+					step
+						.execute::<Simulated>(payload, &context)
+						.map(StepOutput::Simulated)
+						.await
+				}
+				(_, _) => {
+					unreachable!(
+						"Step kind and input type mismatch. This is a bug in the \
+						 PipelineExecutor implementation."
+					)
+				}
 			}
 		}
 	}
 
+	/// This method handles the control flow of the pipeline execution.
+	///
+	/// Once a step is executed it determines the next step to execute based on
+	/// the output of the step, the current cursor state and the pipeline
+	/// structure.
+	///
+	/// This method also handles the transition between static and simulated
+	/// steps.
 	fn advance_cursor(
 		&self,
 		current_step_path: &[usize],
 		output: StepOutput<P>,
 	) -> Cursor<P> {
-		todo!("advance_cursor")
+		// if the step output is an error, terminate the pipeline execution
+		// immediately.
+		let output = match output.try_into_fail() {
+			Ok(error) => return Cursor::Completed(Err(error.into())),
+			Err(output) => output,
+		};
+
+		// top-level pipeline
+		let root = &self.context.pipeline;
+
+		// get the enclosing pipeline that contains the current step.
+		let (pipeline, behavior) =
+			root.pipeline_for_step(current_step_path).expect(
+				"Step path is unreachable. This is a bug in the pipeline executor \
+				 implementation.",
+			);
+
+		// the index of the current step in its enclosing pipeline.
+		let step_index = *current_step_path.last().expect(
+			"Step path is unreachable. This is a bug in the pipeline executor \
+			 implementation.",
+		);
+
+		let is_last_step = step_index == pipeline.steps().len() - 1;
+
+		let next_step_path = || {
+			let step_index_position = current_step_path.len() - 1;
+			let mut next_path = current_step_path.to_vec();
+			next_path[step_index_position] += 1;
+			next_path
+		};
+
+		let first_step_path = || {
+			let step_index_position = current_step_path.len() - 1;
+			let mut next_path = current_step_path.to_vec();
+			next_path[step_index_position] = 0;
+			next_path
+		};
+
+		let flow = output.kind();
+
+		let create_cursor = |next_path: Vec<usize>| match self
+			.prepare_step_input(&next_path, output)
+		{
+			Ok(input) => Cursor::BeforeStep(next_path, input),
+			Err(error) => Cursor::Completed(Err(ClonablePayloadBuilderError(
+				PayloadBuilderError::other(WrappedErrorMessage(error.to_string())),
+			))),
+		};
+
+		match flow {
+			ControlFlowKind::Ok => {
+				if is_last_step {
+					match behavior {
+						Once => todo!(), // terminate current sub-pipeline
+						Loop => {
+							// run first step in the sub-pipeline
+							create_cursor(first_step_path())
+						}
+					}
+				} else {
+					// run next step in the sub-pipeline
+					create_cursor(next_step_path())
+				}
+			}
+			ControlFlowKind::Continue => {
+				match behavior {
+					Once => {
+						if is_last_step {
+							// terminate current sub-pipeline
+							todo!();
+						} else {
+							// run next step in pipeline
+							create_cursor(next_step_path())
+						}
+					}
+					Loop => {
+						// run first step in the sub-pipeline
+						create_cursor(first_step_path())
+					}
+				}
+			}
+			ControlFlowKind::Break => todo!(),
+			ControlFlowKind::Fail => unreachable!(
+				"Failures already handled before this point, this is a bug in the \
+				 PipelineExecutor implementation."
+			),
+		}
+	}
+
+	// todo: optimize this and apply caching
+	fn prepare_step_input(
+		&self,
+		next_path: &[usize],
+		previous: StepOutput<P>,
+	) -> Result<StepInput<P>, CheckpointError<P>> {
+		let step = self.context.pipeline.step_by_path(next_path).expect(
+			"Step path is unreachable. This is a bug in the pipeline executor \
+			 implementation.",
+		);
+
+		match (step.kind(), previous) {
+			(KindTag::Static, StepOutput::Static(payload)) => {
+				// If the next step is static, we can use the static payload as is.
+				Ok(StepInput::Static(payload.try_into_payload().expect(
+					"Step output is not a static payload. This is a bug in the \
+					 PipelineExecutor implementation.",
+				)))
+			}
+			(KindTag::Simulated, StepOutput::Simulated(payload)) => {
+				// If the next step is simulated, we can use the simulated payload as
+				// is.
+				Ok(StepInput::Simulated(payload.try_into_payload().expect(
+					"Step output is not a simulated payload. This is a bug in the \
+					 PipelineExecutor implementation.",
+				)))
+			}
+			(KindTag::Simulated, StepOutput::Static(payload)) => {
+				let transactions = payload.try_into_payload().expect(
+					"Step output is not a simulated payload. This is a bug in the \
+					 PipelineExecutor implementation.",
+				);
+				Ok(StepInput::Simulated(
+					transactions
+						.into_iter()
+						.try_fold(self.context.block.start(), |acc, tx| acc.apply(tx))?,
+				))
+			}
+			(KindTag::Static, StepOutput::Simulated(payload)) => {
+				let payload = payload.try_into_payload().expect(
+					"Step output is not a simulated payload. This is a bug in the \
+					 PipelineExecutor implementation.",
+				);
+				Ok(StepInput::Static(payload.into()))
+			}
+		}
 	}
 }
 
@@ -202,18 +361,7 @@ where
 				unreachable!();
 			};
 
-			let step = executor.pipeline.step_by_path(path.as_slice()).expect(
-				"Step path is unreachable. This is a bug in the pipeline executor \
-				 implementation.",
-			);
-
-			let running_future = Self::execute_step(
-				step.clone(),
-				input,
-				executor.block.clone(),
-				executor.service.clone(),
-			);
-
+			let running_future = executor.execute_step(&path, input);
 			executor.cursor = Cursor::InProgress(path, Box::pin(running_future));
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
@@ -222,23 +370,30 @@ where
 		{
 			// If the cursor is in the InProgress state, we need to poll the future
 			// to see if it has completed.
-			match pinned_future.as_mut().poll_unpin(cx) {
-				Poll::Ready(output) => {
-					executor.cursor = executor.advance_cursor(path, output);
-					cx.waker().wake_by_ref(); // tell the async runtime to poll again
-				}
-				Poll::Pending => {
-					// The future is still running, we can't make any progress.
-					return Poll::Pending;
-				}
+			if let Poll::Ready(output) = pinned_future.as_mut().poll_unpin(cx) {
+				// step has completed, we can advance the cursor
+				executor.cursor = executor.advance_cursor(path, output);
+				cx.waker().wake_by_ref(); // tell the async runtime to poll again
 			}
 		}
 
-		unreachable!(
-			"PipelineExecutor is in an unexpected state. This is a bug in the \
-			 PipelineExecutor implementation."
-		);
+		Poll::Pending
 	}
+}
+
+struct ExecContext<P, Provider, Pool>
+where
+	P: Platform,
+	Provider: traits::ProviderBounds<P>,
+	Pool: traits::PoolBounds<P>,
+{
+	// The pipeline that is being executed.
+	pipeline: Arc<Pipeline<P>>,
+	// The block context that is being built.
+	block: BlockContext<P>,
+	// The service context that provides access to the transaction pool and state
+	// provider.
+	service: Arc<ServiceContext<P, Provider, Pool>>,
 }
 
 /// Keeps track of the current pipeline execution progress.
@@ -275,14 +430,83 @@ enum Cursor<P: Platform> {
 	PreparingStep,
 }
 
+#[derive(Debug)]
 enum StepInput<P: Platform> {
 	Static(StaticPayload<P>),
 	Simulated(SimulatedPayload<P>),
 }
 
+#[derive(Debug)]
 enum StepOutput<P: Platform> {
 	Static(ControlFlow<P, Static>),
 	Simulated(ControlFlow<P, Simulated>),
+}
+
+impl<P: Platform> StepOutput<P> {
+	pub fn try_into_fail(self) -> Result<Box<dyn core::error::Error>, Self> {
+		match self {
+			StepOutput::Static(ControlFlow::Fail(error))
+			| StepOutput::Simulated(ControlFlow::Fail(error)) => Ok(error),
+			_ => Err(self),
+		}
+	}
+
+	pub const fn is_static(&self) -> bool {
+		matches!(self, StepOutput::Static(_))
+	}
+
+	pub const fn is_simulated(&self) -> bool {
+		matches!(self, StepOutput::Simulated(_))
+	}
+
+	pub const fn is_ok(&self) -> bool {
+		matches!(
+			self,
+			StepOutput::Static(ControlFlow::Ok(_))
+				| StepOutput::Simulated(ControlFlow::Ok(_))
+		)
+	}
+
+	pub const fn is_break(&self) -> bool {
+		matches!(
+			self,
+			StepOutput::Static(ControlFlow::Break(_))
+				| StepOutput::Simulated(ControlFlow::Break(_))
+		)
+	}
+
+	pub const fn is_continue(&self) -> bool {
+		matches!(
+			self,
+			StepOutput::Static(ControlFlow::Continue(_))
+				| StepOutput::Simulated(ControlFlow::Continue(_))
+		)
+	}
+
+	pub const fn static_payload(&self) -> Option<&StaticPayload<P>> {
+		match self {
+			StepOutput::Static(ControlFlow::Ok(payload))
+			| StepOutput::Static(ControlFlow::Continue(payload))
+			| StepOutput::Static(ControlFlow::Break(payload)) => Some(payload),
+			_ => None,
+		}
+	}
+
+	pub const fn simulated_payload(&self) -> Option<&SimulatedPayload<P>> {
+		match self {
+			StepOutput::Simulated(ControlFlow::Ok(payload))
+			| StepOutput::Simulated(ControlFlow::Continue(payload))
+			| StepOutput::Simulated(ControlFlow::Break(payload)) => Some(payload),
+			_ => None,
+		}
+	}
+
+	pub const fn kind(&self) -> ControlFlowKind {
+		match self {
+			StepOutput::Static(flow) => flow.kind(),
+			StepOutput::Simulated(flow) => flow.kind(),
+		}
+	}
 }
 
 /// This is a hack to allow cloning of the `PayloadBuilderError`.
@@ -316,6 +540,14 @@ impl Clone for ClonablePayloadBuilderError {
 				WrappedErrorMessage(error.to_string()),
 			)),
 		}
+	}
+}
+
+impl From<Box<dyn core::error::Error>> for ClonablePayloadBuilderError {
+	fn from(error: Box<dyn core::error::Error>) -> Self {
+		Self(PayloadBuilderError::other(WrappedErrorMessage(
+			error.to_string(),
+		)))
 	}
 }
 

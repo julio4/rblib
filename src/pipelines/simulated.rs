@@ -5,7 +5,7 @@ use {
 
 /// Simulated steps have access to the payload execution results and have the
 /// state manipulation API attached to them.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Simulated;
 impl sealed::Sealed for Simulated {}
 impl StepKind for Simulated {

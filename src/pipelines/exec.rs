@@ -26,7 +26,7 @@ use {
 	futures::FutureExt,
 	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
-	tracing::{debug, info},
+	tracing::debug,
 };
 
 /// This type is responsible for executing a single run of a pipeline.
@@ -55,8 +55,6 @@ impl<
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		info!("pipeline execution started");
-
 		let cursor = match pipeline.first_step_path() {
 			Some(path) => {
 				let step = pipeline.step_by_path(path.as_slice()).expect(
@@ -103,24 +101,6 @@ impl<
 			},
 		}
 	}
-
-	pub fn pipeline(&self) -> &Pipeline<P> {
-		&self.context.pipeline
-	}
-
-	pub fn block(&self) -> &BlockContext<P> {
-		&self.context.block
-	}
-
-	pub fn service(&self) -> &ServiceContext<P, Provider, Pool> {
-		&self.context.service
-	}
-
-	pub fn execute(
-		&mut self,
-	) -> Result<types::BuiltPayload<P>, PayloadBuilderError> {
-		todo!()
-	}
 }
 
 /// private implementation details for the `PipelineExecutor`.
@@ -140,33 +120,33 @@ impl<
 		&self,
 		path: &[usize],
 		input: StepInput<P>,
-	) -> impl Future<Output = StepOutput<P>> + 'static + Send + Sync {
+	) -> Pin<Box<dyn Future<Output = StepOutput<P>> + Send>> {
 		let block = self.context.block.clone();
 		let service = Arc::clone(&self.context.service);
 		let pipeline = Arc::clone(&self.context.pipeline);
-		let step = pipeline.step_by_path(path).cloned().expect(
+		let step = Arc::clone(pipeline.step_by_path(path).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
-		);
+		));
 
 		let limits = match pipeline.limits() {
 			Some(limits) => limits.create(&block, None),
 			None => P::DefaultLimits::default().create(&block, None),
 		};
 
-		let context = StepContext::new(block, service, pipeline, limits);
+		let context = StepContext::new(block, service, limits);
 
 		async move {
 			match (step.kind(), input) {
 				(KindTag::Static, StepInput::Static(payload)) => {
 					step
-						.execute::<Static>(payload, &context)
+						.execute::<Static>(payload, context)
 						.map(StepOutput::Static)
 						.await
 				}
 				(KindTag::Simulated, StepInput::Simulated(payload)) => {
 					step
-						.execute::<Simulated>(payload, &context)
+						.execute::<Simulated>(payload, context)
 						.map(StepOutput::Simulated)
 						.await
 				}
@@ -178,6 +158,7 @@ impl<
 				}
 			}
 		}
+		.boxed()
 	}
 
 	/// This method handles the control flow of the pipeline execution.
@@ -283,7 +264,10 @@ impl<
 		}
 	}
 
-	// todo: optimize this and apply caching
+	/// This method handles the transition between the output of one step to the
+	/// input of the next step.
+	///
+	/// todo: optimize this and apply caching
 	fn prepare_step_input(
 		&self,
 		next_path: &[usize],
@@ -362,7 +346,7 @@ where
 			};
 
 			let running_future = executor.execute_step(&path, input);
-			executor.cursor = Cursor::InProgress(path, Box::pin(running_future));
+			executor.cursor = Cursor::InProgress(path, running_future);
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
 
@@ -421,7 +405,7 @@ enum Cursor<P: Platform> {
 	/// and the pinned future that is executing the step.
 	InProgress(
 		Vec<usize>,
-		Pin<Box<dyn Future<Output = StepOutput<P>> + Send + Sync + 'static>>,
+		Pin<Box<dyn Future<Output = StepOutput<P>> + Send>>,
 	),
 
 	/// The pipeline is currently preparing to execute the next step.
@@ -443,61 +427,11 @@ enum StepOutput<P: Platform> {
 }
 
 impl<P: Platform> StepOutput<P> {
-	pub fn try_into_fail(self) -> Result<Box<dyn core::error::Error>, Self> {
+	pub fn try_into_fail(self) -> Result<PayloadBuilderError, Self> {
 		match self {
 			StepOutput::Static(ControlFlow::Fail(error))
 			| StepOutput::Simulated(ControlFlow::Fail(error)) => Ok(error),
 			_ => Err(self),
-		}
-	}
-
-	pub const fn is_static(&self) -> bool {
-		matches!(self, StepOutput::Static(_))
-	}
-
-	pub const fn is_simulated(&self) -> bool {
-		matches!(self, StepOutput::Simulated(_))
-	}
-
-	pub const fn is_ok(&self) -> bool {
-		matches!(
-			self,
-			StepOutput::Static(ControlFlow::Ok(_))
-				| StepOutput::Simulated(ControlFlow::Ok(_))
-		)
-	}
-
-	pub const fn is_break(&self) -> bool {
-		matches!(
-			self,
-			StepOutput::Static(ControlFlow::Break(_))
-				| StepOutput::Simulated(ControlFlow::Break(_))
-		)
-	}
-
-	pub const fn is_continue(&self) -> bool {
-		matches!(
-			self,
-			StepOutput::Static(ControlFlow::Continue(_))
-				| StepOutput::Simulated(ControlFlow::Continue(_))
-		)
-	}
-
-	pub const fn static_payload(&self) -> Option<&StaticPayload<P>> {
-		match self {
-			StepOutput::Static(ControlFlow::Ok(payload))
-			| StepOutput::Static(ControlFlow::Continue(payload))
-			| StepOutput::Static(ControlFlow::Break(payload)) => Some(payload),
-			_ => None,
-		}
-	}
-
-	pub const fn simulated_payload(&self) -> Option<&SimulatedPayload<P>> {
-		match self {
-			StepOutput::Simulated(ControlFlow::Ok(payload))
-			| StepOutput::Simulated(ControlFlow::Continue(payload))
-			| StepOutput::Simulated(ControlFlow::Break(payload)) => Some(payload),
-			_ => None,
 		}
 	}
 
@@ -548,6 +482,12 @@ impl From<Box<dyn core::error::Error>> for ClonablePayloadBuilderError {
 		Self(PayloadBuilderError::other(WrappedErrorMessage(
 			error.to_string(),
 		)))
+	}
+}
+
+impl From<PayloadBuilderError> for ClonablePayloadBuilderError {
+	fn from(error: PayloadBuilderError) -> Self {
+		Self(error)
 	}
 }
 

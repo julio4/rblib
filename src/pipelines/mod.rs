@@ -11,7 +11,7 @@ use {
 	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::builder::components::PayloadServiceBuilder,
-	std::sync::OnceLock,
+	std::sync::{Arc, OnceLock},
 };
 
 mod context;
@@ -69,7 +69,7 @@ impl<P: Platform> Pipeline<P> {
 	/// as the first step in the pipeline.
 	pub fn with_prologue<Mode: StepKind>(
 		self,
-		step: impl Step<Kind = Mode>,
+		step: impl Step<P, Kind = Mode>,
 	) -> Self {
 		let mut this = self;
 		this.prologue = Some(WrappedStep::new(step));
@@ -80,7 +80,7 @@ impl<P: Platform> Pipeline<P> {
 	/// has been built.
 	pub fn with_epilogue<Mode: StepKind>(
 		self,
-		step: impl Step<Kind = Mode>,
+		step: impl Step<P, Kind = Mode>,
 	) -> Self {
 		let mut this = self;
 		this.epilogue = Some(WrappedStep::new(step));
@@ -90,11 +90,14 @@ impl<P: Platform> Pipeline<P> {
 	/// A step that runs with an input that is the result of the previous step.
 	/// The order of steps definition is important, as it determines the flow of
 	/// data through the pipeline.
-	pub fn with_step<Mode: StepKind>(self, step: impl Step<Kind = Mode>) -> Self {
+	pub fn with_step<Mode: StepKind>(
+		self,
+		step: impl Step<P, Kind = Mode>,
+	) -> Self {
 		let mut this = self;
 		this
 			.steps
-			.push(StepOrPipeline::Step(WrappedStep::new(step)));
+			.push(StepOrPipeline::Step(Arc::new(WrappedStep::new(step))));
 		this
 	}
 
@@ -180,7 +183,10 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// Returns a reference to a wrapped step by its index path.
-	pub(crate) fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep<P>> {
+	pub(crate) fn step_by_path(
+		&self,
+		path: &[usize],
+	) -> Option<&Arc<WrappedStep<P>>> {
 		if path.is_empty() {
 			return None;
 		}
@@ -220,37 +226,10 @@ impl<P: Platform> Pipeline<P> {
 		// top-level pipeline is always `Once` behavior
 		visit(path, self, Once)
 	}
-
-	/// Executes a closure for each step in the pipeline, including prologue and
-	/// epilogue.
-	///
-	/// This is used by the executor to call maintenance methods at various points
-	/// in the node lifecycle, such as `on_spawn`.
-	pub(crate) fn for_each_step<F>(&mut self, f: &mut F)
-	where
-		F: FnMut(&mut WrappedStep<P>),
-	{
-		if let Some(prologue) = &mut self.prologue {
-			f(prologue);
-		}
-
-		for step_or_pipeline in &mut self.steps {
-			match step_or_pipeline {
-				StepOrPipeline::Step(step) => f(step),
-				StepOrPipeline::Pipeline(_, pipeline) => {
-					pipeline.for_each_step(f);
-				}
-			}
-		}
-
-		if let Some(epilogue) = &mut self.epilogue {
-			f(epilogue);
-		}
-	}
 }
 
 pub(crate) enum StepOrPipeline<P: Platform> {
-	Step(WrappedStep<P>),
+	Step(Arc<WrappedStep<P>>),
 	Pipeline(Behavior, Pipeline<P>),
 }
 
@@ -271,7 +250,7 @@ impl<P: Platform> StepOrPipeline<P> {
 	/// Returns a reference to a wrapped step by its indecies path.
 	/// Each level of the path corresponds to a step in a nested pipeline,
 	/// it is expected that level-1 will always be a nested pipeline.
-	pub fn step_by_path(&self, path: &[usize]) -> Option<&WrappedStep<P>> {
+	pub fn step_by_path(&self, path: &[usize]) -> Option<&Arc<WrappedStep<P>>> {
 		if path.is_empty() {
 			return match self {
 				StepOrPipeline::Step(step) => Some(step),
@@ -323,11 +302,19 @@ impl<P: Platform> IntoPipeline<P, ()> for Pipeline<P> {
 	}
 }
 
-impl<P: Platform, M0: StepKind, S0: Step<Kind = M0>> IntoPipeline<P, ()>
+impl<P: Platform, M0: StepKind, S0: Step<P, Kind = M0>> IntoPipeline<P, ()>
 	for (S0,)
 {
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self.0)
+	}
+}
+
+impl<P: Platform, M0: StepKind, S0: Step<P, Kind = M0>> IntoPipeline<P, u8>
+	for S0
+{
+	fn into_pipeline(self) -> Pipeline<P> {
+		Pipeline::default().with_step(self)
 	}
 }
 
@@ -412,9 +399,22 @@ mod test {
 
 	#[test]
 	fn step_by_path_nested() {
+		pub struct TestStep;
+		impl<P: Platform> Step<P> for TestStep {
+			type Kind = Simulated;
+
+			async fn step(
+				self: Arc<Self>,
+				_payload: SimulatedPayload<P>,
+				_ctx: StepContext<P>,
+			) -> ControlFlow<P, Simulated> {
+				todo!()
+			}
+		}
+
 		let pipeline = Pipeline::<EthereumMainnet>::default()
 			.with_epilogue(BuilderEpilogue)
-			.with_step(OptimismPrologue)
+			.with_step(TestStep)
 			.with_pipeline(
 				Loop,
 				(
@@ -434,7 +434,7 @@ mod test {
 			.step_by_path(&[0])
 			.unwrap()
 			.name()
-			.ends_with("OptimismPrologue"));
+			.ends_with("TestStep"));
 
 		assert!(pipeline.step_by_path(&[1]).is_none());
 		assert!(pipeline.step_by_path(&[1, 0]).is_some());

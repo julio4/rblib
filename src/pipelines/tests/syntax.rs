@@ -1,12 +1,12 @@
 use {
 	crate::{steps::*, *},
 	core::time::Duration,
+	std::sync::Arc,
 };
 
 #[test]
 fn only_steps() {
 	let pipeline = Pipeline::<EthereumMainnet>::default()
-		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
@@ -17,10 +17,22 @@ fn only_steps() {
 }
 
 #[test]
+fn only_steps_optimism_specific() {
+	let pipeline = Pipeline::<Optimism>::default()
+		.with_epilogue(BuilderEpilogue)
+		.with_epilogue(OptimismPrologue)
+		.with_step(GatherBestTransactions)
+		.with_step(PriorityFeeOrdering)
+		.with_step(TotalProfitOrdering)
+		.with_step(RevertProtection);
+
+	println!("{pipeline:#?}");
+}
+
+#[test]
 fn nested_verbose() {
-	let top_level = Pipeline::<EthereumMainnet>::default()
-		.with_prologue(OptimismPrologue)
-		.with_epilogue(BuilderEpilogue);
+	let top_level =
+		Pipeline::<EthereumMainnet>::default().with_epilogue(BuilderEpilogue);
 
 	let nested = Pipeline::<EthereumMainnet>::default()
 		.with_step(AppendNewTransactionFromPool)
@@ -37,7 +49,6 @@ fn nested_verbose() {
 #[test]
 fn nested_one_concise_static() {
 	let top_level = Pipeline::<EthereumMainnet>::default()
-		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(Loop, AppendNewTransactionFromPool);
 
@@ -47,7 +58,6 @@ fn nested_one_concise_static() {
 #[test]
 fn nested_one_concise_simulated() {
 	let top_level = Pipeline::<EthereumMainnet>::default()
-		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(Loop, (RevertProtection,));
 
@@ -56,7 +66,7 @@ fn nested_one_concise_simulated() {
 
 #[test]
 fn nested_many_concise() {
-	let top_level = Pipeline::<EthereumMainnet>::default()
+	let top_level = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(
@@ -75,52 +85,52 @@ fn nested_many_concise() {
 #[test]
 fn flashblocks_example() {
 	struct WebSocketBeginBlock;
-	impl Step for WebSocketBeginBlock {
+	impl<P: Platform> Step<P> for WebSocketBeginBlock {
 		type Kind = Simulated;
 
-		async fn step<P: Platform>(
-			&mut self,
+		async fn step(
+			self: Arc<Self>,
 			_payload: SimulatedPayload<P>,
-			_ctx: &StepContext<P>,
+			_ctx: StepContext<P>,
 		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
 
 	struct WebSocketEndBlock;
-	impl Step for WebSocketEndBlock {
+	impl<P: Platform> Step<P> for WebSocketEndBlock {
 		type Kind = Simulated;
 
-		async fn step<P: Platform>(
-			&mut self,
+		async fn step(
+			self: Arc<Self>,
 			_payload: SimulatedPayload<P>,
-			_ctx: &StepContext<P>,
+			_ctx: StepContext<P>,
 		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
 
 	struct FlashblockEpilogue;
-	impl Step for FlashblockEpilogue {
+	impl<P: Platform> Step<P> for FlashblockEpilogue {
 		type Kind = Simulated;
 
-		async fn step<P: Platform>(
-			&mut self,
+		async fn step(
+			self: Arc<Self>,
 			_payload: SimulatedPayload<P>,
-			_ctx: &StepContext<P>,
+			_ctx: StepContext<P>,
 		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
 	}
 
 	struct PublishToWebSocket(FlashblocksConfig);
-	impl Step for PublishToWebSocket {
+	impl<P: Platform> Step<P> for PublishToWebSocket {
 		type Kind = Simulated;
 
-		async fn step<P: Platform>(
-			&mut self,
+		async fn step(
+			self: Arc<Self>,
 			_payload: SimulatedPayload<P>,
-			_ctx: &StepContext<P>,
+			_ctx: StepContext<P>,
 		) -> ControlFlow<P, Simulated> {
 			todo!()
 		}
@@ -144,33 +154,31 @@ fn flashblocks_example() {
 		interval: Duration,
 	}
 
-	fn make_pipeline<P: Platform>(config: FlashblocksConfig) -> Pipeline<P> {
-		Pipeline::<P>::default()
-			.with_prologue(OptimismPrologue)
-			.with_epilogue(BuilderEpilogue)
-			.with_step(WebSocketBeginBlock)
-			.with_pipeline(Loop, |nested: Pipeline<P>| {
-				nested
-					.with_limits(FlashblockLimits(config.clone()))
-					.with_epilogue(FlashblockEpilogue)
-					.with_pipeline(
-						Loop,
-						(
-							AppendNewTransactionFromPool,
-							PriorityFeeOrdering,
-							TotalProfitOrdering,
-							RevertProtection,
-						),
-					)
-					.with_step(PublishToWebSocket(config))
-			})
-			.with_step(WebSocketEndBlock)
-	}
-
 	let config = FlashblocksConfig {
 		count: 5,
 		interval: Duration::from_millis(200),
 	};
 
-	println!("{:#?}", make_pipeline::<EthereumMainnet>(config));
+	let pipeline = Pipeline::<Optimism>::default()
+		.with_prologue(OptimismPrologue)
+		.with_epilogue(BuilderEpilogue)
+		.with_step(WebSocketBeginBlock)
+		.with_pipeline(Loop, |nested: Pipeline<Optimism>| {
+			nested
+				.with_limits(FlashblockLimits(config.clone()))
+				.with_epilogue(FlashblockEpilogue)
+				.with_pipeline(
+					Loop,
+					(
+						AppendNewTransactionFromPool,
+						PriorityFeeOrdering,
+						TotalProfitOrdering,
+						RevertProtection,
+					),
+				)
+				.with_step(PublishToWebSocket(config))
+		})
+		.with_step(WebSocketEndBlock);
+
+	println!("{:#?}", pipeline);
 }

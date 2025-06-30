@@ -2,13 +2,14 @@ use {
 	super::sealed,
 	crate::{Platform, Simulated, Static, StepContext},
 	core::{
-		any::{type_name, TypeId},
+		any::{type_name, Any, TypeId},
 		fmt::{self, Debug},
 		future::Future,
-		marker::PhantomData,
 		pin::Pin,
-		ptr::NonNull,
 	},
+	futures::FutureExt,
+	reth_payload_builder::PayloadBuilderError,
+	std::sync::Arc,
 };
 
 /// Defines the kind of step of a pipeline.
@@ -25,14 +26,14 @@ pub trait StepKind: sealed::Sealed + Debug + Sync + Send + 'static {
 	type Payload<P: Platform>: Send + Sync + 'static;
 }
 
-pub trait Step: Send + Sync + 'static {
+pub trait Step<P: Platform>: Send + Sync + 'static {
 	type Kind: StepKind;
 
 	/// Gets called every time this step is executed in the pipeline.
-	fn step<P: Platform>(
-		&mut self,
+	fn step(
+		self: Arc<Self>,
 		payload: <Self::Kind as StepKind>::Payload<P>,
-		ctx: &StepContext<P>,
+		ctx: StepContext<P>,
 	) -> impl Future<Output = ControlFlow<P, Self::Kind>> + Send + Sync;
 }
 
@@ -42,7 +43,7 @@ pub trait Step: Send + Sync + 'static {
 pub enum ControlFlow<P: Platform, S: StepKind> {
 	/// Terminate the pipeline execution with an error.
 	/// No valid payload will be produced by this pipeline run.
-	Fail(Box<dyn core::error::Error>),
+	Fail(PayloadBuilderError),
 
 	/// Stops the pipeline execution and returns the payload.
 	///
@@ -60,11 +61,11 @@ pub enum ControlFlow<P: Platform, S: StepKind> {
 	Continue(S::Payload<P>),
 }
 
-impl<P: Platform, S: StepKind, E: core::error::Error + 'static> From<E>
-	for ControlFlow<P, S>
+impl<P: Platform, S: StepKind, E: core::error::Error + Send + Sync + 'static>
+	From<E> for ControlFlow<P, S>
 {
 	fn from(value: E) -> Self {
-		ControlFlow::Fail(Box::new(value))
+		ControlFlow::Fail(PayloadBuilderError::other(value))
 	}
 }
 
@@ -102,50 +103,59 @@ pub(crate) enum KindTag {
 	Simulated,
 }
 
-/// Function pointer table for type-erased operations.
-///
-/// This is used internally in the pipeline implementation to abstract the
-/// underlying developer friendly typed version of the step.
-#[derive(Clone)]
-struct StepVTable {
-	#[expect(clippy::type_complexity)]
-	step_fn: unsafe fn(
-		step_ptr: *const u8,
-		payload_ptr: *const u8,
-		ctx_ptr: *const u8,
-	)
-		-> Pin<Box<dyn Future<Output = *const u8> + Send + Sync>>,
-	drop_fn: unsafe fn(*mut u8),
-	mode: KindTag,
-	name: &'static str,
-}
+#[allow(type_alias_bounds)]
+type WrappedStepFn<P: Platform> = Box<
+	dyn Fn(
+		Arc<dyn Any + Send + Sync>,
+		Box<dyn Any + Send + Sync>,
+		StepContext<P>,
+	) -> Pin<Box<dyn Future<Output = Box<dyn Any + Send + Sync>> + Send>>,
+>;
 
 /// Wraps a step in a type-erased manner, allowing it to be stored in a
 /// heterogeneous collection of steps inside a pipeline.
 pub(crate) struct WrappedStep<P: Platform> {
-	step_ptr: NonNull<u8>,
-	vtable: StepVTable,
-	_p: PhantomData<P>,
-}
-
-impl<P: Platform> Clone for WrappedStep<P> {
-	fn clone(&self) -> Self {
-		Self {
-			step_ptr: self.step_ptr,
-			vtable: self.vtable.clone(),
-			_p: PhantomData,
-		}
-	}
+	instance: Arc<dyn Any + Send + Sync>,
+	step_fn: WrappedStepFn<P>,
+	mode: KindTag,
+	name: &'static str,
 }
 
 impl<P: Platform> WrappedStep<P> {
-	pub fn new<M: StepKind, S: Step<Kind = M>>(step: S) -> Self {
-		let boxed_step = Box::new(step);
-		let step_ptr = NonNull::new(Box::into_raw(boxed_step) as *mut u8).unwrap();
+	pub fn new<M: StepKind, S: Step<P, Kind = M>>(step: S) -> Self {
+		let step: Arc<dyn Any + Send + Sync> = Arc::new(step);
 
-		let vtable = StepVTable {
-			step_fn: step_fn_impl::<P, M, S>,
-			drop_fn: drop_fn_impl::<S>,
+		// This is the only place we have access to the concrete step type
+		// information and can leverage that to call into the right step method
+		// implementation.
+		//
+		// Create a boxed closure that will cast from the generic `Any` type
+		// to the concrete step type and payload type.
+		//
+		// Also store the step instance inside an Arc. This arc will be cloned for
+		// every step execution, allowing the step to be executed concurrently.
+		// Arc will take care of calling the `drop` method on the step
+		// instance when the last reference to it is dropped.
+		Self {
+			instance: step,
+			step_fn: Box::new(
+				|step: Arc<dyn Any + Send + Sync>,
+				 payload: Box<dyn Any + Send + Sync>,
+				 ctx: StepContext<P>|
+				 -> Pin<
+					Box<dyn Future<Output = Box<dyn Any + Send + Sync>> + Send>,
+				> {
+					let step = step.downcast::<S>().expect("Invalid step type");
+					let payload = payload
+						.downcast::<M::Payload<P>>()
+						.expect("Invalid payload type");
+					step
+						.step(*payload, ctx)
+						.map(|result| Box::new(result) as Box<dyn Any + Send + Sync>)
+						.boxed()
+				},
+			) as WrappedStepFn<P>,
+			name: type_name::<S>(),
 			mode: if TypeId::of::<M>() == TypeId::of::<Static>() {
 				KindTag::Static
 			} else if TypeId::of::<M>() == TypeId::of::<Simulated>() {
@@ -153,74 +163,36 @@ impl<P: Platform> WrappedStep<P> {
 			} else {
 				unreachable!("Unsupported StepMode type")
 			},
-			name: type_name::<S>(),
-		};
-
-		Self {
-			step_ptr,
-			vtable,
-			_p: PhantomData,
 		}
 	}
 
+	/// This is invoked from places where we know the kind of the step and
+	/// all other concrete types needed to execute the step and consume its
+	/// output.
 	pub async fn execute<M: StepKind>(
 		&self,
 		payload: M::Payload<P>,
-		ctx: &StepContext<P>,
+		ctx: StepContext<P>,
 	) -> ControlFlow<P, M> {
-		let payload_ptr = &payload as *const M::Payload<P> as *const u8;
-		let ctx_ptr = ctx as *const StepContext<P> as *mut u8;
+		let local_step = Arc::clone(&self.instance);
 
-		unsafe {
-			let result_ptr =
-				(self.vtable.step_fn)(self.step_ptr.as_ptr(), payload_ptr, ctx_ptr)
-					.await;
-			// Cast the type-erased pointer back to the concrete ControlFlow<M>
-			let control_flow = Box::from_raw(result_ptr as *mut ControlFlow<P, M>);
-			*control_flow
-		}
+		let payload_box = Box::new(payload) as Box<dyn Any + Send + Sync>;
+		let result = (self.step_fn)(local_step, payload_box, ctx).await;
+		let result = result
+			.downcast::<ControlFlow<P, M>>()
+			.expect("Invalid result type");
+
+		*result
 	}
 
+	/// Checks if the step is static or simulated.
 	pub const fn kind(&self) -> KindTag {
-		self.vtable.mode
+		self.mode
 	}
 
+	/// Returns the name of the type that implements this step.
 	pub const fn name(&self) -> &'static str {
-		self.vtable.name
-	}
-}
-
-unsafe fn step_fn_impl<P: Platform, M: StepKind, S: Step<Kind = M>>(
-	step_ptr: *const u8,
-	payload_ptr: *const u8,
-	ctx_ptr: *const u8,
-) -> Pin<Box<dyn Future<Output = *const u8> + Send + Sync>> {
-	unsafe {
-		let step = &mut *(step_ptr as *mut S);
-		let payload = core::ptr::read(payload_ptr as *mut M::Payload<P>);
-		let ctx = &*(ctx_ptr as *const StepContext<P>);
-
-		Box::pin(async move {
-			let control_flow = step.step::<P>(payload, ctx).await;
-			// Box the result and return as type-erased pointer
-			Box::into_raw(Box::new(control_flow)) as *const u8
-		}) as Pin<Box<dyn Future<Output = *const u8> + Send + Sync>>
-	}
-}
-
-unsafe fn drop_fn_impl<S>(step_ptr: *mut u8) {
-	let _ = unsafe { Box::from_raw(step_ptr as *mut S) };
-}
-
-impl<P: Platform> Drop for WrappedStep<P> {
-	fn drop(&mut self) {
-		unsafe {
-			tracing::warn!(
-				">--!--> Step of type {} is being dropped.",
-				type_name::<Self>()
-			);
-			(self.vtable.drop_fn)(self.step_ptr.as_ptr());
-		}
+		self.name
 	}
 }
 

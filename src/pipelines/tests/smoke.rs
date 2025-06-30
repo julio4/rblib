@@ -85,7 +85,6 @@ async fn reth_minimal_integration_example() {
 	};
 
 	let pipeline = Pipeline::<EthereumMainnet>::default()
-		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(
 			Loop,

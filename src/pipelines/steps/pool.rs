@@ -6,21 +6,23 @@ use {
 		PoolTransaction,
 		TransactionPool,
 	},
-	std::time::Instant,
+	std::{sync::Arc, time::Instant},
 };
 
 /// This step will gather best transactions from the pool and apply them to the
 /// payload under construction. New transactions will be added until either the
 /// payload limits are reached or the pool is exhausted.
 pub struct GatherBestTransactions;
-impl Step for GatherBestTransactions {
+impl<P: Platform> Step<P> for GatherBestTransactions {
 	type Kind = Simulated;
 
-	async fn step<P: Platform>(
-		&mut self,
+	async fn step(
+		self: Arc<Self>,
 		payload: SimulatedPayload<P>,
-		ctx: &StepContext<P>,
+		ctx: StepContext<P>,
 	) -> ControlFlow<P, Simulated> {
+		tokio::task::yield_now().await;
+
 		let mut payload = payload;
 		let mut txs = ctx.pool().best_transactions();
 
@@ -122,13 +124,13 @@ impl Step for GatherBestTransactions {
 }
 
 pub struct AppendNewTransactionFromPool;
-impl Step for AppendNewTransactionFromPool {
+impl<P: Platform> Step<P> for AppendNewTransactionFromPool {
 	type Kind = Static;
 
-	async fn step<P: Platform>(
-		&mut self,
+	async fn step(
+		self: Arc<Self>,
 		_payload: StaticPayload<P>,
-		_ctx: &StepContext<P>,
+		_ctx: StepContext<P>,
 	) -> ControlFlow<P, Static> {
 		todo!("Append new transaction from pool")
 	}

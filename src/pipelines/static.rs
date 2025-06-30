@@ -8,7 +8,7 @@ use {
 /// Static steps do not execute their transactions and do not have access to
 /// previous execution results. They only receive and produce static lists of
 /// transactions.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Static;
 impl Sealed for Static {}
 impl StepKind for Static {

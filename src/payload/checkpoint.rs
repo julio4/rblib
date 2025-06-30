@@ -303,29 +303,11 @@ impl<P: Platform> From<Checkpoint<P>> for Vec<types::Transaction<P>> {
 	/// Converts a checkpoint into a vector of transactions that were applied to
 	/// it.
 	fn from(checkpoint: Checkpoint<P>) -> Self {
-		let mut output = Vec::with_capacity(checkpoint.depth());
-
-		if let Mutation::Transaction { recovered, .. } = checkpoint.mutation() {
-			output.push(recovered.clone_inner());
-		}
-		tracing::info!(">>>---> 1");
-		let mut current = checkpoint;
-		while let Some(prev) = current.prev() {
-			tracing::info!(">>>---> 2");
-			if let Mutation::Transaction { recovered, .. } = prev.mutation() {
-				tracing::info!(">>>---> 3");
-				output.push(recovered.clone_inner());
-			}
-			current = prev;
-			tracing::info!(">>>---> 4");
-		}
-
-		tracing::info!(">---> txs: {output:#?}");
-
-		// reverse to have transactions in the order they were applied
-		output.reverse();
-
-		output
+		checkpoint
+			.history()
+			.transactions()
+			.map(|tx| tx.clone_inner())
+			.collect()
 	}
 }
 

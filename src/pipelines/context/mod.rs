@@ -5,7 +5,6 @@ use {
 		types,
 		BlockContext,
 		Limits,
-		Pipeline,
 		Platform,
 	},
 	pool::TransactionPool,
@@ -18,7 +17,6 @@ mod pool;
 pub struct StepContext<Plat: Platform> {
 	block: BlockContext<Plat>,
 	pool: TransactionPool<Plat>,
-	pipeline: Arc<Pipeline<Plat>>,
 	limits: Limits,
 }
 
@@ -26,7 +24,6 @@ impl<P: Platform> StepContext<P> {
 	pub fn new<Pool, Provider>(
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
-		pipeline: Arc<Pipeline<P>>,
 		limits: Limits,
 	) -> Self
 	where
@@ -38,7 +35,6 @@ impl<P: Platform> StepContext<P> {
 		Self {
 			block,
 			pool,
-			pipeline,
 			limits,
 		}
 	}
@@ -58,11 +54,6 @@ impl<P: Platform> StepContext<P> {
 	/// Parent block header of the block that we are building.
 	pub fn parent(&self) -> &SealedHeader<types::Header<P>> {
 		self.block.parent()
-	}
-
-	/// Access to the pipeline that is immedately enclosing this step.
-	pub fn pipeline(&self) -> &Pipeline<P> {
-		&self.pipeline
 	}
 
 	/// Access to the transaction pool

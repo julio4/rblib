@@ -23,7 +23,7 @@ pub fn impl_into_pipeline_steps(input: TokenStream) -> TokenStream {
 	let mut implementations = Vec::new();
 
 	// Generate implementations for tuple sizes 1 through count
-	for n in 1..=count_value {
+	for n in 2..=count_value {
 		let implementation = generate_tuple_impl(n);
 		implementations.push(implementation);
 	}
@@ -67,7 +67,7 @@ fn generate_tuple_impl(n: usize) -> proc_macro2::TokenStream {
 			});
 
 	quote! {
-			impl<P: Platform, #(#mode_params: StepKind),*, #(#step_params: Step<Kind = #mode_params>),*> IntoPipeline<P, ()> for (#(#step_params),*) {
+			impl<P: Platform, #(#mode_params: StepKind),*, #(#step_params: Step<P, Kind = #mode_params>),*> IntoPipeline<P, ()> for (#(#step_params),*) {
 					fn into_pipeline(self) -> Pipeline<P> {
 							let (#(#step_vars),*) = self;
 							#with_step_calls

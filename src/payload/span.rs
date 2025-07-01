@@ -1,5 +1,6 @@
 use {
 	crate::{payload::checkpoint::Mutation, *},
+	core::ops::{Bound, RangeBounds},
 	reth::primitives::Recovered,
 	thiserror::Error,
 };
@@ -100,6 +101,72 @@ impl<P: Platform> Span<P> {
 	pub fn is_empty(&self) -> bool {
 		assert!(!self.checkpoints.is_empty());
 		false
+	}
+
+	/// Returns the first checkpoint in the span
+	pub fn head(&self) -> &Checkpoint<P> {
+		self
+			.checkpoints
+			.first()
+			.expect("Span should always have at least one checkpoint")
+	}
+
+	/// Returns the last checkpoint in the span.
+	pub fn tail(&self) -> &Checkpoint<P> {
+		self
+			.checkpoints
+			.last()
+			.expect("Span should always have at least one checkpoint")
+	}
+
+	/// Returns a span with the first checkpoint removed.
+	pub fn pop_first(&self) -> Option<Span<P>> {
+		self.take(1..)
+	}
+
+	/// Returns a span with the last checkpoint removed.
+	pub fn pop_last(&self) -> Option<Span<P>> {
+		self.take(..self.checkpoints.len() - 1)
+	}
+
+	/// Returns a sub-span of the current span.
+	pub fn take(&self, range: impl RangeBounds<usize>) -> Option<Span<P>> {
+		let start = range.start_bound();
+		let end = range.end_bound();
+
+		let start = match start {
+			Bound::Included(index) => {
+				if *index >= self.checkpoints.len() {
+					return None; // start is out of bounds
+				}
+				*index
+			}
+			Bound::Excluded(_) => unreachable!(),
+			Bound::Unbounded => 0,
+		};
+
+		let end = match end {
+			Bound::Included(index) => {
+				if *index > self.checkpoints.len() {
+					return None; // end is out of bounds
+				}
+				*index - 1
+			}
+			Bound::Excluded(index) => {
+				if *index >= self.checkpoints.len() {
+					return None; // end is out of bounds
+				}
+				*index
+			}
+			Bound::Unbounded => self.checkpoints.len() - 1,
+		};
+
+		let checkpoints = self.checkpoints[start..=end].to_vec();
+		if checkpoints.is_empty() {
+			return None; // empty span
+		}
+
+		Some(Span { checkpoints })
 	}
 
 	/// Returns an iterator over the checkpoints in the span.

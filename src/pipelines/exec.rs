@@ -228,7 +228,8 @@ impl<
 			ControlFlowKind::Ok => {
 				if is_last_step {
 					match behavior {
-						Once => todo!(), // terminate current sub-pipeline
+						// terminate current sub-pipeline
+						Once => todo!("Ok/last step in Once sub-pipeline"),
 						Loop => {
 							// run first step in the sub-pipeline
 							create_cursor(first_step_path())
@@ -244,7 +245,7 @@ impl<
 					Once => {
 						if is_last_step {
 							// terminate current sub-pipeline
-							todo!();
+							todo!("Continue/last step in Once sub-pipeline");
 						} else {
 							// run next step in pipeline
 							create_cursor(next_step_path())
@@ -256,7 +257,9 @@ impl<
 					}
 				}
 			}
-			ControlFlowKind::Break => todo!(),
+			ControlFlowKind::Break => {
+				todo!("ControlFlowKind::Break not implemented yet")
+			}
 			ControlFlowKind::Fail => unreachable!(
 				"Failures already handled before this point, this is a bug in the \
 				 PipelineExecutor implementation."
@@ -310,7 +313,9 @@ impl<
 					"Step output is not a simulated payload. This is a bug in the \
 					 PipelineExecutor implementation.",
 				);
-				Ok(StepInput::Static(payload.into()))
+				Ok(StepInput::Static(
+					payload.history().transactions().cloned().collect(),
+				))
 			}
 		}
 	}

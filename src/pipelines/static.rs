@@ -1,6 +1,7 @@
 use {
 	super::{sealed::Sealed, step::StepKind},
 	crate::{types, Platform},
+	reth::primitives::Recovered,
 };
 
 /// This type is used to represent a static step in the pipeline.
@@ -17,4 +18,4 @@ impl StepKind for Static {
 
 /// A static payload is just a vector of transactions, no extra data about the
 /// result of the execution are available.
-pub type StaticPayload<P> = Vec<types::Transaction<P>>;
+pub type StaticPayload<P> = Vec<Recovered<types::Transaction<P>>>;

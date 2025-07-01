@@ -12,6 +12,47 @@ use {
 	std::sync::Arc,
 };
 
+/// This trait defines a step in a pipeline.
+///
+/// Users of the SDK should implement this trait on their own types to make them
+/// usable in a pipeline. A step is a unit of work that can be executed
+/// independently and can be composed with other steps in a pipeline.
+///
+/// Each step has a specific kind, defined by the `StepKind` trait, which
+/// determines the context in which the step is executed. The step can be either
+/// static or simulated:
+/// - Static steps are executed in a static context, without access to execution
+///   results or state manipulation.
+/// - Simulated steps are executed in a simulated context, with access to
+///   execution results and state manipulation capabilities.
+///
+/// The `Step` trait is generic over the `Platform` type, which allows it to
+/// be used with different platforms (e.g., Ethereum, Optimism, etc.). Steps
+/// can be generic over the platform they run on or specialized for a specific
+/// platform.
+///
+/// The instance of the step is long-lived and it's lifetime is equal to the
+/// lifetime of the pipeline it is part of. All invocations of the step will
+/// repeatedly call into the `step` async function on the same instance.
+///
+/// There may be multiple concurrent invocations of the same step instance by
+/// the runtime, so the step implementation must handle its interior mutability.
+pub trait Step<P: Platform>: Send + Sync + 'static {
+	/// Static or Simulated.
+	type Kind: StepKind;
+
+	/// Gets called every time this step is executed in the pipeline.
+	///
+	/// As an input it takes the payload that has been built so far and outputs
+	/// a new payload that will be used in the next step of the pipeline, or a
+	/// failure that will terminate the pipeline execution.
+	fn step(
+		self: Arc<Self>,
+		payload: <Self::Kind as StepKind>::Payload<P>,
+		ctx: StepContext<P>,
+	) -> impl Future<Output = ControlFlow<P, Self::Kind>> + Send + Sync;
+}
+
 /// Defines the kind of step of a pipeline.
 ///
 /// There are two kinds of steps:
@@ -24,17 +65,6 @@ use {
 /// two provided implementations are available.
 pub trait StepKind: sealed::Sealed + Debug + Sync + Send + 'static {
 	type Payload<P: Platform>: Send + Sync + 'static;
-}
-
-pub trait Step<P: Platform>: Send + Sync + 'static {
-	type Kind: StepKind;
-
-	/// Gets called every time this step is executed in the pipeline.
-	fn step(
-		self: Arc<Self>,
-		payload: <Self::Kind as StepKind>::Payload<P>,
-		ctx: StepContext<P>,
-	) -> impl Future<Output = ControlFlow<P, Self::Kind>> + Send + Sync;
 }
 
 /// This type is returned from every step in the pipeline and it controls the
@@ -103,7 +133,8 @@ pub(crate) enum KindTag {
 	Simulated,
 }
 
-#[allow(type_alias_bounds)]
+/// Defines a type-erased function that points to the step function inside
+/// a concrete step type.
 type WrappedStepFn<P: Platform> = Box<
 	dyn Fn(
 		Arc<dyn Any + Send + Sync>,
@@ -122,10 +153,10 @@ pub(crate) struct WrappedStep<P: Platform> {
 }
 
 impl<P: Platform> WrappedStep<P> {
-	pub fn new<M: StepKind, S: Step<P, Kind = M>>(step: S) -> Self {
+	pub fn new<K: StepKind, S: Step<P, Kind = K>>(step: S) -> Self {
 		let step: Arc<dyn Any + Send + Sync> = Arc::new(step);
 
-		// This is the only place we have access to the concrete step type
+		// This is the only place where we have access to the concrete step type
 		// information and can leverage that to call into the right step method
 		// implementation.
 		//
@@ -147,7 +178,7 @@ impl<P: Platform> WrappedStep<P> {
 				> {
 					let step = step.downcast::<S>().expect("Invalid step type");
 					let payload = payload
-						.downcast::<M::Payload<P>>()
+						.downcast::<K::Payload<P>>()
 						.expect("Invalid payload type");
 					step
 						.step(*payload, ctx)
@@ -156,12 +187,10 @@ impl<P: Platform> WrappedStep<P> {
 				},
 			) as WrappedStepFn<P>,
 			name: type_name::<S>(),
-			mode: if TypeId::of::<M>() == TypeId::of::<Static>() {
-				KindTag::Static
-			} else if TypeId::of::<M>() == TypeId::of::<Simulated>() {
-				KindTag::Simulated
-			} else {
-				unreachable!("Unsupported StepMode type")
+			mode: match TypeId::of::<K>() {
+				x if x == TypeId::of::<Static>() => KindTag::Static,
+				x if x == TypeId::of::<Simulated>() => KindTag::Simulated,
+				_ => unreachable!("Unsupported StepKind type"),
 			},
 		}
 	}
@@ -169,17 +198,17 @@ impl<P: Platform> WrappedStep<P> {
 	/// This is invoked from places where we know the kind of the step and
 	/// all other concrete types needed to execute the step and consume its
 	/// output.
-	pub async fn execute<M: StepKind>(
+	pub async fn execute<K: StepKind>(
 		&self,
-		payload: M::Payload<P>,
+		payload: K::Payload<P>,
 		ctx: StepContext<P>,
-	) -> ControlFlow<P, M> {
+	) -> ControlFlow<P, K> {
 		let local_step = Arc::clone(&self.instance);
 
 		let payload_box = Box::new(payload) as Box<dyn Any + Send + Sync>;
 		let result = (self.step_fn)(local_step, payload_box, ctx).await;
 		let result = result
-			.downcast::<ControlFlow<P, M>>()
+			.downcast::<ControlFlow<P, K>>()
 			.expect("Invalid result type");
 
 		*result
@@ -198,12 +227,12 @@ impl<P: Platform> WrappedStep<P> {
 
 impl<P: Platform> Debug for WrappedStep<P> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let mode = match self.kind() {
+		let kind = match self.kind() {
 			KindTag::Static => "Static",
 			KindTag::Simulated => "Simulated",
 		};
 
-		write!(f, "Step {{ name: {:?}, mode: {:?} }}", self.name(), mode)
+		write!(f, "Step {{ name: {:?}, kind: {:?} }}", self.name(), kind)
 	}
 }
 

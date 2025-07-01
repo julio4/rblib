@@ -81,3 +81,10 @@ reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", f
   "full",
   "test-utils",
 ] }
+
+
+[lints.rust]
+type_alias_bounds = "allow"
+
+[lints.clippy]
+tabs_in_doc_comments = "allow"

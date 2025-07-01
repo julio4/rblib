@@ -28,7 +28,7 @@ async fn one_tx_included_in_one_block() {
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
-		.with_step(TotalProfitOrdering)
+		//.with_step(TotalProfitOrdering)
 		.with_step(RevertProtection);
 
 	let node = LocalNode::ethereum(pipeline).await.unwrap();

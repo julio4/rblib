@@ -56,6 +56,11 @@ impl<P: Platform> StepContext<P> {
 		self.block.parent()
 	}
 
+	/// Access to the block context of the block that we are building.
+	pub fn block(&self) -> &BlockContext<P> {
+		&self.block
+	}
+
 	/// Access to the transaction pool
 	pub const fn pool(&self) -> &impl traits::PoolBounds<P> {
 		&self.pool

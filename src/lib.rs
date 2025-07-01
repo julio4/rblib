@@ -84,7 +84,6 @@ pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + U
 
 /// Helpers for extracting types from the platform definition.
 pub mod types {
-	#![allow(type_alias_bounds)]
 	use super::Platform;
 
   /// Extracts node's engine API types used when interacting with CL.
@@ -135,8 +134,6 @@ pub mod types {
 
 
 pub mod traits {
-	#![allow(type_alias_bounds)]
-	
 	use {
 		crate::*,
 		reth::{

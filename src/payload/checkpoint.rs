@@ -22,7 +22,6 @@ use {
 	thiserror::Error,
 };
 
-#[allow(type_alias_bounds)]
 pub type EvmFactoryError<P: Platform> =
 	<
 		<
@@ -30,7 +29,6 @@ pub type EvmFactoryError<P: Platform> =
 		>::EvmFactory as EvmFactory
 	>::Error<StateError>;
 
-#[allow(type_alias_bounds)]
 pub type InvalidTransactionError<P: Platform> =
 	<EvmFactoryError<P> as EvmError>::InvalidTransaction;
 
@@ -169,17 +167,24 @@ impl<P: Platform> Checkpoint<P> {
 			_ => None,
 		}
 	}
+
+	/// Returns the transaction that created this checkpoint, if it is a
+	/// transaction checkpoint.
+	pub fn transaction(&self) -> Option<&Recovered<types::Transaction<P>>> {
+		match self.mutation() {
+			Mutation::Transaction { recovered, .. } => Some(recovered),
+			_ => None,
+		}
+	}
 }
 
 /// Public builder API
 impl<P: Platform> Checkpoint<P> {
-	pub fn apply(
+	pub fn apply<S>(
 		&self,
-		transaction: types::Transaction<P>,
+		transaction: impl IntoRecoveredTx<P, S>,
 	) -> Result<Self, Error<P>> {
-		let Ok(recovered) = transaction.try_into_recovered() else {
-			return Err(Error::InvalidSignature);
-		};
+		let recovered = transaction.try_into_recovered()?;
 
 		// Create a new EVM instance with its state rooted at the current checkpoint
 		// state and the environment configured for the block under construction.
@@ -299,15 +304,40 @@ struct CheckpointInner<P: Platform> {
 	mutation: Mutation<P>,
 }
 
+/// Converts a checkpoint into a vector of transactions that were applied to
+/// it.
 impl<P: Platform> From<Checkpoint<P>> for Vec<types::Transaction<P>> {
-	/// Converts a checkpoint into a vector of transactions that were applied to
-	/// it.
 	fn from(checkpoint: Checkpoint<P>) -> Self {
 		checkpoint
 			.history()
 			.transactions()
 			.map(|tx| tx.clone_inner())
 			.collect()
+	}
+}
+
+/// Convinience trait that allows various variants of transactions to be used
+/// as a parameter to the `Checkpoint::apply` method.
+pub trait IntoRecoveredTx<P: Platform, Marker = ()>: Send + Sync {
+	fn try_into_recovered(
+		self,
+	) -> Result<Recovered<types::Transaction<P>>, Error<P>>;
+}
+
+impl<P: Platform> IntoRecoveredTx<P, ()> for types::Transaction<P> {
+	fn try_into_recovered(
+		self,
+	) -> Result<Recovered<types::Transaction<P>>, Error<P>> {
+		SignedTransaction::try_into_recovered(self)
+			.map_err(|_| Error::InvalidSignature)
+	}
+}
+
+impl<P: Platform> IntoRecoveredTx<P, u8> for Recovered<types::Transaction<P>> {
+	fn try_into_recovered(
+		self,
+	) -> Result<Recovered<types::Transaction<P>>, Error<P>> {
+		Ok(self)
 	}
 }
 
@@ -382,9 +412,9 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 impl<P: Platform> Debug for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Checkpoint")
-			.field("depth", &self.depth())
-			.field("block", &self.block())
-			.field("mutation", &self.mutation())
+			.field("depth", &self.depth() as &dyn Debug)
+			.field("block", &self.block() as &dyn Debug)
+			.field("mutation", &self.mutation() as &dyn Debug)
 			.finish()
 	}
 }
@@ -416,7 +446,6 @@ impl<P: Platform> Display for Checkpoint<P> {
 	}
 }
 
-#[allow(type_alias_bounds)]
 type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<
 	<
 		<
@@ -425,7 +454,6 @@ type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<
 	>::HaltReason
 >;
 
-#[allow(type_alias_bounds)]
 type ExecutionResult<P: Platform> = reth::revm::context::result::ExecutionResult
 	<
 		<

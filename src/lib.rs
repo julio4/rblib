@@ -207,3 +207,8 @@ pub mod traits {
 	{
 	}
 }
+
+
+mod sealed {
+	pub trait Sealed {}
+}

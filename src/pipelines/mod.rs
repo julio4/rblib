@@ -9,8 +9,10 @@ use {
 	},
 	alloy::hex,
 	core::{any::type_name_of_val, fmt::Display},
+	derive_more::{Deref, DerefMut, From, Into},
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::builder::components::PayloadServiceBuilder,
+	smallvec::{smallvec, SmallVec},
 	std::sync::{Arc, OnceLock},
 };
 
@@ -167,65 +169,6 @@ impl<P: Platform> Pipeline<P> {
 	pub(crate) fn unique_id(&self) -> usize {
 		*self.unique_id.get_or_init(|| self as *const Self as usize)
 	}
-
-	/// Returns the path to the first step in the pipeline.
-	/// Returns `None` if the pipeline is empty.
-	pub(crate) fn first_step_path(&self) -> Option<Vec<usize>> {
-		if self.is_empty() {
-			return None;
-		}
-
-		let mut path = vec![0];
-		if let Some(first_step) = self.steps.first() {
-			path.extend(first_step.first_step());
-		}
-		Some(path)
-	}
-
-	/// Returns a reference to a wrapped step by its index path.
-	pub(crate) fn step_by_path(
-		&self,
-		path: &[usize],
-	) -> Option<&Arc<WrappedStep<P>>> {
-		if path.is_empty() {
-			return None;
-		}
-
-		let index = path[0];
-		let item = self.steps.get(index)?;
-		item.step_by_path(&path[1..])
-	}
-
-	/// Returns a reference to the enclosing pipeline for a step by its index
-	/// path.
-	pub(crate) fn pipeline_for_step<'a>(
-		&'a self,
-		path: &[usize],
-	) -> Option<(&'a Pipeline<P>, Behavior)> {
-		if path.is_empty() {
-			return None;
-		}
-
-		fn visit<'a, P: Platform>(
-			path: &[usize],
-			pipeline: &'a Pipeline<P>,
-			enclosing_behavior: Behavior,
-		) -> Option<(&'a Pipeline<P>, Behavior)> {
-			match pipeline.steps.get(path[0])? {
-				StepOrPipeline::Step(_) => Some((pipeline, enclosing_behavior)),
-				StepOrPipeline::Pipeline(behavior, pipeline) => {
-					if path.len() == 1 {
-						Some((pipeline, *behavior))
-					} else {
-						pipeline.pipeline_for_step(&path[1..])
-					}
-				}
-			}
-		}
-
-		// top-level pipeline is always `Once` behavior
-		visit(path, self, Once)
-	}
 }
 
 pub(crate) enum StepOrPipeline<P: Platform> {
@@ -242,43 +185,6 @@ impl<P: Platform> core::fmt::Debug for StepOrPipeline<P> {
 				.field(behavior as &dyn core::fmt::Debug)
 				.field(pipeline as &dyn core::fmt::Debug)
 				.finish(),
-		}
-	}
-}
-
-impl<P: Platform> StepOrPipeline<P> {
-	/// Returns a reference to a wrapped step by its indecies path.
-	/// Each level of the path corresponds to a step in a nested pipeline,
-	/// it is expected that level-1 will always be a nested pipeline.
-	pub fn step_by_path(&self, path: &[usize]) -> Option<&Arc<WrappedStep<P>>> {
-		if path.is_empty() {
-			return match self {
-				StepOrPipeline::Step(step) => Some(step),
-				StepOrPipeline::Pipeline(_, _) => None,
-			};
-		}
-
-		match self {
-			StepOrPipeline::Step(_) => None,
-			StepOrPipeline::Pipeline(_, pipeline) => {
-				let index = path[0];
-				let item = pipeline.steps.get(index)?;
-				item.step_by_path(&path[1..])
-			}
-		}
-	}
-
-	/// Returns the initial path of the first step in this step or pipeline.
-	pub fn first_step(&self) -> Vec<usize> {
-		match self {
-			StepOrPipeline::Step(_) => vec![],
-			StepOrPipeline::Pipeline(_, pipeline) => {
-				let mut path = vec![0];
-				if let Some(first_step) = pipeline.steps.first() {
-					path.extend(first_step.first_step());
-				}
-				path
-			}
 		}
 	}
 }
@@ -357,6 +263,146 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 	}
 }
 
+#[derive(Deref, DerefMut, Default, PartialEq, Eq, Clone, Debug, From, Into)]
+pub(crate) struct StepPath(SmallVec<[usize; 8]>);
+
+impl StepPath {
+	pub fn new(path: impl Into<SmallVec<[usize; 8]>>) -> Self {
+		let path: SmallVec<[usize; 8]> = path.into();
+		assert!(!path.is_empty(), "StepPath cannot be empty");
+		Self(path)
+	}
+
+	pub fn zero() -> Self {
+		Self(smallvec![0])
+	}
+
+	/// Returns the path to the first step in the pipeline.
+	///
+	/// This function will traverse the pipeline and return the innermost
+	/// step that is the first in the execution order.
+	///
+	/// Returns `None` if the pipeline is empty or is composed of only empty
+	/// pipelines.
+	pub fn first_step<P: Platform>(pipeline: &Pipeline<P>) -> Option<Self> {
+		if pipeline.is_empty() {
+			return None;
+		}
+
+		match pipeline.steps.first()? {
+			StepOrPipeline::Step(_) => Some(StepPath::zero()),
+			StepOrPipeline::Pipeline(_, pipeline) => {
+				Some(StepPath::zero().append(StepPath::first_step(pipeline)?))
+			}
+		}
+	}
+
+	pub fn root(&self) -> Option<usize> {
+		self.0.first().copied()
+	}
+
+	pub fn pop_front(self) -> Option<StepPath> {
+		if self.0.len() < 2 {
+			// If there's only one element, popping it would result in an empty path
+			// which is not allowed.
+			None
+		} else {
+			Some(StepPath(self.0[1..].into()))
+		}
+	}
+
+	pub fn pop_back(self) -> Option<StepPath> {
+		if self.0.len() < 2 {
+			None
+		} else {
+			Some(StepPath(self.0[..self.0.len() - 1].into()))
+		}
+	}
+
+	pub fn append(self, other: Self) -> Self {
+		let mut new_path = self.0;
+		new_path.extend(other.0);
+		Self(new_path)
+	}
+
+	pub fn next_step(self) -> Self {
+		let mut new_path = self.0;
+		if let Some(last) = new_path.last_mut() {
+			*last += 1;
+		}
+		Self(new_path)
+	}
+
+	pub fn restart_loop(self) -> Self {
+		let mut new_path = self.0;
+		if let Some(last) = new_path.last_mut() {
+			*last = 0;
+		}
+		Self(new_path)
+	}
+
+	pub fn locate<'a, P: Platform>(
+		&self,
+		pipeline: &'a Pipeline<P>,
+	) -> Option<&'a StepOrPipeline<P>> {
+		if pipeline.is_empty() {
+			return None;
+		}
+
+		let mut path = self.clone();
+		let mut item = pipeline.steps.get(path.root()?)?;
+
+		while let Some(descendant) = path.pop_front() {
+			item = match item {
+				StepOrPipeline::Step(_) => return None,
+				StepOrPipeline::Pipeline(_, pipeline) => {
+					pipeline.steps.get(descendant.root()?)?
+				}
+			};
+			path = descendant;
+		}
+
+		Some(item)
+	}
+
+	pub fn find_step<'a, P: Platform>(
+		&self,
+		pipeline: &'a Pipeline<P>,
+	) -> Option<&'a Arc<WrappedStep<P>>> {
+		self.locate(pipeline).and_then(|item| match item {
+			StepOrPipeline::Step(step) => Some(step),
+			StepOrPipeline::Pipeline(_, _) => None,
+		})
+	}
+
+	pub fn find_pipeline<'a, P: Platform>(
+		&self,
+		pipeline: &'a Pipeline<P>,
+	) -> Option<(&'a Pipeline<P>, Behavior)> {
+		self.locate(pipeline).and_then(|item| match item {
+			StepOrPipeline::Step(_) => None,
+			StepOrPipeline::Pipeline(behavior, pipeline) => {
+				Some((pipeline, *behavior))
+			}
+		})
+	}
+
+	pub fn is_step<P: Platform>(&self, pipeline: &Pipeline<P>) -> bool {
+		self.find_step(pipeline).is_some()
+	}
+
+	pub fn is_pipeline<P: Platform>(&self, pipeline: &Pipeline<P>) -> bool {
+		self.find_pipeline(pipeline).is_some()
+	}
+}
+
+impl<const N: usize> From<[usize; N]> for StepPath {
+	fn from(array: [usize; N]) -> Self {
+		assert!(!array.is_empty(), "StepPath cannot be empty");
+		Self(array.into_iter().collect())
+	}
+}
+
 mod sealed {
 	pub trait Sealed {}
 }
@@ -374,37 +420,37 @@ mod test {
 			.with_step(TotalProfitOrdering)
 			.with_step(RevertProtection);
 
-		assert!(pipeline.step_by_path(&[]).is_none());
-		assert_eq!(pipeline.first_step_path(), Some(vec![0]));
+		assert!(StepPath::from([90]).find_step(&pipeline).is_none());
+		assert_eq!(StepPath::first_step(&pipeline), Some(StepPath::zero()));
 
-		assert!(pipeline.step_by_path(&[0]).is_some());
-		assert!(pipeline
-			.step_by_path(&[0])
+		assert!(StepPath::from([0]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([0])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("GatherBestTransactions"));
-		assert!(pipeline.step_by_path(&[1]).is_some());
-		assert!(pipeline
-			.step_by_path(&[1])
+		assert!(StepPath::from([1]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([1])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("PriorityFeeOrdering"));
-		assert!(pipeline.step_by_path(&[2]).is_some());
-		assert!(pipeline
-			.step_by_path(&[2])
+		assert!(StepPath::from([2]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([2])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
-			.ends_with("TotalProfitOrdering"),);
+			.ends_with("TotalProfitOrdering"));
 
-		assert!(pipeline.step_by_path(&[3]).is_some());
-		assert!(pipeline
-			.step_by_path(&[3])
+		assert!(StepPath::from([3]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([3])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("RevertProtection"));
 
-		assert!(pipeline.step_by_path(&[4]).is_none());
-		assert!(pipeline.step_by_path(&[1, 2]).is_none());
+		assert!(StepPath::from([4]).find_step(&pipeline).is_none());
+		assert!(StepPath::from([1, 2]).find_step(&pipeline).is_none());
 	}
 
 	#[test]
@@ -435,46 +481,45 @@ mod test {
 			)
 			.with_step(RevertProtection);
 
-		assert!(pipeline.step_by_path(&[]).is_none());
+		assert!(StepPath::from([99]).find_step(&pipeline).is_none());
+		assert_eq!(StepPath::first_step(&pipeline), Some(StepPath::zero()));
+		assert!(StepPath::from([0]).find_step(&pipeline).is_some());
 
-		assert_eq!(pipeline.first_step_path(), Some(vec![0]));
-		assert!(pipeline.step_by_path(&[0]).is_some());
-
-		assert!(pipeline
-			.step_by_path(&[0])
+		assert!(StepPath::from([0])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("TestStep"));
 
-		assert!(pipeline.step_by_path(&[1]).is_none());
-		assert!(pipeline.step_by_path(&[1, 0]).is_some());
-		assert!(pipeline.step_by_path(&[1, 0, 0]).is_none());
-		assert!(pipeline
-			.step_by_path(&[1, 0])
+		assert!(StepPath::from([1]).find_step(&pipeline).is_none());
+		assert!(StepPath::from([1, 0]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([1, 0, 0]).find_step(&pipeline).is_none());
+		assert!(StepPath::from([1, 0])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("GatherBestTransactions"));
-		assert!(pipeline.step_by_path(&[1, 1]).is_some());
-		assert!(pipeline
-			.step_by_path(&[1, 1])
+		assert!(StepPath::from([1, 1]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([1, 1])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("PriorityFeeOrdering"));
-		assert!(pipeline.step_by_path(&[1, 2]).is_some());
-		assert!(pipeline
-			.step_by_path(&[1, 2])
+		assert!(StepPath::from([1, 2]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([1, 2])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("TotalProfitOrdering"));
-		assert!(pipeline.step_by_path(&[1, 3]).is_none());
-		assert!(pipeline.step_by_path(&[2]).is_some());
-		assert!(pipeline
-			.step_by_path(&[2])
+		assert!(StepPath::from([1, 3]).find_step(&pipeline).is_none());
+		assert!(StepPath::from([2]).find_step(&pipeline).is_some());
+		assert!(StepPath::from([2])
+			.find_step(&pipeline)
 			.unwrap()
 			.name()
 			.ends_with("RevertProtection"));
-		assert!(pipeline.step_by_path(&[3]).is_none());
-		assert!(pipeline.step_by_path(&[1, 4]).is_none());
-		assert!(pipeline.step_by_path(&[1, 0, 1]).is_none());
+		assert!(StepPath::from([3]).find_step(&pipeline).is_none());
+		assert!(StepPath::from([1, 4]).find_step(&pipeline).is_none());
+		assert!(StepPath::from([1, 0, 1]).find_step(&pipeline).is_none());
 	}
 }

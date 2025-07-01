@@ -55,9 +55,9 @@ impl<
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		let cursor = match pipeline.first_step_path() {
+		let cursor = match StepPath::first_step(&pipeline) {
 			Some(path) => {
-				let step = pipeline.step_by_path(path.as_slice()).expect(
+				let step = path.find_step(&pipeline).expect(
 					"Step path is unreachable. This is a bug in the pipeline executor \
 					 implementation.",
 				);
@@ -118,13 +118,13 @@ impl<
 	/// cursor and polled whenever the executor is polled.
 	fn execute_step(
 		&self,
-		path: &[usize],
+		path: StepPath,
 		input: StepInput<P>,
 	) -> Pin<Box<dyn Future<Output = StepOutput<P>> + Send>> {
 		let block = self.context.block.clone();
 		let service = Arc::clone(&self.context.service);
 		let pipeline = Arc::clone(&self.context.pipeline);
-		let step = Arc::clone(pipeline.step_by_path(path).expect(
+		let step = Arc::clone(path.find_step(&pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		));
@@ -169,11 +169,7 @@ impl<
 	///
 	/// This method also handles the transition between static and simulated
 	/// steps.
-	fn advance_cursor(
-		&self,
-		current_step_path: &[usize],
-		output: StepOutput<P>,
-	) -> Cursor<P> {
+	fn advance_cursor(&self, path: StepPath, output: StepOutput<P>) -> Cursor<P> {
 		// if the step output is an error, terminate the pipeline execution
 		// immediately.
 		let output = match output.try_into_fail() {
@@ -181,42 +177,32 @@ impl<
 			Err(output) => output,
 		};
 
-		// top-level pipeline
-		let root = &self.context.pipeline;
-
 		// get the enclosing pipeline that contains the current step.
-		let (pipeline, behavior) =
-			root.pipeline_for_step(current_step_path).expect(
+		let (pipeline, behavior) = if path.len() == 1 {
+			// if the path is a single step, we are at the root of the pipeline
+			// and we can use the pipeline and its behavior directly.
+			(self.context.pipeline.as_ref(), Once)
+		} else {
+			// if the path is nested, we need to find the enclosing pipeline and
+			// its behavior.
+			path.find_pipeline(&self.context.pipeline).expect(
 				"Step path is unreachable. This is a bug in the pipeline executor \
 				 implementation.",
-			);
+			)
+		};
 
 		// the index of the current step in its enclosing pipeline.
-		let step_index = *current_step_path.last().expect(
+		let step_index = *path.last().expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		);
 
 		let is_last_step = step_index == pipeline.steps().len() - 1;
 
-		let next_step_path = || {
-			let step_index_position = current_step_path.len() - 1;
-			let mut next_path = current_step_path.to_vec();
-			next_path[step_index_position] += 1;
-			next_path
-		};
-
-		let first_step_path = || {
-			let step_index_position = current_step_path.len() - 1;
-			let mut next_path = current_step_path.to_vec();
-			next_path[step_index_position] = 0;
-			next_path
-		};
-
 		let flow = output.kind();
 
-		let create_cursor = |next_path: Vec<usize>| match self
-			.prepare_step_input(&next_path, output)
+		let create_cursor = |next_path: StepPath| match self
+			.prepare_step_input(next_path.clone(), output)
 		{
 			Ok(input) => Cursor::BeforeStep(next_path, input),
 			Err(error) => Cursor::Completed(Err(ClonablePayloadBuilderError(
@@ -232,12 +218,12 @@ impl<
 						Once => todo!("Ok/last step in Once sub-pipeline"),
 						Loop => {
 							// run first step in the sub-pipeline
-							create_cursor(first_step_path())
+							create_cursor(path.restart_loop())
 						}
 					}
 				} else {
 					// run next step in the sub-pipeline
-					create_cursor(next_step_path())
+					create_cursor(path.next_step())
 				}
 			}
 			ControlFlowKind::Continue => {
@@ -248,12 +234,12 @@ impl<
 							todo!("Continue/last step in Once sub-pipeline");
 						} else {
 							// run next step in pipeline
-							create_cursor(next_step_path())
+							create_cursor(path.next_step())
 						}
 					}
 					Loop => {
 						// run first step in the sub-pipeline
-						create_cursor(first_step_path())
+						create_cursor(path.restart_loop())
 					}
 				}
 			}
@@ -273,10 +259,10 @@ impl<
 	/// todo: optimize this and apply caching
 	fn prepare_step_input(
 		&self,
-		next_path: &[usize],
+		next_path: StepPath,
 		previous: StepOutput<P>,
 	) -> Result<StepInput<P>, CheckpointError<P>> {
-		let step = self.context.pipeline.step_by_path(next_path).expect(
+		let step = next_path.find_step(&self.context.pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		);
@@ -350,7 +336,7 @@ where
 				unreachable!();
 			};
 
-			let running_future = executor.execute_step(&path, input);
+			let running_future = executor.execute_step(path.clone(), input);
 			executor.cursor = Cursor::InProgress(path, running_future);
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
@@ -361,7 +347,7 @@ where
 			// to see if it has completed.
 			if let Poll::Ready(output) = pinned_future.as_mut().poll_unpin(cx) {
 				// step has completed, we can advance the cursor
-				executor.cursor = executor.advance_cursor(path, output);
+				executor.cursor = executor.advance_cursor(path.clone(), output);
 				cx.waker().wake_by_ref(); // tell the async runtime to poll again
 			}
 		}
@@ -392,7 +378,7 @@ enum Cursor<P: Platform> {
 	/// in the next iteration. It's a vector because the pipeline can have
 	/// nested pipelines, each nesting level will add its own index to the
 	/// vector.
-	BeforeStep(Vec<usize>, StepInput<P>),
+	BeforeStep(StepPath, StepInput<P>),
 
 	/// The pipeline finished executing all steps or encountered an error.
 	/// This state resolved the executor future with the result of the
@@ -409,7 +395,7 @@ enum Cursor<P: Platform> {
 	/// Here we store the step path that is currently being executed
 	/// and the pinned future that is executing the step.
 	InProgress(
-		Vec<usize>,
+		StepPath,
 		Pin<Box<dyn Future<Output = StepOutput<P>> + Send>>,
 	),
 

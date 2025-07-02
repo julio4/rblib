@@ -23,7 +23,7 @@ async fn empty_pipeline_builds_empty_payload() {
 }
 
 #[tokio::test]
-async fn one_tx_included_in_one_block() {
+async fn transfers_included_reverts_excluded() {
 	let pipeline = Pipeline::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
@@ -74,6 +74,9 @@ async fn one_tx_included_in_one_block() {
 		!block.includes(&reverts),
 		"Block should not include any reverts"
 	);
+
+	// non-reverting transactions + builder epilogue tx
+	assert_eq!(block.transactions.len(), transfers.len() + 1);
 }
 
 #[tokio::test]

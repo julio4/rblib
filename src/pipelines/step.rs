@@ -99,14 +99,6 @@ impl<P: Platform, S: StepKind, E: core::error::Error + Send + Sync + 'static>
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ControlFlowKind {
-	Ok,
-	Continue,
-	Break,
-	Fail,
-}
-
 impl<P: Platform, S: StepKind> ControlFlow<P, S> {
 	pub fn try_into_payload(self) -> Result<S::Payload<P>, Self> {
 		match self {
@@ -117,13 +109,20 @@ impl<P: Platform, S: StepKind> ControlFlow<P, S> {
 		}
 	}
 
-	pub const fn kind(&self) -> ControlFlowKind {
-		match self {
-			ControlFlow::Ok(_) => ControlFlowKind::Ok,
-			ControlFlow::Continue(_) => ControlFlowKind::Continue,
-			ControlFlow::Break(_) => ControlFlowKind::Break,
-			ControlFlow::Fail(_) => ControlFlowKind::Fail,
-		}
+	pub const fn is_break(&self) -> bool {
+		matches!(self, ControlFlow::Break(_))
+	}
+
+	pub const fn is_fail(&self) -> bool {
+		matches!(self, ControlFlow::Fail(_))
+	}
+
+	pub const fn is_continue(&self) -> bool {
+		matches!(self, ControlFlow::Continue(_))
+	}
+
+	pub const fn is_ok(&self) -> bool {
+		matches!(self, ControlFlow::Ok(_))
 	}
 }
 

@@ -12,10 +12,7 @@
 
 use {
 	crate::{
-		pipelines::{
-			service::ServiceContext,
-			step::{ControlFlowKind, KindTag},
-		},
+		pipelines::{service::ServiceContext, step::KindTag},
 		*,
 	},
 	core::{
@@ -24,16 +21,22 @@ use {
 		task::{Context, Poll},
 	},
 	futures::FutureExt,
+	navi::StepPath,
+	reth::primitives::Recovered,
 	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
 	tracing::debug,
 };
 
+mod navi;
+
 /// This type is responsible for executing a single run of a pipeline.
 ///
 /// It's execution is driven by the future poll that it implements. Each call to
-/// `poll` will run one step of the pipeline at a time, until the pipeline
-/// execution is complete or an error occurs.
+/// `poll` will run one step of the pipeline at a time, or parts of a step if
+/// the step is async and needs many polls before it completes. The executor
+/// future will resolve when the whole pipeline has been executed, or when an
+/// error occurs.
 pub(super) struct PipelineExecutor<P, Provider, Pool>
 where
 	P: Platform,
@@ -55,9 +58,9 @@ impl<
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		let cursor = match StepPath::first_step(&pipeline) {
+		let cursor = match StepPath::first_executable_step(&pipeline) {
 			Some(path) => {
-				let step = path.find_step(&pipeline).expect(
+				let step = path.locate_step(&pipeline).expect(
 					"Step path is unreachable. This is a bug in the pipeline executor \
 					 implementation.",
 				);
@@ -124,7 +127,7 @@ impl<
 		let block = self.context.block.clone();
 		let service = Arc::clone(&self.context.service);
 		let pipeline = Arc::clone(&self.context.pipeline);
-		let step = Arc::clone(path.find_step(&pipeline).expect(
+		let step = Arc::clone(path.locate_step(&pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		));
@@ -177,79 +180,44 @@ impl<
 			Err(output) => output,
 		};
 
-		// get the enclosing pipeline that contains the current step.
-		let (pipeline, behavior) = if path.len() == 1 {
-			// if the path is a single step, we are at the root of the pipeline
-			// and we can use the pipeline and its behavior directly.
-			(self.context.pipeline.as_ref(), Once)
-		} else {
-			// if the path is nested, we need to find the enclosing pipeline and
-			// its behavior.
-			path.find_pipeline(&self.context.pipeline).expect(
-				"Step path is unreachable. This is a bug in the pipeline executor \
-				 implementation.",
-			)
-		};
-
-		// the index of the current step in its enclosing pipeline.
-		let step_index = *path.last().expect(
-			"Step path is unreachable. This is a bug in the pipeline executor \
+		// find out the next step to execute based on the output of the
+		// current step, the current step path and the pipeline structure.
+		let next_path = match &output {
+			StepOutput::Static(c) => path.next_step(&self.context.pipeline, c),
+			StepOutput::Simulated(c) => path.next_step(&self.context.pipeline, c),
+		}
+		.expect(
+			"Invalid step path. This is a bug in the pipeline executor \
 			 implementation.",
 		);
 
-		let is_last_step = step_index == pipeline.steps().len() - 1;
-
-		let flow = output.kind();
-
-		let create_cursor = |next_path: StepPath| match self
-			.prepare_step_input(next_path.clone(), output)
-		{
-			Ok(input) => Cursor::BeforeStep(next_path, input),
-			Err(error) => Cursor::Completed(Err(ClonablePayloadBuilderError(
-				PayloadBuilderError::other(WrappedErrorMessage(error.to_string())),
-			))),
-		};
-
-		match flow {
-			ControlFlowKind::Ok => {
-				if is_last_step {
-					match behavior {
-						// terminate current sub-pipeline
-						Once => todo!("Ok/last step in Once sub-pipeline"),
-						Loop => {
-							// run first step in the sub-pipeline
-							create_cursor(path.restart_loop())
-						}
-					}
-				} else {
-					// run next step in the sub-pipeline
-					create_cursor(path.next_step())
+		match next_path {
+			// There is a step to be executed next, create a cursor that will start
+			// running the next step with the output of the current step as input.
+			navi::NextStep::Path(step_path) => {
+				match self.prepare_step_input(step_path.clone(), output) {
+					Ok(input) => Cursor::BeforeStep(step_path, input),
+					Err(error) => Cursor::Completed(Err(ClonablePayloadBuilderError(
+						PayloadBuilderError::other(WrappedErrorMessage(error.to_string())),
+					))),
 				}
 			}
-			ControlFlowKind::Continue => {
-				match behavior {
-					Once => {
-						if is_last_step {
-							// terminate current sub-pipeline
-							todo!("Continue/last step in Once sub-pipeline");
-						} else {
-							// run next step in pipeline
-							create_cursor(path.next_step())
-						}
-					}
-					Loop => {
-						// run first step in the sub-pipeline
-						create_cursor(path.restart_loop())
-					}
-				}
+
+			// Pipeline execution is complete, we can build the payload. Create a
+			// cursor that will resolve the executor future with the final result
+			// of this pipeline run.
+			navi::NextStep::Completed => {
+				Cursor::Completed(output.try_into().and_then(|transactions| {
+					P::construct_payload(
+						&self.context.block,
+						transactions,
+						self.context.service.pool(),
+						self.context.service.provider(),
+					)
+					.map_err(ClonablePayloadBuilderError)
+				}))
 			}
-			ControlFlowKind::Break => {
-				todo!("ControlFlowKind::Break not implemented yet")
-			}
-			ControlFlowKind::Fail => unreachable!(
-				"Failures already handled before this point, this is a bug in the \
-				 PipelineExecutor implementation."
-			),
+			navi::NextStep::Failure => unreachable!("failures are already handled"),
 		}
 	}
 
@@ -262,7 +230,7 @@ impl<
 		next_path: StepPath,
 		previous: StepOutput<P>,
 	) -> Result<StepInput<P>, CheckpointError<P>> {
-		let step = next_path.find_step(&self.context.pipeline).expect(
+		let step = next_path.locate_step(&self.context.pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		);
@@ -417,19 +385,35 @@ enum StepOutput<P: Platform> {
 	Simulated(ControlFlow<P, Simulated>),
 }
 
+impl<P: Platform> TryFrom<StepOutput<P>>
+	for Vec<Recovered<types::Transaction<P>>>
+{
+	type Error = ClonablePayloadBuilderError;
+
+	fn try_from(
+		output: StepOutput<P>,
+	) -> Result<Vec<Recovered<types::Transaction<P>>>, Self::Error> {
+		match output {
+			StepOutput::Static(ControlFlow::Ok(payload))
+			| StepOutput::Static(ControlFlow::Break(payload))
+			| StepOutput::Static(ControlFlow::Continue(payload)) => Ok(payload),
+			StepOutput::Simulated(ControlFlow::Ok(payload))
+			| StepOutput::Simulated(ControlFlow::Break(payload))
+			| StepOutput::Simulated(ControlFlow::Continue(payload)) => {
+				Ok(payload.history().transactions().cloned().collect())
+			}
+			StepOutput::Simulated(ControlFlow::Fail(err))
+			| StepOutput::Static(ControlFlow::Fail(err)) => Err(err.into()),
+		}
+	}
+}
+
 impl<P: Platform> StepOutput<P> {
 	pub fn try_into_fail(self) -> Result<PayloadBuilderError, Self> {
 		match self {
 			StepOutput::Static(ControlFlow::Fail(error))
 			| StepOutput::Simulated(ControlFlow::Fail(error)) => Ok(error),
 			_ => Err(self),
-		}
-	}
-
-	pub const fn kind(&self) -> ControlFlowKind {
-		match self {
-			StepOutput::Static(flow) => flow.kind(),
-			StepOutput::Simulated(flow) => flow.kind(),
 		}
 	}
 }

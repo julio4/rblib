@@ -58,7 +58,7 @@ impl<
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		let cursor = match StepPath::first_executable_step(&pipeline) {
+		let cursor = match StepPath::first_step(&pipeline) {
 			Some(path) => {
 				let step = path.locate_step(&pipeline).expect(
 					"Step path is unreachable. This is a bug in the pipeline executor \
@@ -173,18 +173,11 @@ impl<
 	/// This method also handles the transition between static and simulated
 	/// steps.
 	fn advance_cursor(&self, path: StepPath, output: StepOutput<P>) -> Cursor<P> {
-		// if the step output is an error, terminate the pipeline execution
-		// immediately.
-		let output = match output.try_into_fail() {
-			Ok(error) => return Cursor::Completed(Err(error.into())),
-			Err(output) => output,
-		};
-
 		// find out the next step to execute based on the output of the
 		// current step, the current step path and the pipeline structure.
 		let next_path = match &output {
-			StepOutput::Static(c) => path.next_step(&self.context.pipeline, c),
-			StepOutput::Simulated(c) => path.next_step(&self.context.pipeline, c),
+			StepOutput::Static(c) => path.advance(&self.context.pipeline, c),
+			StepOutput::Simulated(c) => path.advance(&self.context.pipeline, c),
 		}
 		.expect(
 			"Invalid step path. This is a bug in the pipeline executor \
@@ -217,7 +210,18 @@ impl<
 					.map_err(ClonablePayloadBuilderError)
 				}))
 			}
-			navi::NextStep::Failure => unreachable!("failures are already handled"),
+
+			// The pipeline execution has failed, we stop the execution and report a
+			// failure in the next future poll.
+			navi::NextStep::Failure => Cursor::Completed(Err(
+				output
+					.try_into_fail()
+					.expect(
+						"Mismatched step output with actual output. This is a bug in the \
+						 PipelineExecutor implementation.",
+					)
+					.into(),
+			)),
 		}
 	}
 

@@ -14,6 +14,42 @@ const FUNDED_PRIVATE_KEYS: &[&str] =
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
 
+#[macro_export]
+macro_rules! make_step {
+	($name:ident, $kind:ty) => {
+		#[derive(Debug, Clone)]
+		pub struct $name;
+		impl<P: Platform> Step<P> for $name {
+			type Kind = $kind;
+
+			async fn step(
+				self: Arc<Self>,
+				_: <Self::Kind as $crate::pipelines::step::StepKind>::Payload<P>,
+				_: StepContext<P>,
+			) -> ControlFlow<P, Self::Kind> {
+				todo!()
+			}
+		}
+	};
+
+	($name:ident, $kind:ty, $state:ident) => {
+		#[allow(dead_code)]
+		#[derive(Debug, Clone)]
+		pub struct $name($state);
+		impl<P: Platform> Step<P> for $name {
+			type Kind = $kind;
+
+			async fn step(
+				self: Arc<Self>,
+				_: <Self::Kind as $crate::pipelines::step::StepKind>::Payload<P>,
+				_: StepContext<P>,
+			) -> ControlFlow<P, Self::Kind> {
+				todo!()
+			}
+		}
+	};
+}
+
 /// This gets invoked before any tests, when the cargo test framework loads the
 /// test library.
 #[ctor::ctor]

@@ -59,7 +59,7 @@ fn nested_one_concise_static() {
 fn nested_one_concise_simulated() {
 	let top_level = Pipeline::<EthereumMainnet>::default()
 		.with_epilogue(BuilderEpilogue)
-		.with_pipeline(Loop, (RevertProtection,));
+		.with_pipeline(Loop, (AppendNewTransactionFromPool,));
 
 	println!("{top_level:#?}");
 }
@@ -84,74 +84,23 @@ fn nested_many_concise() {
 
 #[test]
 fn flashblocks_example() {
-	struct WebSocketBeginBlock;
-	impl<P: Platform> Step<P> for WebSocketBeginBlock {
-		type Kind = Simulated;
-
-		async fn step(
-			self: Arc<Self>,
-			_payload: SimulatedPayload<P>,
-			_ctx: StepContext<P>,
-		) -> ControlFlow<P, Simulated> {
-			todo!()
-		}
-	}
-
-	struct WebSocketEndBlock;
-	impl<P: Platform> Step<P> for WebSocketEndBlock {
-		type Kind = Simulated;
-
-		async fn step(
-			self: Arc<Self>,
-			_payload: SimulatedPayload<P>,
-			_ctx: StepContext<P>,
-		) -> ControlFlow<P, Simulated> {
-			todo!()
-		}
-	}
-
-	struct FlashblockEpilogue;
-	impl<P: Platform> Step<P> for FlashblockEpilogue {
-		type Kind = Simulated;
-
-		async fn step(
-			self: Arc<Self>,
-			_payload: SimulatedPayload<P>,
-			_ctx: StepContext<P>,
-		) -> ControlFlow<P, Simulated> {
-			todo!()
-		}
-	}
-
-	struct PublishToWebSocket(FlashblocksConfig);
-	impl<P: Platform> Step<P> for PublishToWebSocket {
-		type Kind = Simulated;
-
-		async fn step(
-			self: Arc<Self>,
-			_payload: SimulatedPayload<P>,
-			_ctx: StepContext<P>,
-		) -> ControlFlow<P, Simulated> {
-			todo!()
-		}
-	}
-
-	#[derive(Debug)]
-	struct FlashblockLimits(FlashblocksConfig);
-	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
-		fn create(
-			&self,
-			_block: &BlockContext<P>,
-			_enclosing: Option<&Limits>,
-		) -> Limits {
-			todo!()
-		}
-	}
-
 	#[derive(Debug, Clone)]
 	struct FlashblocksConfig {
 		count: usize,
 		interval: Duration,
+	}
+
+	make_step!(WebSocketBeginBlock, Simulated);
+	make_step!(WebSocketEndBlock, Simulated);
+	make_step!(FlashblockEpilogue, Static);
+	make_step!(PublishToWebSocket, Simulated, FlashblocksConfig);
+
+	#[derive(Debug)]
+	struct FlashblockLimits(FlashblocksConfig);
+	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
+		fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
+			todo!()
+		}
 	}
 
 	let config = FlashblocksConfig {

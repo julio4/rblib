@@ -51,6 +51,14 @@ impl StepPath {
 		self.0.len()
 	}
 
+	/// Returns `true` if the path points to a step in a top-level pipeline.
+	/// This means that this path is inside a pipeline that has no parents.
+	///
+	/// In other words, it checks if the path is a single element path.
+	pub fn is_toplevel(&self) -> bool {
+		self.len() == 1
+	}
+
 	/// Returns the path to the first step in the pipeline.
 	///
 	/// This function will traverse the pipeline and return the innermost
@@ -58,9 +66,7 @@ impl StepPath {
 	///
 	/// Returns `None` if the pipeline is empty or is composed of only empty
 	/// pipelines.
-	pub fn first_executable_step<P: Platform>(
-		pipeline: &Pipeline<P>,
-	) -> Option<Self> {
+	pub fn first_step<P: Platform>(pipeline: &Pipeline<P>) -> Option<Self> {
 		if pipeline.is_empty() {
 			return None;
 		}
@@ -68,7 +74,7 @@ impl StepPath {
 		match pipeline.steps.first()? {
 			StepOrPipeline::Step(_) => Some(StepPath::zero()),
 			StepOrPipeline::Pipeline(_, pipeline) => {
-				Some(StepPath::zero().join(StepPath::first_executable_step(pipeline)?))
+				Some(StepPath::zero().concat(StepPath::first_step(pipeline)?))
 			}
 		}
 	}
@@ -95,7 +101,7 @@ impl StepPath {
 	/// This is useful when doing recursive navigation through the pipeline.
 	/// Returns None if the path has only one element.
 	pub fn remove_root(self) -> Option<StepPath> {
-		if self.0.len() < 2 {
+		if self.is_toplevel() {
 			// If there's only one element, popping it would result in an empty path
 			// which is not allowed.
 			None
@@ -111,15 +117,15 @@ impl StepPath {
 	///
 	/// Returns None if the path has only one element.
 	pub fn remove_leaf(self) -> Option<StepPath> {
-		if self.0.len() < 2 {
+		if self.is_toplevel() {
 			None
 		} else {
 			Some(StepPath(self.0[..self.0.len() - 1].into()))
 		}
 	}
 
-	/// Appends a new step path to the current path.
-	pub fn join(self, other: Self) -> Self {
+	/// Appends a new path to the current path.
+	pub fn concat(self, other: Self) -> Self {
 		let mut new_path = self.0;
 		new_path.extend(other.0);
 		Self(new_path)
@@ -128,14 +134,12 @@ impl StepPath {
 	/// Given a reference to a pipeline, this function will try to locate the
 	/// parent pipeline that contains the item pointed to by the current
 	/// step path.
-	pub fn parent<'a, P: Platform>(
+	pub fn enclosing<'a, P: Platform>(
 		&self,
 		pipeline: &'a Pipeline<P>,
 	) -> Option<(&'a Pipeline<P>, Behavior)> {
-		if self.len() == 1 {
-			// If the path has only one element, the the topmost pipeline is the
-			// one that contains the step or nested pipeline. Topmost pipelines always
-			// have a behavior of `Once`.
+		if self.is_toplevel() {
+			// Topmost pipelines always have a behavior of `Once`.
 			return Some((pipeline, Behavior::Once));
 		}
 
@@ -156,7 +160,7 @@ impl StepPath {
 	) -> Option<bool> {
 		let index = self.leaf();
 
-		if self.len() == 1 {
+		if self.is_toplevel() {
 			// we are at the topmost pipeline, so we can just check if the index
 			// is the last step in the pipeline.
 			return Some(index == pipeline.steps().len() - 1);
@@ -164,7 +168,7 @@ impl StepPath {
 
 		// we're somewhere inside a nested pipeline, so we need to
 		// check if the index is the last step in the parent pipeline.
-		let (parent, _) = self.parent(pipeline)?;
+		let (parent, _) = self.enclosing(pipeline)?;
 		Some(index == parent.steps().len() - 1)
 	}
 
@@ -174,8 +178,8 @@ impl StepPath {
 	///
 	/// Return `None` if there are no further steps to execute in the pipeline
 	/// or if the current step path does not point to a valid step or pipeline.
-	pub fn next_step<P: Platform, K: StepKind>(
-		&self,
+	pub fn advance<P: Platform, K: StepKind>(
+		self,
 		pipeline: &Pipeline<P>,
 		control_flow: &ControlFlow<P, K>,
 	) -> Option<NextStep> {
@@ -185,7 +189,7 @@ impl StepPath {
 			return Some(NextStep::Failure);
 		}
 
-		let (parent, behavior) = self.parent(pipeline)?;
+		let (_, behavior) = self.enclosing(pipeline)?;
 		let is_last_in_scope = self.is_last_in_scope(pipeline)?;
 
 		// if the path points to a step, then we return it as is, otherwise,
@@ -198,9 +202,7 @@ impl StepPath {
 					// item is a nested pipeline, we need to find the
 					// first executable step in that pipeline and return the
 					// path to it.
-					Some(NextStep::Path(
-						path.join(StepPath::first_executable_step(nested)?),
-					))
+					Some(NextStep::Path(path.concat(StepPath::first_step(nested)?)))
 				}
 			}
 		};
@@ -208,43 +210,40 @@ impl StepPath {
 		if control_flow.is_ok() {
 			if is_last_in_scope {
 				match behavior {
-					Behavior::Once => {
-						// if we are the last step in the topmost pipeline, we can
-						// complete the pipeline execution.
-						if core::ptr::eq(parent, pipeline) {
-							return Some(NextStep::Completed);
-						} else {
-							// otherwise we need to go to the next step in the parent
-							// pipeline.
-							todo!(
-								"Ok/last step in Once sub-pipeline, but not topmost pipeline"
-							);
-						}
-					}
+					Behavior::Once => match self.next_in_parent_scope(pipeline) {
+						Some(next_path) => return executable_path(next_path),
+						None => return Some(NextStep::Completed),
+					},
 					Behavior::Loop => return executable_path(self.clone()),
 				}
 			} else {
-				return executable_path(self.clone().next_leaf());
+				return executable_path(self.next_leaf());
 			}
 		} else if control_flow.is_continue() {
 			match behavior {
 				Behavior::Once => {
 					// same as ok
 					if is_last_in_scope {
-						// terminate current sub-pipeline
-						todo!("Continue/last step in Once sub-pipeline");
+						match self.next_in_parent_scope(pipeline) {
+							Some(next_path) => return executable_path(next_path),
+							None => return Some(NextStep::Completed),
+						}
 					} else {
-						// same as ok
 						return executable_path(self.clone().next_leaf());
 					}
 				}
 				Behavior::Loop => {
 					// rerun the first step in the current sub-pipeline
-					return executable_path(self.clone().first_leaf_in_scope());
+					return executable_path(self.first_leaf_in_scope());
 				}
 			}
 		} else if control_flow.is_break() {
-			todo!("ControlFlowKind::Break not implemented yet");
+			// break in a pipeline will stop the execution of the current
+			// pipeline and jump to the next step in the parent pipeline.
+			match self.next_in_parent_scope(pipeline) {
+				Some(next_path) => return executable_path(next_path),
+				None => return Some(NextStep::Completed),
+			}
 		}
 
 		unreachable!("failures already handled earlier")
@@ -278,6 +277,10 @@ impl StepPath {
 		Some(item)
 	}
 
+	/// Given a reference to a pipeline, this function will try to locate a step
+	/// that corresponds to the current path.
+	///
+	/// Returns `None` if the path does not point to a valid step in the pipeline.
 	pub fn locate_step<'a, P: Platform>(
 		&self,
 		pipeline: &'a Pipeline<P>,
@@ -288,6 +291,11 @@ impl StepPath {
 		})
 	}
 
+	/// Given a reference to a pipeline, this function will try to locate a
+	/// nested pipeline that corresponds to the current path.
+	///
+	/// Returns `None` if the path does not point to a valid nested pipeline in
+	/// the pipeline.
 	fn locate_pipeline<'a, P: Platform>(
 		&self,
 		pipeline: &'a Pipeline<P>,
@@ -300,6 +308,10 @@ impl StepPath {
 		})
 	}
 
+	/// Returns a path that points to the next item in the current scope.
+	///
+	/// This method does not check if the next item is valid or exists in the
+	/// pipeline. It simply increments the last index in the path.
 	fn next_leaf(self) -> Self {
 		let mut new_path = self.0;
 		if let Some(last) = new_path.last_mut() {
@@ -308,12 +320,47 @@ impl StepPath {
 		Self(new_path)
 	}
 
+	/// Returns a path that points to the first leaf in the current scope.
+	///
+	/// This method resets the last index in the path to `0`, effectively
+	/// pointing to the first item in the current scope.
+	///
+	/// This method does not check if the first item is valid or exists in the
+	/// pipeline. It simply resets the last index in the path to `0`.
 	fn first_leaf_in_scope(self) -> Self {
 		let mut new_path = self.0;
 		if let Some(last) = new_path.last_mut() {
 			*last = 0;
 		}
 		Self(new_path)
+	}
+
+	/// Returns a path that points to the next item in the parent scope(s).
+	///
+	/// This method will recursively navigate up the pipeline structure in search
+	/// of the next item, for example if we are the last step in a nested
+	/// pipeline, which in turn is the last step in its parent pipeline, this
+	/// method will jump two levels up to the next step in the parent, parent
+	/// pipeline and so on recursively until it finds the next item or `None`
+	/// if no next item exists.
+	///
+	/// Used to handle control flows like `break` or last steps in a nested
+	/// pipeline.
+	fn next_in_parent_scope<P: Platform>(
+		self,
+		pipeline: &Pipeline<P>,
+	) -> Option<Self> {
+		let enclosing = self.remove_leaf()?;
+
+		// check if the enclosing pipeline is the last item in its scope
+		if enclosing.is_last_in_scope(pipeline)? {
+			// enclosing pipeline is the last item in its scope, we will need to
+			// navigate one more level up to find the next item.
+			return enclosing.next_in_parent_scope(pipeline);
+		}
+
+		// otherwise we just need to advance the leaf index on the parent item
+		Some(enclosing.next_leaf())
 	}
 }
 
@@ -327,20 +374,37 @@ impl<const N: usize> From<[usize; N]> for StepPath {
 mod test {
 	use super::{steps::*, *};
 
-	#[test]
-	fn step_by_path_flat() {
-		let pipeline = Pipeline::<EthereumMainnet>::default()
+	fn flat_1() -> Pipeline<EthereumMainnet> {
+		Pipeline::<EthereumMainnet>::default()
 			.with_epilogue(BuilderEpilogue)
 			.with_step(GatherBestTransactions)
 			.with_step(PriorityFeeOrdering)
 			.with_step(TotalProfitOrdering)
-			.with_step(RevertProtection);
+			.with_step(RevertProtection)
+	}
 
+	fn nested_1() -> Pipeline<EthereumMainnet> {
+		make_step!(TestStep1, Simulated);
+
+		Pipeline::<EthereumMainnet>::default()
+			.with_epilogue(BuilderEpilogue)
+			.with_step(TestStep1)
+			.with_pipeline(
+				Loop,
+				(
+					GatherBestTransactions,
+					PriorityFeeOrdering,
+					TotalProfitOrdering,
+				),
+			)
+			.with_step(RevertProtection)
+	}
+
+	#[test]
+	fn locate_flat() {
+		let pipeline = flat_1();
 		assert!(StepPath::from([90]).locate_step(&pipeline).is_none());
-		assert_eq!(
-			StepPath::first_executable_step(&pipeline),
-			Some(StepPath::zero())
-		);
+		assert_eq!(StepPath::first_step(&pipeline), Some(StepPath::zero()));
 
 		assert!(StepPath::from([0]).locate_step(&pipeline).is_some());
 		assert!(StepPath::from([0])
@@ -373,38 +437,11 @@ mod test {
 	}
 
 	#[test]
-	fn step_by_path_nested() {
-		pub struct TestStep;
-		impl<P: Platform> Step<P> for TestStep {
-			type Kind = Simulated;
-
-			async fn step(
-				self: Arc<Self>,
-				_payload: SimulatedPayload<P>,
-				_ctx: StepContext<P>,
-			) -> ControlFlow<P, Simulated> {
-				todo!()
-			}
-		}
-
-		let pipeline = Pipeline::<EthereumMainnet>::default()
-			.with_epilogue(BuilderEpilogue)
-			.with_step(TestStep)
-			.with_pipeline(
-				Loop,
-				(
-					GatherBestTransactions,
-					PriorityFeeOrdering,
-					TotalProfitOrdering,
-				),
-			)
-			.with_step(RevertProtection);
+	fn locate_in_nested() {
+		let pipeline = nested_1();
 
 		assert!(StepPath::from([99]).locate_step(&pipeline).is_none());
-		assert_eq!(
-			StepPath::first_executable_step(&pipeline),
-			Some(StepPath::zero())
-		);
+		assert_eq!(StepPath::first_step(&pipeline), Some(StepPath::zero()));
 		assert!(StepPath::from([0]).locate_step(&pipeline).is_some());
 
 		assert!(StepPath::from([0])
@@ -443,5 +480,84 @@ mod test {
 		assert!(StepPath::from([3]).locate_step(&pipeline).is_none());
 		assert!(StepPath::from([1, 4]).locate_step(&pipeline).is_none());
 		assert!(StepPath::from([1, 0, 1]).locate_step(&pipeline).is_none());
+	}
+
+	#[test]
+	fn next_in_parent() {
+		make_step!(Step1, Simulated);
+		make_step!(Step2, Simulated);
+		make_step!(Step3, Static);
+		make_step!(Step4, Static);
+
+		make_step!(StepA, Simulated);
+		make_step!(StepB, Simulated);
+		make_step!(StepC, Static);
+
+		make_step!(StepX, Simulated);
+		make_step!(StepY, Simulated);
+		make_step!(StepZ, Static);
+
+		make_step!(StepI, Simulated);
+		make_step!(StepII, Simulated);
+		make_step!(StepIII, Static);
+
+		let p1 = Pipeline::<EthereumMainnet>::default()
+			.with_step(Step1)
+			.with_step(Step2)
+			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
+				nested
+					.with_step(StepA)
+					.with_pipeline(Loop, (StepX, StepY, StepZ))
+					.with_step(StepC)
+					.with_pipeline(Loop, (StepI, StepII, StepIII))
+			})
+			.with_step(Step4);
+
+		let step_z = StepPath::from([2, 1, 2]);
+		assert!(step_z.locate_step(&p1).unwrap().name().ends_with("StepZ"));
+
+		let step_c = step_z.next_in_parent_scope(&p1).unwrap();
+		assert_eq!(step_c, StepPath::from([2, 2]));
+		assert!(step_c.locate_step(&p1).unwrap().name().ends_with("StepC"));
+
+		let step_4 = step_c.next_in_parent_scope(&p1).unwrap();
+		assert_eq!(step_4, StepPath::from([3]));
+		assert!(step_4.locate_step(&p1).unwrap().name().ends_with("Step4"));
+
+		let step_iii = StepPath::from([2, 3, 2]);
+		assert!(step_iii
+			.locate_step(&p1)
+			.unwrap()
+			.name()
+			.ends_with("StepIII"));
+
+		let step_4 = step_iii.next_in_parent_scope(&p1).unwrap();
+		assert_eq!(step_4, StepPath::from([3]));
+		assert!(step_4.locate_step(&p1).unwrap().name().ends_with("Step4"));
+		assert_eq!(step_4.next_in_parent_scope(&p1), None);
+
+		let p2 = Pipeline::<EthereumMainnet>::default()
+			.with_step(Step1)
+			.with_step(Step2)
+			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
+				nested
+					.with_step(StepA)
+					.with_pipeline(Loop, (StepX, StepY, StepZ))
+					.with_step(StepC)
+					.with_pipeline(Loop, (StepI, StepII, StepIII))
+			});
+
+		let step_iii = StepPath::from([2, 3, 2]);
+		assert!(step_iii
+			.locate_step(&p2)
+			.unwrap()
+			.name()
+			.ends_with("StepIII"));
+
+		let none = step_iii.next_in_parent_scope(&p2);
+		assert!(
+			none.is_none(),
+			"StepPath::next_in_parent_scope should return None"
+		);
 	}
 }

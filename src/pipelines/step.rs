@@ -1,6 +1,6 @@
 use {
 	super::sealed,
-	crate::{Platform, Simulated, Static, StepContext},
+	crate::{types, Platform, Simulated, Static, StepContext},
 	core::{
 		any::{type_name, Any, TypeId},
 		fmt::{self, Debug},
@@ -35,8 +35,9 @@ use {
 /// lifetime of the pipeline it is part of. All invocations of the step will
 /// repeatedly call into the `step` async function on the same instance.
 ///
-/// There may be multiple concurrent invocations of the same step instance by
-/// the runtime, so the step implementation must handle its interior mutability.
+/// There may be multiple instances of the same step in a pipeline.
+///
+/// A step instance is guaranteed to not be called concurrently by the runtime.
 pub trait Step<P: Platform>: Send + Sync + 'static {
 	/// Static or Simulated.
 	type Kind: StepKind;
@@ -51,6 +52,32 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 		payload: <Self::Kind as StepKind>::Payload<P>,
 		ctx: StepContext<P>,
 	) -> impl Future<Output = ControlFlow<P, Self::Kind>> + Send + Sync;
+
+	/// This function is called once per new payload job before any steps are
+	/// executed. It can be used by steps to perform any optional initialization
+	/// of its internal state for a given payload job.
+	///
+	/// If this function returns an error, the pipeline execution will be
+	/// terminated immediately and no steps will be executed.
+	fn before_job(
+		self: Arc<Self>,
+		_: Arc<StepContext<P>>,
+	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
+		async { Ok(()) }
+	}
+
+	/// This function is called once after all steps in the pipeline have been
+	/// executed. It will be called with the outcome of the step execution,
+	/// which is either a successful payload or an error.
+	///
+	/// A failure in this function will invalidate the whole payload job
+	/// and will not produce a valid payload.
+	fn after_job(
+		self: Arc<Self>,
+		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
+		async { Ok(()) }
+	}
 }
 
 /// Defines the kind of step of a pipeline.
@@ -142,11 +169,35 @@ type WrappedStepFn<P: Platform> = Box<
 	) -> Pin<Box<dyn Future<Output = Box<dyn Any + Send + Sync>> + Send>>,
 >;
 
+/// Defines a type-erased function that points to the before job function inside
+/// a concrete step type.
+type WrappedBeforeJobFn<P: Platform> = Box<
+	dyn Fn(
+		Arc<dyn Any + Send + Sync>,
+		Arc<StepContext<P>>,
+	) -> Pin<
+		Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
+	>,
+>;
+
+/// Defines a type-erased function that points to the after job function inside
+/// a concrete step type.
+type WrappedAfterJobFn<P: Platform> = Box<
+	dyn Fn(
+		Arc<dyn Any + Send + Sync>,
+		Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> Pin<
+		Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
+	>,
+>;
+
 /// Wraps a step in a type-erased manner, allowing it to be stored in a
 /// heterogeneous collection of steps inside a pipeline.
 pub(crate) struct WrappedStep<P: Platform> {
 	instance: Arc<dyn Any + Send + Sync>,
 	step_fn: WrappedStepFn<P>,
+	before_job_fn: WrappedBeforeJobFn<P>,
+	after_job_fn: WrappedAfterJobFn<P>,
 	mode: KindTag,
 	name: &'static str,
 }
@@ -185,6 +236,26 @@ impl<P: Platform> WrappedStep<P> {
 						.boxed()
 				},
 			) as WrappedStepFn<P>,
+			before_job_fn: Box::new(
+				|step: Arc<dyn Any + Send + Sync>,
+				 ctx: Arc<StepContext<P>>|
+				 -> Pin<
+					Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
+				> {
+					let step = step.downcast::<S>().expect("Invalid step type");
+					step.before_job(ctx).boxed()
+				},
+			) as WrappedBeforeJobFn<P>,
+			after_job_fn: Box::new(
+				|step: Arc<dyn Any + Send + Sync>,
+				 result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>|
+				 -> Pin<
+					Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
+				> {
+					let step = step.downcast::<S>().expect("Invalid step type");
+					step.after_job(result).boxed()
+				},
+			) as WrappedAfterJobFn<P>,
 			name: type_name::<S>(),
 			mode: match TypeId::of::<K>() {
 				x if x == TypeId::of::<Static>() => KindTag::Static,
@@ -211,6 +282,24 @@ impl<P: Platform> WrappedStep<P> {
 			.expect("Invalid result type");
 
 		*result
+	}
+
+	/// This is invoked once per pipeline run before any steps are executed.
+	pub async fn before_job(
+		&self,
+		ctx: Arc<StepContext<P>>,
+	) -> Result<(), PayloadBuilderError> {
+		let local_step = Arc::clone(&self.instance);
+		(self.before_job_fn)(local_step, ctx).await
+	}
+
+	/// This is invoked once after the pipeline run has been completed.
+	pub async fn after_job(
+		&self,
+		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> Result<(), PayloadBuilderError> {
+		let local_step = Arc::clone(&self.instance);
+		(self.after_job_fn)(local_step, result).await
 	}
 
 	/// Checks if the step is static or simulated.

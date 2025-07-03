@@ -80,6 +80,67 @@ async fn transfers_included_reverts_excluded() {
 }
 
 #[tokio::test]
+async fn transfers_included_reverts_excluded_in_loop() {
+	let pipeline = Pipeline::default()
+		.with_epilogue(BuilderEpilogue)
+		.with_pipeline(
+			Loop,
+			(
+				AppendNewTransactionFromPool::default(),
+				PriorityFeeOrdering,
+				RevertProtection,
+			),
+		);
+
+	let node = LocalNode::ethereum(pipeline).await.unwrap();
+
+	let mut transfers = vec![];
+	for i in 0..10 {
+		transfers.push(
+			*node
+				.new_transaction()
+				.random_valid_transfer()
+				.with_value(i)
+				.send()
+				.await
+				.unwrap()
+				.tx_hash(),
+		);
+	}
+
+	let mut reverts = vec![];
+	for i in 0..4 {
+		reverts.push(
+			*node
+				.new_transaction()
+				.random_reverting_transaction()
+				.with_value(3000 + i)
+				.send()
+				.await
+				.unwrap()
+				.tx_hash(),
+		);
+	}
+
+	let block = node.build_new_block().await.unwrap();
+
+	info!("Block built: {block:#?}");
+
+	assert!(
+		block.includes(&transfers),
+		"Block should include all valid transfers"
+	);
+
+	assert!(
+		!block.includes(&reverts),
+		"Block should not include any reverts"
+	);
+
+	// non-reverting transactions + builder epilogue tx (todo)
+	// assert_eq!(block.transactions.len(), transfers.len() + 1);
+}
+
+#[tokio::test]
 #[ignore]
 async fn reth_minimal_integration_example() {
 	use {
@@ -92,7 +153,7 @@ async fn reth_minimal_integration_example() {
 		.with_pipeline(
 			Loop,
 			(
-				AppendNewTransactionFromPool,
+				AppendNewTransactionFromPool::default(),
 				PriorityFeeOrdering,
 				TotalProfitOrdering,
 				RevertProtection,

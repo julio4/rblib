@@ -44,8 +44,8 @@ pub enum Behavior {
 }
 
 pub struct Pipeline<P: Platform> {
-	epilogue: Option<WrappedStep<P>>,
-	prologue: Option<WrappedStep<P>>,
+	epilogue: Option<Arc<WrappedStep<P>>>,
+	prologue: Option<Arc<WrappedStep<P>>>,
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Box<dyn LimitsFactory<P>>>,
 	unique_id: OnceLock<usize>,
@@ -72,7 +72,7 @@ impl<P: Platform> Pipeline<P> {
 		step: impl Step<P, Kind = Mode>,
 	) -> Self {
 		let mut this = self;
-		this.prologue = Some(WrappedStep::new(step));
+		this.prologue = Some(Arc::new(WrappedStep::new(step)));
 		this
 	}
 
@@ -83,7 +83,7 @@ impl<P: Platform> Pipeline<P> {
 		step: impl Step<P, Kind = Mode>,
 	) -> Self {
 		let mut this = self;
-		this.epilogue = Some(WrappedStep::new(step));
+		this.epilogue = Some(Arc::new(WrappedStep::new(step)));
 		this
 	}
 
@@ -143,11 +143,11 @@ impl<P: Platform> Pipeline<P> {
 
 /// Internal API
 impl<P: Platform> Pipeline<P> {
-	pub(crate) fn prologue(&self) -> Option<&WrappedStep<P>> {
+	pub(crate) fn prologue(&self) -> Option<&Arc<WrappedStep<P>>> {
 		self.prologue.as_ref()
 	}
 
-	pub(crate) fn epilogue(&self) -> Option<&WrappedStep<P>> {
+	pub(crate) fn epilogue(&self) -> Option<&Arc<WrappedStep<P>>> {
 		self.epilogue.as_ref()
 	}
 
@@ -166,6 +166,36 @@ impl<P: Platform> Pipeline<P> {
 	/// unique across different runs of the program.
 	pub(crate) fn unique_id(&self) -> usize {
 		*self.unique_id.get_or_init(|| self as *const Self as usize)
+	}
+
+	/// Executes the provided async function for each step in the pipeline once.
+	///
+	/// This is used for performing initialization or cleanup tasks for each step.
+	pub(crate) async fn for_each_step<F, R, E>(&self, f: &F) -> Result<(), E>
+	where
+		F: Fn(Arc<WrappedStep<P>>) -> R,
+		R: Future<Output = Result<(), E>> + Send,
+	{
+		if let Some(prologue) = &self.prologue {
+			f(Arc::clone(prologue)).await?;
+		}
+
+		for step in &self.steps {
+			match step {
+				StepOrPipeline::Step(wrapped_step) => {
+					f(Arc::clone(wrapped_step)).await?
+				}
+				StepOrPipeline::Pipeline(_, pipeline) => {
+					Box::pin(pipeline.for_each_step(f)).await?;
+				}
+			}
+		}
+
+		if let Some(epilogue) = &self.epilogue {
+			f(Arc::clone(epilogue)).await?;
+		}
+
+		Ok(())
 	}
 }
 

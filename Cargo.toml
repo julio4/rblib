@@ -40,6 +40,7 @@ thiserror = { version = "2.0", default-features = false }
 tracing = "0.1"
 derive_more = { version = "2.0", features = ["deref", "from", "into"] }
 smallvec = "1.15"
+dashmap = "6.1"
 
 futures = { version = "0.3", optional = true }
 tokio = { version = "1.45", features = ["full"], optional = true }

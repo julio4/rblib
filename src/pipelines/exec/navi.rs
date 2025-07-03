@@ -214,7 +214,7 @@ impl StepPath {
 						Some(next_path) => return executable_path(next_path),
 						None => return Some(NextStep::Completed),
 					},
-					Behavior::Loop => return executable_path(self.clone()),
+					Behavior::Loop => return executable_path(self.first_leaf_in_scope()),
 				}
 			} else {
 				return executable_path(self.next_leaf());

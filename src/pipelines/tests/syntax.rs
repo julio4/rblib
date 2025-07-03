@@ -35,7 +35,7 @@ fn nested_verbose() {
 		Pipeline::<EthereumMainnet>::default().with_epilogue(BuilderEpilogue);
 
 	let nested = Pipeline::<EthereumMainnet>::default()
-		.with_step(AppendNewTransactionFromPool)
+		.with_step(AppendNewTransactionFromPool::default())
 		.with_step(PriorityFeeOrdering)
 		.with_step(TotalProfitOrdering)
 		.with_step(RevertProtection);
@@ -50,7 +50,7 @@ fn nested_verbose() {
 fn nested_one_concise_static() {
 	let top_level = Pipeline::<EthereumMainnet>::default()
 		.with_epilogue(BuilderEpilogue)
-		.with_pipeline(Loop, AppendNewTransactionFromPool);
+		.with_pipeline(Loop, AppendNewTransactionFromPool::default());
 
 	println!("{top_level:#?}");
 }
@@ -59,7 +59,7 @@ fn nested_one_concise_static() {
 fn nested_one_concise_simulated() {
 	let top_level = Pipeline::<EthereumMainnet>::default()
 		.with_epilogue(BuilderEpilogue)
-		.with_pipeline(Loop, (AppendNewTransactionFromPool,));
+		.with_pipeline(Loop, (AppendNewTransactionFromPool::default(),));
 
 	println!("{top_level:#?}");
 }
@@ -72,7 +72,7 @@ fn nested_many_concise() {
 		.with_pipeline(
 			Loop,
 			(
-				AppendNewTransactionFromPool,
+				AppendNewTransactionFromPool::default(),
 				PriorityFeeOrdering,
 				TotalProfitOrdering,
 				RevertProtection,
@@ -119,7 +119,7 @@ fn flashblocks_example() {
 				.with_pipeline(
 					Loop,
 					(
-						AppendNewTransactionFromPool,
+						AppendNewTransactionFromPool::default(),
 						PriorityFeeOrdering,
 						TotalProfitOrdering,
 						RevertProtection,

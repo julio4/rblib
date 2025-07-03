@@ -1,7 +1,9 @@
 use {
 	crate::{payload::checkpoint::Mutation, *},
+	alloy::primitives::TxHash,
 	core::ops::{Bound, RangeBounds},
 	reth::primitives::Recovered,
+	reth_ethereum::primitives::SignedTransaction,
 	thiserror::Error,
 };
 
@@ -127,6 +129,23 @@ impl<P: Platform> Span<P> {
 	/// Returns a span with the last checkpoint removed.
 	pub fn pop_last(&self) -> Option<Span<P>> {
 		self.take(..self.checkpoints.len() - 1)
+	}
+
+	/// Returns a checkpoint at the given index relative to the start of the span.
+	pub fn at(&self, index: usize) -> Option<&Checkpoint<P>> {
+		self.checkpoints.get(index)
+	}
+
+	/// Checks if this span contains a checkpoint with a transaction with a given
+	/// hash.
+	pub fn contains(&self, txhash: impl Into<TxHash>) -> bool {
+		let hash = txhash.into();
+		self.checkpoints.iter().any(|checkpoint| {
+			checkpoint
+				.transaction()
+				.map(|tx| *tx.tx_hash() == hash)
+				.unwrap_or_default()
+		})
 	}
 
 	/// Returns a sub-span of the current span.

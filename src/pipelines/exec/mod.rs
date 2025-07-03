@@ -12,7 +12,10 @@
 
 use {
 	crate::{
-		pipelines::{service::ServiceContext, step::KindTag},
+		pipelines::{
+			service::ServiceContext,
+			step::{KindTag, WrappedStep},
+		},
 		*,
 	},
 	core::{
@@ -25,10 +28,13 @@ use {
 	reth::primitives::Recovered,
 	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
-	tracing::debug,
+	tracing::{debug, trace},
 };
 
 mod navi;
+
+type PipelineOutput<P: Platform> =
+	Result<types::BuiltPayload<P>, ClonablePayloadBuilderError>;
 
 /// This type is responsible for executing a single run of a pipeline.
 ///
@@ -53,50 +59,36 @@ impl<
 		Pool: traits::PoolBounds<P>,
 	> PipelineExecutor<P, Provider, Pool>
 {
+	/// Begins the execution of a pipeline for a new block.
 	pub fn run(
 		pipeline: Arc<Pipeline<P>>,
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		let cursor = match StepPath::first_step(&pipeline) {
-			Some(path) => {
-				let step = path.locate_step(&pipeline).expect(
-					"Step path is unreachable. This is a bug in the pipeline executor \
-					 implementation.",
-				);
-
-				let input = match step.kind() {
-					// If the step is static, we can use the static context and payload.
-					KindTag::Static => StepInput::Static(StaticPayload::<P>::default()),
-					// If the step is simulated, we can use the simulated context and
-					// payload.
-					KindTag::Simulated => StepInput::Simulated(block.start()),
-				};
-
-				Cursor::BeforeStep(path, input)
-			}
-			None => {
-				// If the pipeline is empty, we can build an empty payload and complete
-				// the pipeline immediately. There is nothing to execute.
-				debug!(
-					"empty pipeline, building empty payloads for attributes: {:?}",
-					block.attributes()
-				);
-
-				Cursor::<P>::Completed(
-					P::construct_payload(
-						&block,
-						Vec::new(),
-						service.pool(),
-						service.provider(),
-					)
-					.map_err(ClonablePayloadBuilderError),
-				)
-			}
-		};
+		// Initially set the execution cursor to initializing state, that will call
+		// all `before_job` methods of the steps in the pipeline.
 
 		Self {
-			cursor,
+			cursor: Cursor::<P>::Initializing({
+				let block = block.clone();
+				let service = Arc::clone(&service);
+				let pipeline = Arc::clone(&pipeline);
+				let limits = match pipeline.limits() {
+					Some(limits) => limits.create(&block, None),
+					None => P::DefaultLimits::default().create(&block, None),
+				};
+				let context = Arc::new(StepContext::new(block, service, limits));
+
+				async move {
+					pipeline
+						.for_each_step(&|step: Arc<WrappedStep<P>>| {
+							let context = Arc::clone(&context);
+							async move { step.before_job(context).await }
+						})
+						.await
+				}
+				.boxed()
+			}),
 			context: ExecContext {
 				pipeline,
 				block,
@@ -113,6 +105,17 @@ impl<
 		Pool: traits::PoolBounds<P>,
 	> PipelineExecutor<P, Provider, Pool>
 {
+	fn create_step_context(&self) -> StepContext<P> {
+		let block = self.context.block.clone();
+		let service = Arc::clone(&self.context.service);
+		let pipeline = Arc::clone(&self.context.pipeline);
+		let limits = match pipeline.limits() {
+			Some(limits) => limits.create(&block, None),
+			None => P::DefaultLimits::default().create(&block, None),
+		};
+		StepContext::new(block, service, limits)
+	}
+
 	/// This method creates a future that encapsulates the execution an an async
 	/// step.
 	///
@@ -124,20 +127,11 @@ impl<
 		path: StepPath,
 		input: StepInput<P>,
 	) -> Pin<Box<dyn Future<Output = StepOutput<P>> + Send>> {
-		let block = self.context.block.clone();
-		let service = Arc::clone(&self.context.service);
-		let pipeline = Arc::clone(&self.context.pipeline);
-		let step = Arc::clone(path.locate_step(&pipeline).expect(
+		let context = self.create_step_context();
+		let step = Arc::clone(path.locate_step(&self.context.pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		));
-
-		let limits = match pipeline.limits() {
-			Some(limits) => limits.create(&block, None),
-			None => P::DefaultLimits::default().create(&block, None),
-		};
-
-		let context = StepContext::new(block, service, limits);
 
 		async move {
 			match (step.kind(), input) {
@@ -190,8 +184,10 @@ impl<
 			navi::NextStep::Path(step_path) => {
 				match self.prepare_step_input(step_path.clone(), output) {
 					Ok(input) => Cursor::BeforeStep(step_path, input),
-					Err(error) => Cursor::Completed(Err(ClonablePayloadBuilderError(
-						PayloadBuilderError::other(WrappedErrorMessage(error.to_string())),
+					Err(error) => Cursor::Finalizing(self.finalize(Err(
+						ClonablePayloadBuilderError(PayloadBuilderError::other(
+							WrappedErrorMessage(error.to_string()),
+						)),
 					))),
 				}
 			}
@@ -199,8 +195,8 @@ impl<
 			// Pipeline execution is complete, we can build the payload. Create a
 			// cursor that will resolve the executor future with the final result
 			// of this pipeline run.
-			navi::NextStep::Completed => {
-				Cursor::Completed(output.try_into().and_then(|transactions| {
+			navi::NextStep::Completed => Cursor::Finalizing(self.finalize(
+				output.try_into().and_then(|transactions| {
 					P::construct_payload(
 						&self.context.block,
 						transactions,
@@ -208,20 +204,22 @@ impl<
 						self.context.service.provider(),
 					)
 					.map_err(ClonablePayloadBuilderError)
-				}))
-			}
+				}),
+			)),
 
 			// The pipeline execution has failed, we stop the execution and report a
 			// failure in the next future poll.
-			navi::NextStep::Failure => Cursor::Completed(Err(
-				output
-					.try_into_fail()
-					.expect(
-						"Mismatched step output with actual output. This is a bug in the \
-						 PipelineExecutor implementation.",
-					)
-					.into(),
-			)),
+			navi::NextStep::Failure => Cursor::Finalizing(
+				self.finalize(Err(
+					output
+						.try_into_fail()
+						.expect(
+							"Mismatched step output with actual output. This is a bug in \
+							 the PipelineExecutor implementation.",
+						)
+						.into(),
+				)),
+			),
 		}
 	}
 
@@ -277,6 +275,88 @@ impl<
 			}
 		}
 	}
+
+	/// After pipeline steps are initialized, this method will identify the first
+	/// step to execute in the pipeline and prepare the cursor to run it.
+	fn first_step(&self) -> Cursor<P> {
+		match StepPath::first_step(&self.context.pipeline) {
+			Some(path) => {
+				let step = path.locate_step(&self.context.pipeline).expect(
+					"Step path is unreachable. This is a bug in the pipeline executor \
+					 implementation.",
+				);
+
+				let input = match step.kind() {
+					// If the step is static, we can use the static context and payload.
+					KindTag::Static => StepInput::Static(StaticPayload::<P>::default()),
+					// If the step is simulated, we can use the simulated context and
+					// payload.
+					KindTag::Simulated => {
+						StepInput::Simulated(self.context.block.start())
+					}
+				};
+
+				Cursor::BeforeStep(path, input)
+			}
+			None => {
+				// If the pipeline is empty, we can build an empty payload and complete
+				// the pipeline immediately. There is nothing to execute.
+				debug!(
+					"empty pipeline, building empty payloads for attributes: {:?}",
+					self.context.block.attributes()
+				);
+
+				let block = self.context.block.clone();
+				let service = Arc::clone(&self.context.service);
+
+				Cursor::<P>::Finalizing(
+					async move {
+						P::construct_payload(
+							&block,
+							Vec::new(),
+							service.pool(),
+							service.provider(),
+						)
+						.map_err(ClonablePayloadBuilderError)
+					}
+					.boxed(),
+				)
+			}
+		}
+	}
+
+	/// This method will walk through the pipeline steps and invoke the
+	/// `after_job` method of each step in the pipeline with the final output.
+	fn finalize(
+		&self,
+		output: PipelineOutput<P>,
+	) -> Pin<Box<dyn Future<Output = PipelineOutput<P>> + Send>> {
+		let output = Arc::new(output.map_err(|e| e.into()));
+		let pipeline = Arc::clone(&self.context.pipeline);
+
+		async move {
+			// invoke the `after_job` method of each step in the pipeline
+			// if any of them failes we fail the pipeline execution, othwerwise
+			// we return the output of the pipeline.
+			pipeline
+				.for_each_step(&|step: Arc<WrappedStep<P>>| {
+					let output = Arc::clone(&output);
+					async move {
+						step.after_job(output).await.map_err(|e| {
+							ClonablePayloadBuilderError(PayloadBuilderError::other(
+								WrappedErrorMessage(e.to_string()),
+							))
+						})
+					}
+				})
+				.await?;
+
+			Arc::into_inner(output)
+				.expect("unexpected strong reference count")
+				.map_err(ClonablePayloadBuilderError)
+		}
+		.boxed()
+	}
 }
 
 impl<P, Provider, Pool> Future for PipelineExecutor<P, Provider, Pool>
@@ -285,16 +365,59 @@ where
 	Provider: traits::ProviderBounds<P>,
 	Pool: traits::PoolBounds<P>,
 {
-	type Output = Result<types::BuiltPayload<P>, ClonablePayloadBuilderError>;
+	type Output = PipelineOutput<P>;
 
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 		let executor = self.get_mut();
 
-		// the pipieline has completed its execution, payload or error is ready.
-		if let Cursor::Completed(ref result) = executor.cursor {
-			// If the cursor is in the Completed state, we can return the result
-			// and resolve the future, no more steps will be executed.
-			return Poll::Ready(result.clone());
+		// The executor has not ran any steps yet, it is invoking the `before_job`
+		// method of each step in the pipeline.
+		if let Cursor::Initializing(ref mut future) = executor.cursor {
+			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
+				match output {
+					Ok(_) => {
+						trace!(
+							"Pipeline {} initialized successfully",
+							executor.context.pipeline.unique_id()
+						);
+						executor.cursor = executor.first_step();
+					}
+					Err(error) => {
+						trace!(
+							"Pipeline {} initialization failed with error: {error:?}",
+							executor.context.pipeline.unique_id()
+						);
+						// If the initialization failed, we immediately finalize the
+						// pipeline with the error that occurred during initialization
+						// and not attempt to run any steps.
+						executor.cursor = Cursor::Finalizing(
+							executor.finalize(Err(ClonablePayloadBuilderError(error))),
+						);
+					}
+				}
+				trace!(
+					"Pipeline {} initializing completed",
+					executor.context.pipeline.unique_id()
+				);
+			}
+		}
+
+		// the pipeline has completed executing all steps or encountered and error.
+		// Now we are running the `after_job` of each step in the pipeline.
+		if let Cursor::Finalizing(ref mut future) = executor.cursor {
+			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
+				trace!(
+					"pipeline {} completed with output: {output:#?}",
+					executor.context.pipeline.unique_id()
+				);
+
+				// all execution of this pipeline has completed, This resolves the
+				// executor future with the final output of the pipeline.
+				return Poll::Ready(output);
+			}
+
+			// tell the async runtime to poll again because we are still finalizing
+			cx.waker().wake_by_ref();
 		}
 
 		if matches!(executor.cursor, Cursor::BeforeStep(_, _)) {
@@ -305,19 +428,28 @@ where
 			let Cursor::BeforeStep(path, input) =
 				std::mem::replace(&mut executor.cursor, Cursor::PreparingStep)
 			else {
-				unreachable!();
+				unreachable!("bug in PipelineExecutor state machine");
 			};
 
+			trace!(
+				"pipeline {} will execute step {path:?}",
+				executor.context.pipeline.unique_id(),
+			);
+
 			let running_future = executor.execute_step(path.clone(), input);
-			executor.cursor = Cursor::InProgress(path, running_future);
+			executor.cursor = Cursor::StepInProgress(path, running_future);
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
 
-		if let Cursor::InProgress(ref path, ref mut pinned_future) = executor.cursor
-		{
-			// If the cursor is in the InProgress state, we need to poll the future
-			// to see if it has completed.
-			if let Poll::Ready(output) = pinned_future.as_mut().poll_unpin(cx) {
+		if let Cursor::StepInProgress(ref path, ref mut future) = executor.cursor {
+			// If the cursor is in the StepInProgress state, we to poll the
+			// future instance of that step to see if it has completed.
+			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
+				trace!(
+					"pipeline {} step {path:?} completed with output: {output:#?}",
+					executor.context.pipeline.unique_id()
+				);
+
 				// step has completed, we can advance the cursor
 				executor.cursor = executor.advance_cursor(path.clone(), output);
 				cx.waker().wake_by_ref(); // tell the async runtime to poll again
@@ -352,11 +484,6 @@ enum Cursor<P: Platform> {
 	/// vector.
 	BeforeStep(StepPath, StepInput<P>),
 
-	/// The pipeline finished executing all steps or encountered an error.
-	/// This state resolved the executor future with the result of the
-	/// pipeline execution.
-	Completed(Result<types::BuiltPayload<P>, ClonablePayloadBuilderError>),
-
 	/// a pipeline step execution is in progress.
 	///
 	/// This state is set when the pipeline executor has began executing a step
@@ -366,10 +493,22 @@ enum Cursor<P: Platform> {
 	///
 	/// Here we store the step path that is currently being executed
 	/// and the pinned future that is executing the step.
-	InProgress(
+	StepInProgress(
 		StepPath,
 		Pin<Box<dyn Future<Output = StepOutput<P>> + Send>>,
 	),
+
+	/// The pipeline is currently initializing all steps for a new payload job.
+	///
+	/// This happens once before the first step is executed and it calls the
+	/// `before_job` method of each step in the pipeline.
+	Initializing(
+		Pin<Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>>,
+	),
+
+	/// This state occurs after the `Completed` state is reached. It calls
+	/// the `after_job` method of each step in the pipeline with the output.
+	Finalizing(Pin<Box<dyn Future<Output = PipelineOutput<P>> + Send>>),
 
 	/// The pipeline is currently preparing to execute the next step.
 	/// We are in this state only for a brief moment inside the `poll` method
@@ -426,6 +565,7 @@ impl<P: Platform> StepOutput<P> {
 /// Because the same result of this future is cached and reuesed
 /// in the `PayloadJob`, we need to be able to clone the error so
 /// we can use it with `futures::Shared`
+#[derive(Debug)]
 pub(super) struct ClonablePayloadBuilderError(PayloadBuilderError);
 
 impl Clone for ClonablePayloadBuilderError {

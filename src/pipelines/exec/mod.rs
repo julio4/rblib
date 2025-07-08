@@ -105,11 +105,18 @@ impl<
 		Pool: traits::PoolBounds<P>,
 	> PipelineExecutor<P, Provider, Pool>
 {
-	fn create_step_context(&self) -> StepContext<P> {
+	fn create_step_context(&self, step: &StepPath) -> StepContext<P> {
 		let block = self.context.block.clone();
 		let service = Arc::clone(&self.context.service);
 		let pipeline = Arc::clone(&self.context.pipeline);
-		let limits = match pipeline.limits() {
+		let (parent, _) = step.enclosing(&pipeline).expect(
+			"Invalid step path. This is a bug in the pipeline executor \
+			 implementation.",
+		);
+
+		// either inherit limits from the parent step or use the default limits
+		// of the underlying platform.
+		let limits = match parent.limits() {
 			Some(limits) => limits.create(&block, None),
 			None => P::DefaultLimits::default().create(&block, None),
 		};
@@ -127,7 +134,7 @@ impl<
 		path: StepPath,
 		input: StepInput<P>,
 	) -> Pin<Box<dyn Future<Output = StepOutput<P>> + Send>> {
-		let context = self.create_step_context();
+		let context = self.create_step_context(&path);
 		let step = Arc::clone(path.locate_step(&self.context.pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
@@ -400,6 +407,9 @@ where
 					executor.context.pipeline.unique_id()
 				);
 			}
+
+			// tell the async runtime to poll again because we are still initializing
+			cx.waker().wake_by_ref();
 		}
 
 		// the pipeline has completed executing all steps or encountered and error.
@@ -452,8 +462,9 @@ where
 
 				// step has completed, we can advance the cursor
 				executor.cursor = executor.advance_cursor(path.clone(), output);
-				cx.waker().wake_by_ref(); // tell the async runtime to poll again
 			}
+
+			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
 
 		Poll::Pending
@@ -478,10 +489,6 @@ where
 /// Keeps track of the current pipeline execution progress.
 enum Cursor<P: Platform> {
 	/// The pipeline will execute this step on the next iteration.
-	/// The `Vec<usize>` contains the indices of the steps that will be executed
-	/// in the next iteration. It's a vector because the pipeline can have
-	/// nested pipelines, each nesting level will add its own index to the
-	/// vector.
 	BeforeStep(StepPath, StepInput<P>),
 
 	/// a pipeline step execution is in progress.
@@ -500,7 +507,7 @@ enum Cursor<P: Platform> {
 
 	/// The pipeline is currently initializing all steps for a new payload job.
 	///
-	/// This happens once before the first step is executed and it calls the
+	/// This happens once before any step is executed and it calls the
 	/// `before_job` method of each step in the pipeline.
 	Initializing(
 		Pin<Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>>,

@@ -40,12 +40,6 @@ impl StepPath {
 		Self(path)
 	}
 
-	/// Returns a new step path with a single element `0`, which represents the
-	/// first navigable item in a non-empty pipeline.
-	pub fn zero() -> Self {
-		Self(smallvec![0])
-	}
-
 	/// Returns the number of elements in the path.
 	pub fn len(&self) -> usize {
 		self.0.len()
@@ -306,6 +300,12 @@ impl StepPath {
 				Some((pipeline, *behavior))
 			}
 		})
+	}
+
+	/// Returns a new step path with a single element `0`, which represents the
+	/// first navigable item in a non-empty pipeline.
+	fn zero() -> Self {
+		Self(smallvec![0])
 	}
 
 	/// Returns a path that points to the next item in the current scope.

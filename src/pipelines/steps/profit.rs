@@ -3,7 +3,7 @@ use {
 	alloy::consensus::Transaction,
 	core::cmp::Reverse,
 	itertools::Itertools,
-	std::{collections::HashMap, sync::Arc},
+	std::{collections::BTreeMap, sync::Arc},
 };
 
 /// This step will sort the transactions in the payload by their effective
@@ -33,7 +33,7 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 				txs.sort_by_key(|tx| Reverse(tx.nonce()));
 				(sender, txs)
 			})
-			.collect::<HashMap<_, _>>();
+			.collect::<BTreeMap<_, _>>();
 
 		// now we have all transactions groupped by the sender and sorted by nonce.
 

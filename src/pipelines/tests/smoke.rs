@@ -23,12 +23,26 @@ async fn empty_pipeline_builds_empty_payload() {
 }
 
 #[tokio::test]
-async fn transfers_included_reverts_excluded() {
+async fn pipeline_with_no_txs_builds_empty_payload() {
 	let pipeline = Pipeline::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
-		//.with_step(TotalProfitOrdering)
+		.with_step(RevertProtection);
+
+	let node = LocalNode::ethereum(pipeline).await.unwrap();
+	let block = node.build_new_block().await.unwrap();
+
+	assert_eq!(block.header.number, 1);
+	assert!(block.transactions.is_empty(), "Block should be empty");
+}
+
+#[tokio::test]
+async fn transfers_included_reverts_excluded_flat() {
+	let pipeline = Pipeline::default()
+		.with_epilogue(BuilderEpilogue)
+		.with_step(GatherBestTransactions)
+		.with_step(PriorityFeeOrdering)
 		.with_step(RevertProtection);
 
 	let node = LocalNode::ethereum(pipeline).await.unwrap();
@@ -80,7 +94,7 @@ async fn transfers_included_reverts_excluded() {
 }
 
 #[tokio::test]
-async fn transfers_included_reverts_excluded_in_loop() {
+async fn transfers_included_reverts_excluded_loop() {
 	let pipeline = Pipeline::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(

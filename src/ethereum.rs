@@ -53,7 +53,7 @@ impl Platform for EthereumMainnet {
 			timestamp: attributes.timestamp,
 			suggested_fee_recipient: attributes.suggested_fee_recipient,
 			prev_randao: attributes.prev_randao,
-			gas_limit: EthereumBuilderConfig::new().gas_limit(parent.gas_limit),
+			gas_limit: EthereumBuilderConfig::new().gas_limit(parent.gas_limit()),
 			parent_beacon_block_root: attributes.parent_beacon_block_root,
 			withdrawals: Some(attributes.withdrawals.clone()),
 		}

@@ -32,8 +32,8 @@ pipelines = ["tokio", "futures", "reth-errors"]
 pipelines-macros = { path = "src/pipelines/macros" }
 
 # Common dependencies
-alloy = "1.0.11"
-alloy-evm = "0.10"
+alloy = "1.0.17"
+alloy-evm = "0.12"
 itertools = "0.14"
 eyre = "0.6"
 thiserror = { version = "2.0", default-features = false }
@@ -43,44 +43,44 @@ smallvec = "1.15"
 dashmap = "6.1"
 
 futures = { version = "0.3", optional = true }
-tokio = { version = "1.45", features = ["full"], optional = true }
+tokio = { version = "1.46", features = ["full"], optional = true }
 
 # Reth dependencies
-reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
+reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 
-reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false }
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
+reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
 
 # ethereum dependencies (optional)
-reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
-reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true, features = [
+reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
+reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true, features = [
   "full",
 ] }
 
 # optimism dependencies (optional)
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", optional = true }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
 
 # pipelines only
-reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", default-features = false, optional = true }
+reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", optional = true }
 
 [dev-dependencies]
 nanoid = "0.4"
 ctor = "0.4.2"
-secp256k1 = "0.30"
+secp256k1 = "0.31"
 sha3 = "0.10"
 tokio = { version = "1.45", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 alloy-genesis = "1.0"
 
-reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
-reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
-reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.4.8", features = [
+reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.0", features = [
   "full",
   "test-utils",
 ] }

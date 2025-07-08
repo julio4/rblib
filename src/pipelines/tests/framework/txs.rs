@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use {
 	super::signer::Signer,
 	crate::pipelines::tests::framework::FUNDED_PRIVATE_KEYS,
@@ -21,7 +23,6 @@ pub struct TransactionBuilder {
 	nonce: Option<u64>,
 	base_fee: Option<u128>,
 	tx: TxEip1559,
-	key: Option<u64>,
 }
 
 impl TransactionBuilder {
@@ -36,7 +37,6 @@ impl TransactionBuilder {
 				gas_limit: 210000,
 				..Default::default()
 			},
-			key: None,
 		}
 	}
 
@@ -50,9 +50,21 @@ impl TransactionBuilder {
 		self
 	}
 
-	pub fn with_key(mut self, key: u64) -> Self {
-		self.key = Some(key);
-		self
+	pub fn with_funded_account(self, key: u64) -> Self {
+		assert!(
+			key < FUNDED_PRIVATE_KEYS.len() as u64,
+			"Key index out of bounds, must be less than {}",
+			FUNDED_PRIVATE_KEYS.len()
+		);
+
+		self.with_signer(
+			Signer::try_from_secret(
+				FUNDED_PRIVATE_KEYS[key as usize]
+					.parse()
+					.expect("invalid hardcoded builder private key"),
+			)
+			.expect("invalid hardcoded builder private key"),
+		)
 	}
 
 	pub fn with_value(mut self, value: u128) -> Self {
@@ -104,15 +116,11 @@ impl TransactionBuilder {
 	}
 
 	pub async fn build(mut self) -> Recovered<TxEnvelope> {
-		let signer = match self.signer {
-			Some(signer) => signer,
-			None => Signer::try_from_secret(
-				FUNDED_PRIVATE_KEYS[self.key.unwrap_or(0) as usize]
-					.parse()
-					.expect("invalid hardcoded builder private key"),
-			)
-			.expect("Failed to create signer from hardcoded private key"),
-		};
+		if self.signer.is_none() {
+			self = self.with_funded_account(0);
+		}
+
+		let signer = self.signer.unwrap();
 
 		let nonce = match self.nonce {
 			Some(nonce) => nonce,

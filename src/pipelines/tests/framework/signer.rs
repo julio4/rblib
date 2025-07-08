@@ -16,7 +16,7 @@ pub struct Signer {
 
 impl Signer {
 	pub fn try_from_secret(secret: B256) -> Result<Self, secp256k1::Error> {
-		let secret = SecretKey::from_slice(secret.as_ref())?;
+		let secret = SecretKey::from_byte_array(secret.into())?;
 		let pubkey = secret.public_key(SECP256K1);
 		let address = public_key_to_address(&pubkey);
 
@@ -32,7 +32,7 @@ impl Signer {
 		message: B256,
 	) -> Result<Signature, secp256k1::Error> {
 		let s = SECP256K1.sign_ecdsa_recoverable(
-			&Message::from_digest_slice(&message[..])?,
+			Message::from_digest(message.into()),
 			&self.secret,
 		);
 		let (rec_id, data) = s.serialize_compact();

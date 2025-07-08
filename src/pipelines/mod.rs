@@ -143,10 +143,12 @@ impl<P: Platform> Pipeline<P> {
 
 /// Internal API
 impl<P: Platform> Pipeline<P> {
+	#[expect(dead_code)]
 	pub(crate) fn prologue(&self) -> Option<&Arc<WrappedStep<P>>> {
 		self.prologue.as_ref()
 	}
 
+	#[expect(dead_code)]
 	pub(crate) fn epilogue(&self) -> Option<&Arc<WrappedStep<P>>> {
 		self.epilogue.as_ref()
 	}

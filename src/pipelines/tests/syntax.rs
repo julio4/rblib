@@ -10,7 +10,6 @@ fn only_steps() {
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
-		.with_step(TotalProfitOrdering)
 		.with_step(RevertProtection);
 
 	println!("{pipeline:#?}");
@@ -20,7 +19,7 @@ fn only_steps() {
 fn only_steps_optimism_specific() {
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_epilogue(BuilderEpilogue)
-		.with_epilogue(OptimismPrologue)
+		.with_prologue(OptimismPrologue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
 		.with_step(TotalProfitOrdering)
@@ -66,9 +65,14 @@ fn nested_one_concise_simulated() {
 
 #[test]
 fn nested_many_concise() {
+	// synthesize dummy steps
+	make_step!(TestStep1, Static);
+	make_step!(TestStep2, Simulated);
+
 	let top_level = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
 		.with_epilogue(BuilderEpilogue)
+		.with_step(TestStep1)
 		.with_pipeline(
 			Loop,
 			(
@@ -77,12 +81,14 @@ fn nested_many_concise() {
 				TotalProfitOrdering,
 				RevertProtection,
 			),
-		);
+		)
+		.with_step(TestStep2);
 
 	println!("{top_level:#?}");
 }
 
 #[test]
+#[allow(dead_code)]
 fn flashblocks_example() {
 	#[derive(Debug, Clone)]
 	struct FlashblocksConfig {
@@ -129,5 +135,5 @@ fn flashblocks_example() {
 		})
 		.with_step(WebSocketEndBlock);
 
-	println!("{:#?}", pipeline);
+	println!("{pipeline:#?}");
 }

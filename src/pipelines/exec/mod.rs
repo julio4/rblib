@@ -135,10 +135,10 @@ impl<
 		input: StepInput<P>,
 	) -> Pin<Box<dyn Future<Output = StepOutput<P>> + Send>> {
 		let context = self.create_step_context(&path);
-		let step = Arc::clone(path.locate_step(&self.context.pipeline).expect(
+		let step = path.map_step(&self.context.pipeline, Arc::clone).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
-		));
+		);
 
 		async move {
 			match (step.kind(), input) {
@@ -239,12 +239,14 @@ impl<
 		next_path: StepPath,
 		previous: StepOutput<P>,
 	) -> Result<StepInput<P>, CheckpointError<P>> {
-		let step = next_path.locate_step(&self.context.pipeline).expect(
-			"Step path is unreachable. This is a bug in the pipeline executor \
-			 implementation.",
-		);
+		let step_kind = next_path
+			.map_step(&self.context.pipeline, |s| s.kind())
+			.expect(
+				"Step path is unreachable. This is a bug in the pipeline executor \
+				 implementation.",
+			);
 
-		match (step.kind(), previous) {
+		match (step_kind, previous) {
 			(KindTag::Static, StepOutput::Static(payload)) => {
 				// If the next step is static, we can use the static payload as is.
 				Ok(StepInput::Static(payload.try_into_payload().expect(
@@ -286,14 +288,15 @@ impl<
 	/// After pipeline steps are initialized, this method will identify the first
 	/// step to execute in the pipeline and prepare the cursor to run it.
 	fn first_step(&self) -> Cursor<P> {
-		match StepPath::first_step(&self.context.pipeline) {
+		match StepPath::beginning(&self.context.pipeline) {
 			Some(path) => {
-				let step = path.locate_step(&self.context.pipeline).expect(
-					"Step path is unreachable. This is a bug in the pipeline executor \
-					 implementation.",
-				);
+				let step_kind =
+					path.map_step(&self.context.pipeline, |s| s.kind()).expect(
+						"Step path is unreachable. This is a bug in the pipeline executor \
+						 implementation.",
+					);
 
-				let input = match step.kind() {
+				let input = match step_kind {
 					// If the step is static, we can use the static context and payload.
 					KindTag::Static => StepInput::Static(StaticPayload::<P>::default()),
 					// If the step is simulated, we can use the simulated context and

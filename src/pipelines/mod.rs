@@ -143,12 +143,10 @@ impl<P: Platform> Pipeline<P> {
 
 /// Internal API
 impl<P: Platform> Pipeline<P> {
-	#[expect(dead_code)]
 	pub(crate) fn prologue(&self) -> Option<&Arc<WrappedStep<P>>> {
 		self.prologue.as_ref()
 	}
 
-	#[expect(dead_code)]
 	pub(crate) fn epilogue(&self) -> Option<&Arc<WrappedStep<P>>> {
 		self.epilogue.as_ref()
 	}
@@ -258,6 +256,41 @@ impl<P: Platform, M0: StepKind, S0: Step<P, Kind = M0>> IntoPipeline<P, u8>
 
 // Generate implementations for tuples of steps up to 32 elements
 impl_into_pipeline_steps!(32);
+
+/// Helper trait that supports the concise pipeline definition syntax.
+pub trait PipelineBuilderExt<P: Platform> {
+	fn with_prologue<Mode: StepKind>(
+		self,
+		step: impl Step<P, Kind = Mode>,
+	) -> Pipeline<P>;
+
+	fn with_epilogue<Mode: StepKind>(
+		self,
+		step: impl Step<P, Kind = Mode>,
+	) -> Pipeline<P>;
+
+	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P>;
+}
+
+impl<P: Platform, T: IntoPipeline<P, ()>> PipelineBuilderExt<P> for T {
+	fn with_prologue<Mode: StepKind>(
+		self,
+		step: impl Step<P, Kind = Mode>,
+	) -> Pipeline<P> {
+		self.into_pipeline().with_prologue(step)
+	}
+
+	fn with_epilogue<Mode: StepKind>(
+		self,
+		step: impl Step<P, Kind = Mode>,
+	) -> Pipeline<P> {
+		self.into_pipeline().with_epilogue(step)
+	}
+
+	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P> {
+		self.into_pipeline().with_limits(limits)
+	}
+}
 
 impl<P: Platform> Display for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

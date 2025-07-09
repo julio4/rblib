@@ -5,10 +5,7 @@
 //! etc.
 
 use {
-	crate::{
-		pipelines::step::{StepKind, WrappedStep},
-		*,
-	},
+	crate::{pipelines::step::WrappedStep, *},
 	derive_more::{From, Into},
 	smallvec::{smallvec, SmallVec},
 	std::sync::Arc,
@@ -70,32 +67,6 @@ impl StepPath {
 		self.0.last() == Some(&EPILOGUE_INDEX)
 	}
 
-	/// Returns the path to the first executable step in the pipeline.
-	///
-	/// This function will traverse the pipeline and return the innermost
-	/// step that is the first in the execution order. If the innermost pipeline
-	/// has a prologue step, this will return the path to that step.
-	///
-	/// Returns `None` if the pipeline is empty or is composed of only empty
-	/// pipelines.
-	pub fn beginning<P: Platform>(pipeline: &Pipeline<P>) -> Option<Self> {
-		if pipeline.is_empty() {
-			return None;
-		}
-
-		if pipeline.prologue().is_some() {
-			// if the pipeline has a prologue, we return the path to it.
-			return Some(StepPath::prologue());
-		}
-
-		match pipeline.steps.first()? {
-			StepOrPipeline::Step(_) => Some(StepPath::first_step()),
-			StepOrPipeline::Pipeline(_, pipeline) => {
-				Some(StepPath::first_step().concat(StepPath::beginning(pipeline)?))
-			}
-		}
-	}
-
 	/// Returns the index of the root element in the path.
 	///
 	/// For example, if the path is `[3, 1, 2]`, this function will return `0`,
@@ -115,8 +86,8 @@ impl StepPath {
 
 	/// Returns a step path without the current root index.
 	///
-	/// This is useful when doing recursive navigation through the pipeline.
-	/// Returns None if the path has only one element.
+	/// This is useful when doing recursive navigation down through the pipeline.
+	/// Returns None if the path is an item in a top-level pipeline.
 	pub fn remove_root(self) -> Option<StepPath> {
 		if self.is_toplevel() {
 			// If there's only one element, popping it would result in an empty path
@@ -129,10 +100,10 @@ impl StepPath {
 
 	/// Returns a step path without the current leaf index.
 	///
-	/// This is useful when you want to navigate to the pipeline or step that
+	/// This is useful when you want to navigate up to the pipeline or step that
 	/// contains the current step or pipeline.
 	///
-	/// Returns None if the path has only one element.
+	/// Returns None if the path points to a top-level item.
 	pub fn remove_leaf(self) -> Option<StepPath> {
 		if self.is_toplevel() {
 			None
@@ -148,243 +119,6 @@ impl StepPath {
 		Self(new_path)
 	}
 
-	/// Given a reference to a pipeline, this function will try to locate the
-	/// parent pipeline that contains the item pointed to by the current
-	/// step path.
-	pub fn enclosing<'a, P: Platform>(
-		&self,
-		pipeline: &'a Pipeline<P>,
-	) -> Option<(&'a Pipeline<P>, Behavior)> {
-		if self.is_toplevel() {
-			// Topmost pipelines always have a behavior of `Once`.
-			return Some((pipeline, Behavior::Once));
-		}
-
-		self
-			.clone()
-			.remove_leaf()?
-			.map_pipeline(pipeline, |p, b| (p, b))
-	}
-
-	/// Given a reference to a pipeline, this function will return `true` if
-	/// the current step path is the last regular step in the innermost pipeline
-	/// that this step path points to.
-	///
-	/// This does not mean that the step is the last step in the entire pipeline.
-	///
-	/// Returns `None` if the step path does not point to a valid step or
-	/// pipeline or if the step points to an epilogue or prologue step.
-	pub fn is_last_in_scope<P: Platform>(
-		&self,
-		pipeline: &Pipeline<P>,
-	) -> Option<bool> {
-		let index = self.leaf().checked_sub(STEP0_INDEX)?;
-
-		if self.is_toplevel() {
-			// we are at the topmost pipeline, so we can just check if the index
-			// is the last step in the pipeline.
-
-			if index >= pipeline.steps().len() {
-				// if the index is out of bounds, we cannot be the last step.
-				return None;
-			}
-
-			return Some(index == pipeline.steps().len() - 1);
-		}
-
-		// we're somewhere inside a nested pipeline, so we need to
-		// check if the index is the last step in the parent pipeline.
-		let (parent, _) = self.enclosing(pipeline)?;
-
-		if index >= parent.steps().len() {
-			// if the index is out of bounds, we cannot be the last step.
-			return None;
-		}
-
-		Some(index == parent.steps().len() - 1)
-	}
-
-	/// Given a reference to the top-level pipeline, this function will return the
-	/// next step to be executed based on the control flow value returned by the
-	/// current step.
-	///
-	/// Return `None` if there are no further steps to execute in the pipeline
-	/// or if the current step path does not point to a valid step or pipeline.
-	pub fn advance<P: Platform, K: StepKind>(
-		self,
-		pipeline: &Pipeline<P>,
-		control_flow: &ControlFlow<P, K>,
-	) -> Option<NextStep> {
-		if control_flow.is_fail() {
-			// If the control flow is `Fail`, we cannot continue the pipeline
-			// execution. There are no next steps to execute.
-			return Some(NextStep::Failure);
-		}
-
-		let (_, behavior) = self.enclosing(pipeline)?;
-		let is_last_in_scope = self.is_last_in_scope(pipeline)?;
-
-		// if the path points to a step, then we return it as is, otherwise,
-		// we find the first executable step in the pipeline pointed to by the path.
-		let executable_path = |path: StepPath| {
-			match path.map(pipeline, |s| s).expect("bug in step path logic") {
-				// item is a step, we can just return the path to it.
-				StepOrPipeline::Step(_) => Some(NextStep::Path(path)),
-				StepOrPipeline::Pipeline(_, nested) => {
-					// item is a nested pipeline, we need to find the
-					// first executable step in that pipeline and return the
-					// path to it.
-					Some(NextStep::Path(path.concat(StepPath::beginning(nested)?)))
-				}
-			}
-		};
-
-		if control_flow.is_ok() {
-			if is_last_in_scope {
-				match behavior {
-					Behavior::Once => match self.next_in_parent_scope(pipeline) {
-						Some(next_path) => return executable_path(next_path),
-						None => return Some(NextStep::Completed),
-					},
-					Behavior::Loop => return executable_path(self.first_leaf_in_scope()),
-				}
-			} else {
-				return executable_path(self.next_leaf());
-			}
-		} else if control_flow.is_continue() {
-			match behavior {
-				Behavior::Once => {
-					// same as ok
-					if is_last_in_scope {
-						match self.next_in_parent_scope(pipeline) {
-							Some(next_path) => return executable_path(next_path),
-							None => return Some(NextStep::Completed),
-						}
-					} else {
-						return executable_path(self.clone().next_leaf());
-					}
-				}
-				Behavior::Loop => {
-					// rerun the first step in the current sub-pipeline
-					return executable_path(self.first_leaf_in_scope());
-				}
-			}
-		} else if control_flow.is_break() {
-			// break in a pipeline will stop the execution of the current
-			// pipeline and jump to the next step in the parent pipeline.
-			match self.next_in_parent_scope(pipeline) {
-				Some(next_path) => return executable_path(next_path),
-				None => return Some(NextStep::Completed),
-			}
-		}
-
-		unreachable!("failures already handled earlier")
-	}
-
-	/// Given a reference to a pipeline and a function this method will invoke the
-	/// function on a step pointed to by the step path.
-	///
-	/// Returns `None` if the path does not point to a valid step in the pipeline.
-	pub fn map_step<P: Platform, R>(
-		&self,
-		pipeline: &Pipeline<P>,
-		f: impl Fn(&Arc<WrappedStep<P>>) -> R,
-	) -> Option<R> {
-		if pipeline.is_empty() {
-			return None;
-		}
-
-		if self.is_toplevel() {
-			if self.is_prologue() {
-				if let Some(prologue) = pipeline.prologue() {
-					return Some(f(prologue));
-				}
-
-				// pipeline has no prologue
-				return None;
-			}
-
-			if self.is_epilogue() {
-				if let Some(epilogue) = pipeline.epilogue() {
-					return Some(f(epilogue));
-				}
-
-				// pipeline has no epilogue
-				return None;
-			}
-
-			if let StepOrPipeline::Step(step) =
-				pipeline.steps.get(self.root()?.checked_sub(STEP0_INDEX)?)?
-			{
-				// If the path points to a step, invoke it.
-				return Some(f(step));
-			}
-
-			// the path is not pointing to a step.
-			return None;
-		}
-
-		// we are not the the leaf of the path, keep navigating down the
-		// pipeline.
-		let Some(StepOrPipeline::Pipeline(_, nested)) =
-			pipeline.steps.get(self.root()?.checked_sub(STEP0_INDEX)?)
-		else {
-			return None;
-		};
-
-		self.clone().remove_root()?.map_step(nested, f)
-	}
-
-	/// Given a reference to a pipeline, this function will try to locate the
-	/// step or nested pipeline that corresponds to the current path.
-	///
-	/// Returns `None` if the path does not point to a valid item in the pipeline.
-	fn map<'a, P: Platform, R>(
-		&self,
-		pipeline: &'a Pipeline<P>,
-		f: impl Fn(&'a StepOrPipeline<P>) -> R,
-	) -> Option<R> {
-		if pipeline.is_empty() {
-			return None;
-		}
-
-		let mut path = self.clone();
-		let mut item =
-			pipeline.steps.get(path.root()?.checked_sub(STEP0_INDEX)?)?;
-
-		while let Some(descendant) = path.remove_root() {
-			item = match item {
-				StepOrPipeline::Step(_) => return None,
-				StepOrPipeline::Pipeline(_, pipeline) => pipeline
-					.steps
-					.get(descendant.root()?.checked_sub(STEP0_INDEX)?)?,
-			};
-			path = descendant;
-		}
-
-		Some(f(item))
-	}
-
-	/// Given a reference to a pipeline, this function will try to locate a
-	/// nested pipeline that corresponds to the current path.
-	///
-	/// Returns `None` if the path does not point to a valid nested pipeline in
-	/// the pipeline.
-	fn map_pipeline<'a, P: Platform, R>(
-		&self,
-		pipeline: &'a Pipeline<P>,
-		f: impl Fn(&'a Pipeline<P>, Behavior) -> R,
-	) -> Option<R> {
-		self
-			.map(pipeline, |item| match item {
-				StepOrPipeline::Step(_) => None,
-				StepOrPipeline::Pipeline(behavior, pipeline) => {
-					Some(f(pipeline, *behavior))
-				}
-			})
-			.flatten()
-	}
-
 	/// Returns a step path that points to the prologue step.
 	fn prologue() -> Self {
 		Self(smallvec![PROLOGUE_INDEX])
@@ -394,17 +128,21 @@ impl StepPath {
 		Self(smallvec![EPILOGUE_INDEX])
 	}
 
-	/// Returns a new step path with a single element `0`, which represents the
-	/// first navigable item in a non-empty pipeline.
-	fn first_step() -> Self {
-		Self(smallvec![STEP0_INDEX])
+	/// Returns a new step path that points to the first non-prologue and
+	/// non-epilogue step.
+	fn step0() -> Self {
+		Self::step(0)
+	}
+
+	fn step(step_index: usize) -> Self {
+		Self(smallvec![step_index + STEP0_INDEX])
 	}
 
 	/// Returns a path that points to the next item in the current scope.
 	///
 	/// This method does not check if the next item is valid or exists in the
 	/// pipeline. It simply increments the last index in the path.
-	fn next_leaf(self) -> Self {
+	fn increment_leaf(self) -> Self {
 		let mut new_path = self.0;
 		if let Some(last) = new_path.last_mut() {
 			*last += 1;
@@ -412,47 +150,314 @@ impl StepPath {
 		Self(new_path)
 	}
 
-	/// Returns a path that points to the first leaf in the current scope.
-	///
-	/// This method resets the last index in the path to `0`, effectively
-	/// pointing to the first item in the current scope.
-	///
-	/// This method does not check if the first item is valid or exists in the
-	/// pipeline. It simply resets the last index in the path to `0`.
-	fn first_leaf_in_scope(self) -> Self {
+	fn replace_leaf(self, new_leaf: usize) -> Self {
 		let mut new_path = self.0;
-		if let Some(last) = new_path.last_mut() {
-			*last = 0;
-		}
+		*new_path.last_mut().expect("StepPath cannot be empty") = new_leaf;
 		Self(new_path)
 	}
 
-	/// Returns a path that points to the next item in the parent scope(s).
-	///
-	/// This method will recursively navigate up the pipeline structure in search
-	/// of the next item, for example if we are the last step in a nested
-	/// pipeline, which in turn is the last step in its parent pipeline, this
-	/// method will jump two levels up to the next step in the parent, parent
-	/// pipeline and so on recursively until it finds the next item or `None`
-	/// if no next item exists.
-	///
-	/// Used to handle control flows like `break` or last steps in a nested
-	/// pipeline.
-	fn next_in_parent_scope<P: Platform>(
-		self,
-		pipeline: &Pipeline<P>,
-	) -> Option<Self> {
-		let enclosing = self.remove_leaf()?;
+	fn append_prologue(self) -> Self {
+		self.concat(StepPath::prologue())
+	}
 
-		// check if the enclosing pipeline is the last item in its scope
-		if enclosing.is_last_in_scope(pipeline)? {
-			// enclosing pipeline is the last item in its scope, we will need to
-			// navigate one more level up to find the next item.
-			return enclosing.next_in_parent_scope(pipeline);
+	fn append_epilogue(self) -> Self {
+		self.concat(StepPath::epilogue())
+	}
+
+	fn append_step(self, step_index: usize) -> Self {
+		self.concat(StepPath::step(step_index))
+	}
+}
+
+/// This type is used to navigate through a pipeline.
+/// It keeps track of the current step and the hierarchy of enclosing pipelines.
+/// The path in this type always points at a step, so it traverses only leaves
+/// of the pipeline tree.
+#[derive(Clone)]
+pub(crate) struct StepNavigator<'a, P: Platform>(
+	StepPath,
+	Vec<&'a Pipeline<P>>,
+);
+
+impl<'a, P: Platform> StepNavigator<'a, P> {
+	/// Given a pipeline, returns a navigator that points at the first executable
+	/// item in the pipeline.
+	///
+	/// In pipelines with a prologue, this will point to the prologue step.
+	/// In pipelines without a prologue, this will point to the first step.
+	/// In pipelines with no steps, but with an epilogue, this will point to the
+	/// epilogue step.
+	///
+	/// If the first item in the pipeline is a nested pipeline, this will dig
+	/// deeper into the nested pipeline to find the first executable item.
+	///
+	/// In empty pipelines, this will return None.
+	pub fn entrypoint(pipeline: &'a Pipeline<P>) -> Option<Self> {
+		if pipeline.is_empty() {
+			return None;
 		}
 
-		// otherwise we just need to advance the leaf index on the parent item
-		Some(enclosing.next_leaf())
+		// pipeline has a prologue, return it.
+		if pipeline.prologue().is_some() {
+			return Some(Self(StepPath::prologue(), vec![pipeline]));
+		}
+
+		// pipeline has no prologue
+		if pipeline.steps().is_empty() {
+			// If there are no steps, but there is an epilogue, return it.
+			if pipeline.epilogue().is_some() {
+				return Some(Self(StepPath::epilogue(), vec![pipeline]));
+			} else {
+				// this is an empty pipeline, there is nothing executable.
+				return None;
+			}
+		}
+
+		// pipeline has steps, dig into the entrypoint of the first item
+		Self(StepPath::step0(), vec![pipeline]).enter()
+	}
+
+	/// Returns a reference to the instance of the step that this path is
+	/// currently pointing to.
+	pub fn step(&self) -> &Arc<WrappedStep<P>> {
+		let step_index = self.0.leaf();
+		let enclosing_pipeline = self.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		);
+
+		if step_index == PROLOGUE_INDEX {
+			enclosing_pipeline
+				.prologue()
+				.expect("Step path points to a non-existing prologue")
+		} else if step_index == EPILOGUE_INDEX {
+			enclosing_pipeline
+				.epilogue()
+				.expect("Step path points to a non-existing epilogue")
+		} else {
+			let StepOrPipeline::Step(step) = enclosing_pipeline
+				.steps()
+				.get(step_index - STEP0_INDEX)
+				.expect("Step path points to a non-existing step")
+			else {
+				unreachable!(
+					"StepNavigator should not point to a pipeline, only to steps"
+				)
+			};
+
+			step
+		}
+	}
+
+	/// Advance to the next executable step in the pipeline when the current
+	/// step's execution returned `ControlFlow::Ok`.
+	///
+	/// Returns `None` if there are no more steps to execute in the pipeline.
+	pub fn next_ok(self) -> Option<Self> {
+		if self.is_epilogue() {
+			// the loop is over.
+			return self.next_in_parent();
+		}
+
+		if self.is_prologue() {
+			// start looping (if possible)
+			return self.after_prologue();
+		}
+
+		let enclosing_pipeline = self.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		);
+
+		// we are in a regular step.
+		assert!(
+			!enclosing_pipeline.steps().is_empty(),
+			"invalid navigator state"
+		);
+
+		let position = self
+			.0
+			.leaf()
+			.checked_sub(STEP0_INDEX)
+			.expect("invalid step index in step path");
+
+		let is_last = position + 1 >= enclosing_pipeline.steps().len();
+
+		match (self.behavior(), is_last) {
+			(Behavior::Loop, true) => {
+				// we are the last step in a loop pipeline, go to first step.
+				Self(self.0.replace_leaf(STEP0_INDEX), self.1.clone()).enter()
+			}
+			(Behavior::Once, true) => {
+				// we are last step in a non-loop pipeline, this is the end of a
+				// single iteration loop.
+				self.after_loop()
+			}
+			(_, false) => {
+				// if we are not the last step of the pipeline, just go to the
+				// next step.
+				Self(self.0.increment_leaf(), self.1.clone()).enter()
+			}
+		}
+	}
+
+	/// Advance to the next executable step in the pipeline when the current
+	/// step's execution returned `ControlFlow::Break`.
+	///
+	/// Returns `None` if there are no more steps to execute in the pipeline.
+	pub fn next_break(self) -> Option<Self> {
+		if self.is_epilogue() {
+			// the loop is over.
+			return self.next_in_parent();
+		}
+
+		// don't run any further steps in the current scope
+		self.after_loop()
+	}
+
+	/// Returns the loop behaviour of the pipeline containing the current step.
+	fn behavior(&self) -> Behavior {
+		// top-level pipelines are always `Once`.
+		if self.0.is_toplevel() {
+			return Behavior::Once;
+		}
+
+		// to identify the behavior of the pipeline that contains the current step
+		// we need to look at the grandparent pipeline, which contains the immediate
+		// parent pipeline that contains the current step, and check the behavior
+		// it is configured with.
+
+		let parent_path = self.0.clone().remove_leaf().expect("non-top-level");
+		let grandparent_pipeline =
+			self.1.iter().rev().nth(1).expect("non-top-level");
+
+		let parent_index = parent_path
+			.leaf()
+			.checked_sub(STEP0_INDEX)
+			.expect("step ancestors may not be prologues or epilogues");
+
+		let StepOrPipeline::Pipeline(behavior, _) = grandparent_pipeline
+			.steps()
+			.get(parent_index)
+			.expect("parent pipeline should contain the current step")
+		else {
+			unreachable!("all ancestors of a step must be pipelines");
+		};
+
+		*behavior
+	}
+
+	/// Creates a new navigator that points to the first ancestor of the current
+	/// item pointed to by the path.
+	fn ancestor(self) -> Option<Self> {
+		let StepNavigator(path, ancestors) = self;
+		let path = path.remove_leaf()?;
+		let ancestors = ancestors[0..ancestors.len() - 1].to_vec();
+		Some(StepNavigator(path, ancestors))
+	}
+
+	/// Creates a new navigator that points to the entrypoint of the element
+	/// pointed to by the current path.
+	///
+	/// If the current path points to a step, this will return itself.
+	/// Returns None if the current path points to an empty nested pipeline.
+	fn enter(self) -> Option<Self> {
+		let StepNavigator(path, ancestors) = self;
+		let enclosing_pipeline = ancestors.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		);
+
+		if path.is_prologue() || path.is_epilogue() {
+			assert!(
+				enclosing_pipeline.prologue().is_some()
+					|| enclosing_pipeline.epilogue().is_some(),
+				"path is prologue or epilogue, but enclosing pipeline has none",
+			);
+			// if we are in a prologue or epilogue, we can just return ourselves.
+			return Some(Self(path, ancestors));
+		}
+
+		let step_index = path
+			.leaf()
+			.checked_sub(STEP0_INDEX)
+			.expect("path is not prologue");
+
+		match enclosing_pipeline.steps().get(step_index)? {
+			StepOrPipeline::Step(_) => {
+				// if we are pointing at a step, we can just return ourselves.
+				Some(Self(path, ancestors))
+			}
+			StepOrPipeline::Pipeline(_, nested) => {
+				// if we are pointing at a pipeline, we need to dig into its entrypoint.
+				Some(StepNavigator(path, ancestors).join(Self::entrypoint(nested)?))
+			}
+		}
+	}
+
+	/// Finds the next step to run when a loop is finished.
+	///
+	/// The next step could be either the epilogue of the current pipeline,
+	/// or the next step in the parent pipeline.
+	fn after_loop(self) -> Option<Self> {
+		let enclosing_pipeline = self.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		);
+
+		if enclosing_pipeline.epilogue().is_some() {
+			// we've reached the epilogue of this pipeline, regardless of the
+			// looping behavior, we should go to the next step in the parent pipeline.
+			Some(Self(self.0.replace_leaf(EPILOGUE_INDEX), self.1.clone()))
+		} else {
+			self.next_in_parent()
+		}
+	}
+
+	/// Finds the next step to run afer the prologue of the current pipeline.
+	fn after_prologue(self) -> Option<Self> {
+		let enclosing_pipeline = self.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		);
+
+		if enclosing_pipeline.steps().is_empty() {
+			// no steps, go to epilogue.
+			self.after_loop()
+		} else {
+			// this pipeline has steps. Go to the first step entrypoint
+			Self(self.0.replace_leaf(STEP0_INDEX), self.1.clone()).enter()
+		}
+	}
+
+	/// Runs the next step in the parent pipeline.
+	fn next_in_parent(self) -> Option<Self> {
+		// we're guaranteed that the ancestor is not an epilogue or prologue,
+		let ancestor = self.ancestor()?;
+		let step_index = ancestor.0.leaf().checked_sub(STEP0_INDEX)?;
+		let enclosing_pipeline = ancestor.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		);
+
+		// is last step in the enclosing pipeline?
+		if step_index + 1 >= enclosing_pipeline.steps().len() {
+			match ancestor.behavior() {
+				Behavior::Loop => ancestor.after_prologue(),
+				Behavior::Once => ancestor.after_loop(),
+			}
+		} else {
+			// there are more items in the enclosing pipeline, so we can just
+			// increment the step index and return the new navigator to the first
+			// executable step in the next item.
+			Self(ancestor.0.increment_leaf(), ancestor.1.clone()).enter()
+		}
+	}
+
+	fn join(self, other: Self) -> Self {
+		Self(self.0.concat(other.0), [self.1, other.1].concat())
+	}
+
+	fn is_epilogue(&self) -> bool {
+		self.0.is_epilogue()
+	}
+
+	fn is_prologue(&self) -> bool {
+		self.0.is_prologue()
 	}
 }
 
@@ -460,14 +465,12 @@ impl StepPath {
 mod test {
 	use super::*;
 
-	impl<const N: usize> From<[usize; N]> for StepPath {
-		fn from(array: [usize; N]) -> Self {
-			Self::new(array.map(|ix| STEP0_INDEX + ix).as_slice())
-		}
-	}
-
 	make_step!(Epilogue1, Static);
+	make_step!(Epilogue2, Static);
+	make_step!(Epilogue3, Static);
+
 	make_step!(Prologue1, Static);
+	make_step!(Prologue2, Static);
 
 	make_step!(Step1, Static);
 	make_step!(Step2, Static);
@@ -487,299 +490,247 @@ mod test {
 	make_step!(StepIII, Static);
 
 	#[test]
-	fn flat_steps_only() {
-		let pipeline = Pipeline::<EthereumMainnet>::default()
-			.with_step(Step1)
-			.with_step(Step2)
-			.with_step(Step3)
-			.with_step(Step4);
+	fn find_entrypoint() {
+		let empty = Pipeline::<EthereumMainnet>::default();
+		assert!(StepNavigator::entrypoint(&empty).is_none());
 
-		assert!(StepPath::from([90]).map_step(&pipeline, |_| ()).is_none());
-		assert_eq!(StepPath::beginning(&pipeline), Some(StepPath::first_step()));
+		macro_rules! assert_entrypoint {
+			($pipeline:expr, $expected_path:expr, $expected_named:expr) => {{
+				let pipeline = $pipeline;
+				let StepNavigator(path, pipelines) =
+					StepNavigator::entrypoint(&pipeline).unwrap();
+				assert_eq!(path, $expected_path);
+				assert_eq!(
+					pipelines
+						.iter()
+						.map(|p| p.name().unwrap_or_default())
+						.collect::<Vec<&str>>(),
+					$expected_named
+				);
+			}};
+		}
 
-		assert!(StepPath::epilogue().map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::prologue().map_step(&pipeline, |_| ()).is_none());
+		// one step with no prologue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::default().with_step(Step1),
+			StepPath::step0(),
+			vec![""]
+		);
 
-		assert!(StepPath::from([0]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([0])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step1"));
-		assert!(StepPath::from([1]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step2"));
-		assert!(StepPath::from([2]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step3"));
+		// one step with prologue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one")
+				.with_prologue(Prologue1)
+				.with_step(Step1),
+			StepPath::prologue(),
+			vec!["one"]
+		);
 
-		assert!(StepPath::from([3]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([3])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step4"));
+		// no steps, but with epilogue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one").with_epilogue(Epilogue1),
+			StepPath::epilogue(),
+			vec!["one"]
+		);
 
-		assert!(StepPath::from([4]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 2]).map_step(&pipeline, |_| ()).is_none());
+		// one nested step with no prologue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one")
+				.with_pipeline(Loop, (Step1,).with_name("two")),
+			StepPath::step0().concat(StepPath::step0()),
+			vec!["one", "two"]
+		);
+
+		// one nested step with prologue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+				Loop,
+				(Step1,).with_prologue(Prologue1).with_name("two")
+			),
+			StepPath::step0().append_prologue(),
+			vec!["one", "two"]
+		);
+
+		// one nested pipeline with no steps, but with epilogue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one")
+				.with_pipeline(Loop, Pipeline::named("two").with_epilogue(Epilogue1)),
+			StepPath::step0().append_epilogue(),
+			vec!["one", "two"]
+		);
+
+		let nested_empty_pipeline = Pipeline::<EthereumMainnet>::default()
+			.with_pipeline(Loop, Pipeline::default());
+		assert!(StepNavigator::entrypoint(&nested_empty_pipeline).is_none());
+
+		// two levels of nested steps with no prologue
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+				Loop,
+				Pipeline::named("two").with_pipeline(Loop, (Step1,).with_name("three"))
+			),
+			StepPath::step(0).append_step(0).append_step(0),
+			vec!["one", "two", "three"]
+		);
+
+		// two levels of nested steps with prologue at first level
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+				Loop,
+				Pipeline::named("two")
+					.with_prologue(Prologue1)
+					.with_pipeline(Loop, (Step1,).with_name("three"))
+			),
+			StepPath::step(0).append_prologue(),
+			vec!["one", "two"]
+		);
+
+		// two levels of nested steps with prologue at second level
+		assert_entrypoint!(
+			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+				Loop,
+				Pipeline::named("two").with_pipeline(
+					Loop,
+					(Step1,).with_prologue(Prologue1).with_name("three")
+				)
+			),
+			StepPath::step(0).append_step(0).append_prologue(),
+			vec!["one", "two", "three"]
+		);
 	}
 
 	#[test]
-	fn flat_with_epiprologue() {
+	fn identify_loop_behavior() {
 		let pipeline = Pipeline::<EthereumMainnet>::default()
-			.with_epilogue(Epilogue1)
+			.with_step(Step1)
+			.with_step(Step2)
+			.with_step(Step3);
+		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert_eq!(navigator.behavior(), Behavior::Once);
+
+		let pipeline =
+			Pipeline::<EthereumMainnet>::default().with_pipeline(Loop, (Step1,));
+		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert_eq!(navigator.behavior(), Behavior::Loop);
+
+		let pipeline =
+			Pipeline::<EthereumMainnet>::default().with_pipeline(Once, (Step1,));
+		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert_eq!(navigator.behavior(), Behavior::Once);
+	}
+
+	#[test]
+	fn step_ref_access() {
+		let pipeline = Pipeline::<EthereumMainnet>::default()
+			.with_step(Step1)
+			.with_step(Step2)
+			.with_step(Step3);
+		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert!(navigator.step().name().ends_with("Step1"));
+
+		let pipeline = Pipeline::<EthereumMainnet>::default()
 			.with_prologue(Prologue1)
 			.with_step(Step1)
 			.with_step(Step2)
-			.with_step(Step3)
-			.with_step(Step4);
-		assert!(StepPath::from([90]).map_step(&pipeline, |_| ()).is_none());
-		assert_eq!(StepPath::beginning(&pipeline), Some(StepPath::prologue()));
+			.with_step(Step3);
+		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert!(navigator.step().name().ends_with("Prologue1"));
 
-		assert!(StepPath::beginning(&pipeline)
-			.unwrap()
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Prologue1"));
-
-		assert!(StepPath::prologue()
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Prologue1"));
-
-		assert!(StepPath::epilogue()
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Epilogue1"));
-
-		assert!(StepPath::from([0]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([0])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step1"));
-
-		assert!(StepPath::from([1]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step2"));
-
-		assert!(StepPath::from([2]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step3"));
-
-		assert!(StepPath::from([3]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([3])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step4"));
-
-		assert!(StepPath::from([4]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 2]).map_step(&pipeline, |_| ()).is_none());
-
-		assert!(!StepPath::from([2]).is_last_in_scope(&pipeline).unwrap());
-		assert!(StepPath::from([3]).is_last_in_scope(&pipeline).unwrap());
-		assert!(StepPath::from([4]).is_last_in_scope(&pipeline).is_none());
-	}
-
-	#[test]
-	fn nested_steps_only() {
 		let pipeline = Pipeline::<EthereumMainnet>::default()
-			.with_step(Step1)
-			.with_pipeline(Loop, (StepA, StepB, StepC))
-			.with_step(Step2);
-
-		assert!(StepPath::epilogue().map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::prologue().map_step(&pipeline, |_| ()).is_none());
-
-		assert!(StepPath::from([99]).map_step(&pipeline, |_| ()).is_none());
-		assert_eq!(StepPath::beginning(&pipeline), Some(StepPath::first_step()));
-		assert!(StepPath::from([0]).map_step(&pipeline, |_| ()).is_some());
-
-		assert!(StepPath::from([0])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step1"));
-
-		assert!(StepPath::from([2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step2"));
-
-		assert!(StepPath::from([1]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 0]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1, 0, 0])
-			.map_step(&pipeline, |_| ())
-			.is_none());
-		assert!(StepPath::from([1, 0])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("StepA"));
-
-		assert!(StepPath::from([1, 1]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1, 1])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("StepB"));
-
-		assert!(StepPath::from([1, 2]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1, 2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("StepC"));
-
-		assert!(StepPath::from([1, 3]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([2]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step2"));
-
-		assert!(StepPath::from([3]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 4]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 0, 1])
-			.map_step(&pipeline, |_| ())
-			.is_none());
+			.with_pipeline(Loop, Pipeline::default().with_epilogue(Epilogue1));
+		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert!(navigator.step().name().ends_with("Epilogue1"));
 	}
 
 	#[test]
-	fn nested_epiprologue() {
-		let pipeline = Pipeline::<EthereumMainnet>::default()
-			.with_step(Step1)
-			.with_pipeline(
-				Loop,
-				(StepA, StepB, StepC)
-					.with_epilogue(Epilogue1)
-					.with_prologue(Prologue1),
-			)
-			.with_step(Step2);
-
-		assert!(StepPath::epilogue().map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::prologue().map_step(&pipeline, |_| ()).is_none());
-
-		assert!(StepPath::from([99]).map_step(&pipeline, |_| ()).is_none());
-		assert_eq!(StepPath::beginning(&pipeline), Some(StepPath::first_step()));
-		assert!(StepPath::from([0]).map_step(&pipeline, |_| ()).is_some());
-
-		assert!(StepPath::from([0])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step1"));
-
-		assert!(StepPath::from([2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step2"));
-
-		assert!(StepPath::from([1]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 0]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1, 0, 0])
-			.map_step(&pipeline, |_| ())
-			.is_none());
-		assert!(StepPath::from([1, 0])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("StepA"));
-
-		assert!(StepPath::from([1, 1]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1, 1])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("StepB"));
-
-		assert!(StepPath::from([1, 2]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([1, 2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("StepC"));
-
-		assert!(StepPath::from([1, 3]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([2]).map_step(&pipeline, |_| ()).is_some());
-		assert!(StepPath::from([2])
-			.map_step(&pipeline, |x| x.name())
-			.unwrap()
-			.ends_with("Step2"));
-
-		assert!(StepPath::from([3]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 4]).map_step(&pipeline, |_| ()).is_none());
-		assert!(StepPath::from([1, 0, 1])
-			.map_step(&pipeline, |_| ())
-			.is_none());
-	}
-
-	#[test]
-	fn next_in_parent_only_steps() {
-		let p1 = Pipeline::<EthereumMainnet>::default()
+	fn control_flow() {
+		let pipeline = Pipeline::<EthereumMainnet>::named("top")
 			.with_step(Step1)
 			.with_step(Step2)
 			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
 				nested
 					.with_step(StepA)
-					.with_pipeline(Loop, (StepX, StepY, StepZ))
+					.with_pipeline(
+						Loop,
+						(StepX, StepY, StepZ)
+							.with_name("nested1.1")
+							.with_prologue(Prologue1)
+							.with_epilogue(Epilogue1),
+					)
 					.with_step(StepC)
-					.with_pipeline(Loop, (StepI, StepII, StepIII))
+					.with_pipeline(
+						Once,
+						(StepI, StepII, StepIII)
+							.with_name("nested1.2")
+							.with_epilogue(Epilogue2),
+					)
+					.with_name("nested1")
+					.with_prologue(Prologue2)
 			})
-			.with_step(Step4);
+			.with_step(Step4)
+			.with_epilogue(Epilogue3);
 
-		let step_z = StepPath::from([2, 1, 2]);
-		assert!(step_z
-			.map_step(&p1, |x| x.name())
-			.unwrap()
-			.ends_with("StepZ"));
+		let cursor = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert_eq!(cursor.0, StepPath::step0());
 
-		let step_c = step_z.next_in_parent_scope(&p1).unwrap();
-		assert_eq!(step_c, StepPath::from([2, 2]));
-		assert!(step_c
-			.map_step(&p1, |x| x.name())
-			.unwrap()
-			.ends_with("StepC"));
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(1));
 
-		let step_4 = step_c.next_in_parent_scope(&p1).unwrap();
-		assert_eq!(step_4, StepPath::from([3]));
-		assert!(step_4
-			.map_step(&p1, |x| x.name())
-			.unwrap()
-			.ends_with("Step4"));
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_prologue());
 
-		let step_iii = StepPath::from([2, 3, 2]);
-		assert!(step_iii
-			.map_step(&p1, |x| x.name())
-			.unwrap()
-			.ends_with("StepIII"));
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(0));
 
-		let step_4 = step_iii.next_in_parent_scope(&p1).unwrap();
-		assert_eq!(step_4, StepPath::from([3]));
-		assert!(step_4
-			.map_step(&p1, |x| x.name())
-			.unwrap()
-			.ends_with("Step4"));
-		assert_eq!(step_4.next_in_parent_scope(&p1), None);
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
 
-		let p2 = Pipeline::<EthereumMainnet>::default()
-			.with_step(Step1)
-			.with_step(Step2)
-			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
-				nested
-					.with_step(StepA)
-					.with_pipeline(Loop, (StepX, StepY, StepZ))
-					.with_step(StepC)
-					.with_pipeline(Loop, (StepI, StepII, StepIII))
-			});
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_step(0));
 
-		let step_iii = StepPath::from([2, 3, 2]);
-		assert!(step_iii
-			.map_step(&p2, |x| x.name())
-			.unwrap()
-			.ends_with("StepIII"));
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_step(1));
 
-		let none = step_iii.next_in_parent_scope(&p2);
-		assert!(
-			none.is_none(),
-			"StepPath::next_in_parent_scope should return None"
-		);
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_step(2));
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_step(0));
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_step(1));
+
+		let cursor = cursor.next_break().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_epilogue());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(2));
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(3).append_step(0));
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(3).append_step(1));
+
+		let cursor = cursor.next_break().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(3).append_epilogue());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(0));
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
+
+		let cursor = cursor.next_break().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_epilogue());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(2));
+
+		let cursor = cursor.next_break().unwrap();
+		assert_eq!(cursor.0, StepPath::step(3));
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::epilogue());
 	}
 }

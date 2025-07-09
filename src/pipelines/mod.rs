@@ -7,11 +7,10 @@ use {
 		pipelines::step::{StepKind, WrappedStep},
 		*,
 	},
-	alloy::hex,
 	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::builder::components::PayloadServiceBuilder,
-	std::sync::{Arc, OnceLock},
+	std::sync::Arc,
 };
 
 mod context;
@@ -48,23 +47,32 @@ pub struct Pipeline<P: Platform> {
 	prologue: Option<Arc<WrappedStep<P>>>,
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Box<dyn LimitsFactory<P>>>,
-	unique_id: OnceLock<usize>,
+	name: Option<String>,
 }
 
 impl<P: Platform> Default for Pipeline<P> {
+	/// Creates a new empty unnamed pipeline.
 	fn default() -> Self {
 		Self {
 			epilogue: None,
 			prologue: None,
 			steps: Vec::new(),
 			limits: None,
-			unique_id: OnceLock::new(),
+			name: None,
 		}
 	}
 }
 
 /// Public API
 impl<P: Platform> Pipeline<P> {
+	/// Creates a new empty pipeline with a name.
+	pub fn named(name: impl Into<String>) -> Self {
+		Self {
+			name: Some(name.into()),
+			..Default::default()
+		}
+	}
+
 	/// A step that happens before any transaction is added to the block, executes
 	/// as the first step in the pipeline.
 	pub fn with_prologue<Mode: StepKind>(
@@ -159,13 +167,11 @@ impl<P: Platform> Pipeline<P> {
 		self.limits.as_deref()
 	}
 
-	/// A unique identifier of the pipieline instance.
+	/// An optional name of the pipeline.
 	///
 	/// This is used mostly for debug printing and logging purposes.
-	/// Do not rely on this value for any logic, as it is not guaranteed to be
-	/// unique across different runs of the program.
-	pub(crate) fn unique_id(&self) -> usize {
-		*self.unique_id.get_or_init(|| self as *const Self as usize)
+	pub fn name(&self) -> Option<&str> {
+		self.name.as_deref()
 	}
 
 	/// Executes the provided async function for each step in the pipeline once.
@@ -270,6 +276,8 @@ pub trait PipelineBuilderExt<P: Platform> {
 	) -> Pipeline<P>;
 
 	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P>;
+
+	fn with_name(self, name: impl Into<String>) -> Pipeline<P>;
 }
 
 impl<P: Platform, T: IntoPipeline<P, ()>> PipelineBuilderExt<P> for T {
@@ -290,14 +298,23 @@ impl<P: Platform, T: IntoPipeline<P, ()>> PipelineBuilderExt<P> for T {
 	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P> {
 		self.into_pipeline().with_limits(limits)
 	}
+
+	fn with_name(self, name: impl Into<String>) -> Pipeline<P> {
+		let mut pipeline = self.into_pipeline();
+		pipeline.name = Some(name.into());
+		pipeline
+	}
 }
 
 impl<P: Platform> Display for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		write!(
 			f,
-			"Pipeline(0x{}, {} steps)",
-			hex::encode(self.unique_id().to_le_bytes()),
+			"Pipeline({}{} steps)",
+			match self.name() {
+				Some(name) => format!("name={name}, "),
+				None => String::new(),
+			},
 			self.steps.len()
 		)
 	}
@@ -306,10 +323,7 @@ impl<P: Platform> Display for Pipeline<P> {
 impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Pipeline")
-			.field(
-				"unique_id",
-				&hex::encode(self.unique_id().to_le_bytes()) as &dyn core::fmt::Debug,
-			)
+			.field("name", &self.name() as &dyn core::fmt::Debug)
 			.field(
 				"prologue",
 				&self.prologue.as_ref().map(|p| p.name()) as &dyn core::fmt::Debug,

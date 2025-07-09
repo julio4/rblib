@@ -98,24 +98,28 @@ pub trait StepKind: sealed::Sealed + Debug + Sync + Send + 'static {
 /// next action of the pipeline execution.
 #[derive(Debug)]
 pub enum ControlFlow<P: Platform, S: StepKind> {
-	/// Terminate the pipeline execution with an error.
-	/// No valid payload will be produced by this pipeline run.
+	/// Immediately terminate the pipeline execution with an error and
+	/// no valid payload will be produced by the entire hierarchy of pipelines
+	/// that contains this step.
 	Fail(PayloadBuilderError),
 
-	/// Stops the pipeline execution and returns the payload.
+	/// Stops the pipeline execution that contains the step with a payload.
 	///
-	/// If the step is inside a `Loop` sub-pipeline, it will leave the loop
-	/// and progress to next steps immediately after the loop with the output
-	/// carried by this variant.
+	/// If the step is inside a `Loop` sub-pipeline, it will stop the loop,
+	/// run its epilogue (if it exists) and progress to next steps in the parent
+	/// pipeline.
+	///
+	/// Breaking out of a prologue step will not invoke any step in the pipeline,
+	/// and jump straight to the epilogue.
+	///
+	/// Breaking out of an epilogue has the same effect as returning Ok from it,
+	/// and will continue the pipeline execution to the next step in the parent
+	/// pipeline.
 	Break(S::Payload<P>),
 
 	/// Continues the pipeline execution to the next step with the given payload
 	/// version
 	Ok(S::Payload<P>),
-
-	/// This step is only valid in a `Loop` sub-pipeline, it will jump to the
-	/// first step of the loop with the given payload version.
-	Continue(S::Payload<P>),
 }
 
 impl<P: Platform, S: StepKind, E: core::error::Error + Send + Sync + 'static>
@@ -129,9 +133,7 @@ impl<P: Platform, S: StepKind, E: core::error::Error + Send + Sync + 'static>
 impl<P: Platform, S: StepKind> ControlFlow<P, S> {
 	pub fn try_into_payload(self) -> Result<S::Payload<P>, Self> {
 		match self {
-			ControlFlow::Ok(payload)
-			| ControlFlow::Break(payload)
-			| ControlFlow::Continue(payload) => Ok(payload),
+			ControlFlow::Ok(payload) | ControlFlow::Break(payload) => Ok(payload),
 			_ => Err(self),
 		}
 	}
@@ -142,10 +144,6 @@ impl<P: Platform, S: StepKind> ControlFlow<P, S> {
 
 	pub const fn is_fail(&self) -> bool {
 		matches!(self, ControlFlow::Fail(_))
-	}
-
-	pub const fn is_continue(&self) -> bool {
-		matches!(self, ControlFlow::Continue(_))
 	}
 
 	pub const fn is_ok(&self) -> bool {

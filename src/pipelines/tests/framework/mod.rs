@@ -20,7 +20,7 @@ macro_rules! make_step {
 			type Kind = $kind;
 
 			async fn step(
-				self: Arc<Self>,
+				self: std::sync::Arc<Self>,
 				_: <Self::Kind as $crate::pipelines::step::StepKind>::Payload<P>,
 				_: StepContext<P>,
 			) -> ControlFlow<P, Self::Kind> {
@@ -37,7 +37,7 @@ macro_rules! make_step {
 			type Kind = $kind;
 
 			async fn step(
-				self: Arc<Self>,
+				self: std::sync::Arc<Self>,
 				_: <Self::Kind as $crate::pipelines::step::StepKind>::Payload<P>,
 				_: StepContext<P>,
 			) -> ControlFlow<P, Self::Kind> {

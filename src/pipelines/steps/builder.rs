@@ -6,9 +6,9 @@ impl<P: Platform> Step<P> for BuilderEpilogue {
 
 	async fn step(
 		self: Arc<Self>,
-		_payload: SimulatedPayload<P>,
+		payload: SimulatedPayload<P>,
 		_ctx: StepContext<P>,
 	) -> ControlFlow<P, Simulated> {
-		todo!()
+		ControlFlow::Ok(payload)
 	}
 }

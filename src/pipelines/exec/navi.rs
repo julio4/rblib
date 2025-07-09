@@ -11,13 +11,6 @@ use {
 	std::sync::Arc,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NextStep {
-	Path(StepPath),
-	Failure,
-	Completed,
-}
-
 /// Represents a path to a step or a nested pipeline in a pipeline.
 ///
 /// This type is used to store the current position in the pipeline execution
@@ -33,12 +26,39 @@ const PROLOGUE_INDEX: usize = usize::MIN;
 const EPILOGUE_INDEX: usize = usize::MAX;
 const STEP0_INDEX: usize = PROLOGUE_INDEX + 1;
 
+/// Public API
 impl StepPath {
-	/// Constructs a new step path from a list of indices.
-	pub fn new(path: impl Into<SmallVec<[usize; 8]>>) -> Self {
-		let path: SmallVec<[usize; 8]> = path.into();
-		assert!(!path.is_empty(), "StepPath cannot be empty");
-		Self(path)
+	/// Creates a new step navigator that binds a step-path to a pipeline.
+	/// If the step path points at a nested pipeline, this method will create a
+	/// navigator that points to the first executable step starting from the
+	/// nested pipeline.
+	pub fn navigator<'a, P: Platform>(
+		&self,
+		root: &'a Pipeline<P>,
+	) -> Option<StepNavigator<'a, P>> {
+		let mut ancestors = Vec::with_capacity(self.depth());
+		ancestors.push(root);
+
+		let mut last_root = self.root();
+		let mut current_path = self.clone();
+
+		while let Some(tail) = current_path.remove_root() {
+			let enclosing_pipeline = ancestors.last()?;
+			let step_index = last_root.leaf().checked_sub(STEP0_INDEX)?;
+
+			let StepOrPipeline::Pipeline(_, pipeline) =
+				enclosing_pipeline.steps().get(step_index)?
+			else {
+				// invalid step path for the given pipeline
+				return None;
+			};
+
+			ancestors.push(pipeline);
+			last_root = tail.root();
+			current_path = tail;
+		}
+
+		StepNavigator(self.clone(), ancestors).enter()
 	}
 
 	/// Returns the number of nesting levels in the path.
@@ -59,36 +79,46 @@ impl StepPath {
 
 	/// Returns `true` the the path is pointing to a prologue of a pipeline.
 	pub fn is_prologue(&self) -> bool {
-		self.0.last() == Some(&PROLOGUE_INDEX)
+		self.leaf() == PROLOGUE_INDEX
 	}
 
 	/// Returns `true` if the path is pointing to an epilogue of a pipeline.
 	pub fn is_epilogue(&self) -> bool {
-		self.0.last() == Some(&EPILOGUE_INDEX)
+		self.leaf() == EPILOGUE_INDEX
 	}
+}
 
-	/// Returns the index of the root element in the path.
+/// Private APIs
+impl StepPath {
+	/// Returns the highest ancestor of the path.
 	///
-	/// For example, if the path is `[3, 1, 2]`, this function will return `0`,
+	/// For example, if the path is `[3, 1, 2]`, this function will return `3`,
 	/// which represents the nested pipeline at index `3`. A path of `[1]`
 	/// represents the step or nested pipeline at index `1` in the pipeline.
-	pub fn root(&self) -> Option<usize> {
-		self.0.first().copied()
+	fn root(&self) -> StepPath {
+		Self(self.0[..1].into())
 	}
 
 	/// Returns the index of the step or nested pipeline pointed to by the
 	/// path relative to its immediate parent.
 	///
 	/// This essentially returns the last element of the path.
-	pub fn leaf(&self) -> usize {
+	fn leaf(&self) -> usize {
 		self.0.last().copied().expect("StepPath cannot be empty")
+	}
+
+	/// Appends a new path to the current path.
+	fn concat(self, other: Self) -> Self {
+		let mut new_path = self.0;
+		new_path.extend(other.0);
+		Self(new_path)
 	}
 
 	/// Returns a step path without the current root index.
 	///
 	/// This is useful when doing recursive navigation down through the pipeline.
 	/// Returns None if the path is an item in a top-level pipeline.
-	pub fn remove_root(self) -> Option<StepPath> {
+	fn remove_root(self) -> Option<StepPath> {
 		if self.is_toplevel() {
 			// If there's only one element, popping it would result in an empty path
 			// which is not allowed.
@@ -96,27 +126,6 @@ impl StepPath {
 		} else {
 			Some(StepPath(self.0[1..].into()))
 		}
-	}
-
-	/// Returns a step path without the current leaf index.
-	///
-	/// This is useful when you want to navigate up to the pipeline or step that
-	/// contains the current step or pipeline.
-	///
-	/// Returns None if the path points to a top-level item.
-	pub fn remove_leaf(self) -> Option<StepPath> {
-		if self.is_toplevel() {
-			None
-		} else {
-			Some(StepPath(self.0[..self.0.len() - 1].into()))
-		}
-	}
-
-	/// Appends a new path to the current path.
-	pub fn concat(self, other: Self) -> Self {
-		let mut new_path = self.0;
-		new_path.extend(other.0);
-		Self(new_path)
 	}
 
 	/// Returns a step path that points to the prologue step.
@@ -138,6 +147,20 @@ impl StepPath {
 		Self(smallvec![step_index + STEP0_INDEX])
 	}
 
+	/// Returns a step path without the current leaf index.
+	///
+	/// This is useful when you want to navigate up to the pipeline or step that
+	/// contains the current step or pipeline.
+	///
+	/// Returns None if the path points to a top-level item.
+	fn remove_leaf(self) -> Option<StepPath> {
+		if self.is_toplevel() {
+			None
+		} else {
+			Some(StepPath(self.0[..self.0.len() - 1].into()))
+		}
+	}
+
 	/// Returns a path that points to the next item in the current scope.
 	///
 	/// This method does not check if the next item is valid or exists in the
@@ -155,30 +178,22 @@ impl StepPath {
 		*new_path.last_mut().expect("StepPath cannot be empty") = new_leaf;
 		Self(new_path)
 	}
-
-	fn append_prologue(self) -> Self {
-		self.concat(StepPath::prologue())
-	}
-
-	fn append_epilogue(self) -> Self {
-		self.concat(StepPath::epilogue())
-	}
-
-	fn append_step(self, step_index: usize) -> Self {
-		self.concat(StepPath::step(step_index))
-	}
 }
 
 /// This type is used to navigate through a pipeline.
 /// It keeps track of the current step and the hierarchy of enclosing pipelines.
-/// The path in this type always points at a step, so it traverses only leaves
-/// of the pipeline tree.
+///
+/// All public APIs of this type only allow creating instance that point at a
+/// step. Internally it creates temporary versions of itself that point at
+/// pipelines when navigating through the pipeline structure, but those
+/// instances should never be available to external users of this type.
 #[derive(Clone)]
 pub(crate) struct StepNavigator<'a, P: Platform>(
 	StepPath,
 	Vec<&'a Pipeline<P>>,
 );
 
+// Public API
 impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// Given a pipeline, returns a navigator that points at the first executable
 	/// item in the pipeline.
@@ -225,11 +240,11 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 			"StepNavigator should always have at least one enclosing pipeline",
 		);
 
-		if step_index == PROLOGUE_INDEX {
+		if self.is_prologue() {
 			enclosing_pipeline
 				.prologue()
 				.expect("Step path points to a non-existing prologue")
-		} else if step_index == EPILOGUE_INDEX {
+		} else if self.is_epilogue() {
 			enclosing_pipeline
 				.epilogue()
 				.expect("Step path points to a non-existing epilogue")
@@ -248,8 +263,15 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 		}
 	}
 
+	/// Returns a reference to the pipeline that contains the current step.
+	pub fn pipeline(&self) -> &'a Pipeline<P> {
+		self.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		)
+	}
+
 	/// Advance to the next executable step in the pipeline when the current
-	/// step's execution returned `ControlFlow::Ok`.
+	/// step's execution returns `ControlFlow::Ok`.
 	///
 	/// Returns `None` if there are no more steps to execute in the pipeline.
 	pub fn next_ok(self) -> Option<Self> {
@@ -300,7 +322,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	}
 
 	/// Advance to the next executable step in the pipeline when the current
-	/// step's execution returned `ControlFlow::Break`.
+	/// step's execution returns `ControlFlow::Break`.
 	///
 	/// Returns `None` if there are no more steps to execute in the pipeline.
 	pub fn next_break(self) -> Option<Self> {
@@ -312,7 +334,10 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 		// don't run any further steps in the current scope
 		self.after_loop()
 	}
+}
 
+/// Private APIs
+impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// Returns the loop behaviour of the pipeline containing the current step.
 	fn behavior(&self) -> Behavior {
 		// top-level pipelines are always `Once`.
@@ -461,6 +486,16 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	}
 }
 
+impl<'a, P: Platform> From<StepNavigator<'a, P>> for StepPath {
+	/// Converts a step navigator to a step path.
+	///
+	/// This is useful when you want to get the path of the current step in the
+	/// pipeline.
+	fn from(navigator: StepNavigator<'a, P>) -> Self {
+		navigator.0
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -488,6 +523,20 @@ mod test {
 	make_step!(StepI, Simulated);
 	make_step!(StepII, Simulated);
 	make_step!(StepIII, Static);
+
+	impl StepPath {
+		fn append_prologue(self) -> Self {
+			self.concat(StepPath::prologue())
+		}
+
+		fn append_epilogue(self) -> Self {
+			self.concat(StepPath::epilogue())
+		}
+
+		fn append_step(self, step_index: usize) -> Self {
+			self.concat(StepPath::step(step_index))
+		}
+	}
 
 	#[test]
 	fn find_entrypoint() {
@@ -732,5 +781,80 @@ mod test {
 
 		let cursor = cursor.next_ok().unwrap();
 		assert_eq!(cursor.0, StepPath::epilogue());
+
+		let cursor = cursor.next_ok();
+		assert!(cursor.is_none());
+	}
+
+	#[test]
+	fn create_navigator() {
+		let pipeline = Pipeline::<EthereumMainnet>::named("top")
+			.with_step(Step1)
+			.with_step(Step2)
+			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
+				nested
+					.with_step(StepA)
+					.with_pipeline(
+						Loop,
+						(StepX, StepY, StepZ)
+							.with_name("nested1.1")
+							.with_prologue(Prologue1)
+							.with_epilogue(Epilogue1),
+					)
+					.with_step(StepC)
+					.with_pipeline(
+						Once,
+						(StepI, StepII, StepIII)
+							.with_name("nested1.2")
+							.with_epilogue(Epilogue2),
+					)
+					.with_name("nested1")
+					.with_prologue(Prologue2)
+			})
+			.with_step(Step4)
+			.with_epilogue(Epilogue3);
+
+		let cursor = StepNavigator::entrypoint(&pipeline).unwrap();
+		assert_eq!(cursor.0, StepPath::step0());
+		let navigator = cursor.0.navigator(&pipeline).unwrap();
+		assert_eq!(navigator.0, StepPath::step0());
+		assert_eq!(navigator.step().name(), cursor.step().name());
+		assert_eq!(navigator.1.len(), cursor.1.len());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(1));
+		let navigator = cursor.0.navigator(&pipeline).unwrap();
+		assert_eq!(navigator.0, StepPath::step(1));
+		assert_eq!(navigator.1.len(), cursor.1.len());
+		assert_eq!(navigator.step().name(), cursor.step().name());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_prologue());
+		let navigator = cursor.0.navigator(&pipeline).unwrap();
+		assert_eq!(navigator.1.len(), cursor.1.len());
+		assert_eq!(navigator.0, StepPath::step(2).append_prologue());
+		assert_eq!(navigator.step().name(), cursor.step().name());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(0));
+		let navigator = cursor.0.navigator(&pipeline).unwrap();
+		assert_eq!(navigator.1.len(), cursor.1.len());
+		assert_eq!(navigator.0, StepPath::step(2).append_step(0));
+		assert_eq!(navigator.step().name(), cursor.step().name());
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
+		let navigator = cursor.0.navigator(&pipeline).unwrap();
+		assert_eq!(navigator.1.len(), cursor.1.len());
+		assert_eq!(
+			navigator.0,
+			StepPath::step(2).append_step(1).append_prologue()
+		);
+		assert_eq!(navigator.step().name(), cursor.step().name());
+
+		// navigator goes to first executable step rooted at the path
+		let navigator = StepPath::step(2).navigator(&pipeline).unwrap();
+		assert_eq!(navigator.0, StepPath::step(2).append_prologue());
+		assert!(navigator.step().name().ends_with("Prologue2"));
 	}
 }

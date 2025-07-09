@@ -1,7 +1,6 @@
 use {
 	crate::{steps::*, *},
 	core::time::Duration,
-	std::sync::Arc,
 };
 
 #[test]

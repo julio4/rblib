@@ -159,7 +159,7 @@ async fn transfers_included_reverts_excluded_loop() {
 async fn reth_minimal_integration_example() {
 	use {
 		reth::cli::Cli,
-		reth_ethereum::node::{node::EthereumAddOns, EthereumNode},
+		reth_ethereum::node::{EthereumNode, node::EthereumAddOns},
 	};
 
 	let pipeline = Pipeline::<EthereumMainnet>::default()

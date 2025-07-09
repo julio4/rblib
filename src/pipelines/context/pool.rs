@@ -1,11 +1,11 @@
 use {
-	crate::{traits, Platform},
+	crate::{Platform, traits},
 	alloy::{
 		eips::{
 			eip4844::{BlobAndProofV1, BlobAndProofV2},
 			eip7594::BlobTransactionSidecarVariant,
 		},
-		primitives::{Address, TxHash, B256},
+		primitives::{Address, B256, TxHash},
 	},
 	core::fmt::Debug,
 	futures::FutureExt,

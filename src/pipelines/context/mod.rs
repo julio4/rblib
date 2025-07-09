@@ -1,11 +1,11 @@
 use {
 	crate::{
-		pipelines::service::ServiceContext,
-		traits,
-		types,
 		BlockContext,
 		Limits,
 		Platform,
+		pipelines::service::ServiceContext,
+		traits,
+		types,
 	},
 	pool::TransactionPool,
 	reth::{primitives::SealedHeader, providers::StateProvider},

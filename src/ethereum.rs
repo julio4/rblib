@@ -10,22 +10,22 @@ use {
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
 	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
 	reth_ethereum_payload_builder::{
-		default_ethereum_payload,
 		EthereumBuilderConfig,
+		default_ethereum_payload,
 	},
 	reth_evm::NextBlockEnvAttributes,
 	reth_payload_builder::PayloadBuilderError,
 	reth_transaction_pool::{
-		error::InvalidPoolTransactionError,
-		identifier::{SenderId, SenderIdentifiers, TransactionId},
 		BestTransactions,
 		EthPooledTransaction,
 		PoolTransaction,
 		TransactionOrigin,
 		ValidPoolTransaction,
+		error::InvalidPoolTransactionError,
+		identifier::{SenderId, SenderIdentifiers, TransactionId},
 	},
 	std::{
-		collections::{hash_map::Entry, HashMap},
+		collections::{HashMap, hash_map::Entry},
 		sync::Arc,
 	},
 };

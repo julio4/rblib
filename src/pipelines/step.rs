@@ -1,8 +1,8 @@
 use {
 	super::sealed,
-	crate::{types, Platform, Simulated, Static, StepContext},
+	crate::{Platform, Simulated, Static, StepContext, types},
 	core::{
-		any::{type_name, Any, TypeId},
+		any::{Any, TypeId, type_name},
 		fmt::{self, Debug},
 		future::Future,
 		pin::Pin,

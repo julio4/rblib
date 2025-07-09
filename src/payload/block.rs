@@ -7,7 +7,7 @@ use {
 		payload::PayloadId,
 		primitives::SealedHeader,
 		providers::{StateProvider, StateProviderBox},
-		revm::{database::StateProviderDatabase, State},
+		revm::{State, database::StateProviderDatabase},
 	},
 	reth_evm::{block::BlockExecutionError, execute::BlockBuilder},
 	std::sync::Arc,

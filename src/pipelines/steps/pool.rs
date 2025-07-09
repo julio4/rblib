@@ -5,13 +5,13 @@ use {
 	reth_ethereum::primitives::SignedTransaction,
 	reth_payload_builder::PayloadBuilderError,
 	reth_transaction_pool::{
+		PoolTransaction,
+		TransactionPool,
 		error::{
 			Eip4844PoolTransactionError,
 			InvalidPoolTransactionError,
 			PoolTransactionError,
 		},
-		PoolTransaction,
-		TransactionPool,
 	},
 	std::{collections::HashSet, sync::Arc, time::Instant},
 };

@@ -20,7 +20,6 @@ mod ethereum;
 #[cfg(feature = "ethereum")]
 pub use ethereum::EthereumMainnet;
 
-
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.
 ///
@@ -30,7 +29,9 @@ pub use ethereum::EthereumMainnet;
 /// construction.
 ///
 /// This trait should be customized for every context this API is embedded in.
-pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + Unpin + 'static {
+pub trait Platform:
+	Sized + Clone + core::fmt::Debug + Default + Send + Sync + Unpin + 'static
+{
 	/// Type that configures the essential types of an Ethereum-like node.
 	///
 	/// Implementations of this trait describe all types that are used by the
@@ -42,25 +43,30 @@ pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + U
 	type NodeTypes: reth::api::NodeTypes;
 
 	/// A type that provides a complete EVM configuration ready to be used
-	/// during the payload execution simulation process. This type is used to 
+	/// during the payload execution simulation process. This type is used to
 	/// create individual EVM instances that are used to execute transactions.
 	type EvmConfig: reth::api::ConfigureEvm<
-		Primitives = types::Primitives<Self>,
-		NextBlockEnvCtx: Send + Sync + 'static,
-	>;
+			Primitives = types::Primitives<Self>,
+			NextBlockEnvCtx: Send + Sync + 'static,
+		>;
 
 	/// Type that represents transactions that are inside the transaction pool.
-	type PooledTransaction:  reth_transaction_pool::EthPoolTransaction<
-		Consensus = types::Transaction<Self>,
-	> + Send + Sync + 'static;
+	type PooledTransaction: reth_transaction_pool::EthPoolTransaction<
+			Consensus = types::Transaction<Self>,
+		> + Send
+		+ Sync
+		+ 'static;
 
 	/// Type that can provide limits for the payload building process.
 	/// If no limits are set on a pipeline, a default instance of this type
 	/// will be used.
 	type DefaultLimits: LimitsFactory<Self> + Default + Send + Sync + 'static;
 
-	/// Instantiate the EVM configuration for the platform with a given chain specification.
-	fn evm_config(chainspec: std::sync::Arc<types::ChainSpec<Self>>) -> Self::EvmConfig;
+	/// Instantiate the EVM configuration for the platform with a given chain
+	/// specification.
+	fn evm_config(
+		chainspec: std::sync::Arc<types::ChainSpec<Self>>,
+	) -> Self::EvmConfig;
 
 	fn next_block_environment_context(
 		chainspec: &types::ChainSpec<Self>,
@@ -74,11 +80,11 @@ pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + U
 		transaction_pool: &Pool,
 		provider: &Provider,
 	) -> Result<
-		types::BuiltPayload<Self>, 
-		reth_payload_builder::PayloadBuilderError
+		types::BuiltPayload<Self>,
+		reth_payload_builder::PayloadBuilderError,
 	>
-	where 
-	  Pool: traits::PoolBounds<Self>,
+	where
+		Pool: traits::PoolBounds<Self>,
 		Provider: traits::ProviderBounds<Self>;
 }
 
@@ -86,20 +92,22 @@ pub trait Platform: Sized + Clone + core::fmt::Debug + Default + Send + Sync + U
 pub mod types {
 	use super::Platform;
 
-  /// Extracts node's engine API types used when interacting with CL.
-  pub type NodePayloadTypes<P: Platform> = <P::NodeTypes as reth::api::NodeTypes>::Payload;
+	/// Extracts node's engine API types used when interacting with CL.
+	pub type NodePayloadTypes<P: Platform> =
+		<P::NodeTypes as reth::api::NodeTypes>::Payload;
 
-  /// Extracts the node's primitive types that define transactions, blocks, headers, etc.
-	pub type Primitives<P: Platform> = 
+	/// Extracts the node's primitive types that define transactions, blocks,
+	/// headers, etc.
+	pub type Primitives<P: Platform> =
 		<
 			<
 				NodePayloadTypes<P> as reth::api::PayloadTypes
 			>::BuiltPayload as reth::api::BuiltPayload
 		>::Primitives;
 
-
 	/// Extracts the concrete block type from the platform definition.
-	pub type Block<P: Platform> = <Primitives<P> as reth::api::NodePrimitives>::Block;
+	pub type Block<P: Platform> =
+		<Primitives<P> as reth::api::NodePrimitives>::Block;
 
 	/// Extracts the block header type from the platform definition.
 	pub type Header<P: Platform> = <Block<P> as reth::api::Block>::Header;
@@ -110,15 +118,17 @@ pub mod types {
 		<NodePayloadTypes<P> as reth::api::PayloadTypes>::PayloadBuilderAttributes;
 
 	/// Extracts the transaction type for this platform.
-	pub type Transaction<P: Platform> = <Primitives<P> as reth::api::NodePrimitives>::SignedTx;
+	pub type Transaction<P: Platform> =
+		<Primitives<P> as reth::api::NodePrimitives>::SignedTx;
 
-	/// Extracts the type that represents the final outcome of a payload building process,
-	/// which is a built payload that can be submitted to the consensus engine.
+	/// Extracts the type that represents the final outcome of a payload building
+	/// process, which is a built payload that can be submitted to the consensus
+	/// engine.
 	pub type BuiltPayload<P: Platform> =
 		<NodePayloadTypes<P> as reth::api::PayloadTypes>::BuiltPayload;
 
-	/// Extracts the type that holds chain-specific information needed to build a block
-	/// that cannot be deduced automatically from the parent header.
+	/// Extracts the type that holds chain-specific information needed to build a
+	/// block that cannot be deduced automatically from the parent header.
 	pub type NextBlockEnvContext<P: Platform> =
 		<P::EvmConfig as reth::api::ConfigureEvm>::NextBlockEnvCtx;
 
@@ -126,12 +136,13 @@ pub mod types {
 	pub type EvmEnv<P: Platform> = reth_evm::EvmEnvFor<P::EvmConfig>;
 
 	/// Extracts the error type used by the EVM configuration for this platform.
-	pub type EvmError<P: Platform> = <P::EvmConfig as reth::api::ConfigureEvm>::Error;
+	pub type EvmError<P: Platform> =
+		<P::EvmConfig as reth::api::ConfigureEvm>::Error;
 
 	/// Extracts the ChainSpec type from the platform definition.
-	pub type ChainSpec<P: Platform> = <P::NodeTypes as reth::api::NodeTypes>::ChainSpec;
+	pub type ChainSpec<P: Platform> =
+		<P::NodeTypes as reth::api::NodeTypes>::ChainSpec;
 }
-
 
 pub mod traits {
 	use {
@@ -177,18 +188,12 @@ pub mod traits {
 	}
 
 	pub trait PoolBounds<P: Platform>:
-		TransactionPool<
-			Transaction = P::PooledTransaction,
-		> + Unpin
-		+ 'static
+		TransactionPool<Transaction = P::PooledTransaction> + Unpin + 'static
 	{
 	}
 
 	impl<T, P: Platform> PoolBounds<P> for T where
-		T: TransactionPool<
-				Transaction = P::PooledTransaction,
-			> + Unpin
-			+ 'static
+		T: TransactionPool<Transaction = P::PooledTransaction> + Unpin + 'static
 	{
 	}
 
@@ -207,7 +212,6 @@ pub mod traits {
 	{
 	}
 }
-
 
 mod sealed {
 	pub trait Sealed {}

@@ -1,6 +1,6 @@
 use {
 	super::{sealed::Sealed, step::StepKind},
-	crate::{types, Platform},
+	crate::{Platform, types},
 	reth::primitives::Recovered,
 };
 

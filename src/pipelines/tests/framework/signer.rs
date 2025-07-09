@@ -1,6 +1,6 @@
 use {
-	alloy::primitives::{Address, Signature, B256, U256},
-	secp256k1::{Message, PublicKey, SecretKey, SECP256K1},
+	alloy::primitives::{Address, B256, Signature, U256},
+	secp256k1::{Message, PublicKey, SECP256K1, SecretKey},
 	sha3::{Digest, Keccak256},
 	std::str::FromStr,
 };

@@ -3,10 +3,10 @@ use {
 	reth::primitives::Recovered,
 	reth_optimism_forks::OpHardforks,
 	reth_optimism_node::{
-		txpool::OpPooledTransaction,
 		OpEvmConfig,
 		OpNextBlockEnvAttributes,
 		OpNode,
+		txpool::OpPooledTransaction,
 	},
 	std::sync::Arc,
 };

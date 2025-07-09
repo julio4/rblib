@@ -55,10 +55,10 @@ where
 }
 
 impl<
-		P: Platform,
-		Provider: traits::ProviderBounds<P>,
-		Pool: traits::PoolBounds<P>,
-	> PipelineExecutor<P, Provider, Pool>
+	P: Platform,
+	Provider: traits::ProviderBounds<P>,
+	Pool: traits::PoolBounds<P>,
+> PipelineExecutor<P, Provider, Pool>
 {
 	/// Begins the execution of a pipeline for a new block.
 	pub fn run(
@@ -101,10 +101,10 @@ impl<
 
 /// private implementation details for the `PipelineExecutor`.
 impl<
-		P: Platform,
-		Provider: traits::ProviderBounds<P>,
-		Pool: traits::PoolBounds<P>,
-	> PipelineExecutor<P, Provider, Pool>
+	P: Platform,
+	Provider: traits::ProviderBounds<P>,
+	Pool: traits::PoolBounds<P>,
+> PipelineExecutor<P, Provider, Pool>
 {
 	fn create_step_context(&self, step: &StepPath) -> StepContext<P> {
 		let block = self.context.block.clone();

@@ -2,9 +2,9 @@ use {
 	crate::{payload::span, *},
 	alloy::{
 		consensus::Transaction,
-		primitives::{Address, StorageValue, B256, KECCAK256_EMPTY, U256},
+		primitives::{Address, B256, KECCAK256_EMPTY, StorageValue, U256},
 	},
-	alloy_evm::{block::BlockExecutorFactory, evm::EvmFactory, Evm},
+	alloy_evm::{Evm, block::BlockExecutorFactory, evm::EvmFactory},
 	core::fmt::{Debug, Display},
 	reth::{
 		api::ConfigureEvm,
@@ -12,9 +12,9 @@ use {
 		primitives::Recovered,
 		providers::ProviderError,
 		revm::{
+			DatabaseRef,
 			db::{DBErrorMarker, WrapDatabaseRef},
 			state::{AccountInfo, Bytecode},
-			DatabaseRef,
 		},
 	},
 	reth_evm::EvmError,

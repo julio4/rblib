@@ -1,11 +1,11 @@
 use {
 	crate::{
 		pipelines::tests::{
-			framework::FUNDED_PRIVATE_KEYS,
-			Signer,
-			TransactionBuilder,
 			DEFAULT_BLOCK_GAS_LIMIT,
 			ONE_ETH,
+			Signer,
+			TransactionBuilder,
+			framework::FUNDED_PRIVATE_KEYS,
 		},
 		*,
 	},
@@ -27,16 +27,16 @@ use {
 	reth::{
 		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
 		builder::{NodeBuilder, NodeConfig},
-		chainspec::{ChainSpec, EthChainSpec, DEV, MAINNET},
+		chainspec::{ChainSpec, DEV, EthChainSpec, MAINNET},
 		core::exit::NodeExitFuture,
 		rpc::types::engine::ForkchoiceState,
 		tasks::TaskManager,
 	},
 	reth_ethereum::node::{
-		engine::EthPayloadAttributes,
-		node::EthereumAddOns,
 		EthEngineTypes,
 		EthereumNode,
+		engine::EthPayloadAttributes,
+		node::EthereumAddOns,
 	},
 	reth_rpc_api::EngineApiClient,
 	std::{

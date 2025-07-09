@@ -5,7 +5,7 @@ use {
 	crate::{pipelines::job::PayloadJob, *},
 	reth::{
 		api::{NodeTypes, PayloadBuilderAttributes},
-		builder::{components::PayloadServiceBuilder, BuilderContext, NodeConfig},
+		builder::{BuilderContext, NodeConfig, components::PayloadServiceBuilder},
 		providers::CanonStateSubscriptions,
 	},
 	reth_payload_builder::{

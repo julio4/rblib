@@ -5,7 +5,7 @@ use {
 	crate::pipelines::tests::framework::FUNDED_PRIVATE_KEYS,
 	alloy::{
 		consensus::{SignableTransaction, TxEip1559, TxEnvelope},
-		eips::{eip1559::MIN_PROTOCOL_BASE_FEE, BlockNumberOrTag, Encodable2718},
+		eips::{BlockNumberOrTag, Encodable2718, eip1559::MIN_PROTOCOL_BASE_FEE},
 		hex,
 		network::Ethereum,
 		primitives::{Address, Bytes, TxKind, U256},

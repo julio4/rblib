@@ -7,7 +7,7 @@
 use {
 	crate::{pipelines::step::WrappedStep, *},
 	derive_more::{From, Into},
-	smallvec::{smallvec, SmallVec},
+	smallvec::{SmallVec, smallvec},
 	std::sync::Arc,
 };
 

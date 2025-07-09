@@ -28,12 +28,12 @@ mod tests;
 
 // public API exports
 pub use {
+	Behavior::{Loop, Once},
 	context::StepContext,
 	limits::{Limits, LimitsFactory},
-	r#static::{Static, StaticPayload},
 	simulated::{Simulated, SimulatedPayload},
+	r#static::{Static, StaticPayload},
 	step::{ControlFlow, Step},
-	Behavior::{Loop, Once},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -11,7 +11,7 @@ use {
 		pin::Pin,
 		task::{Context, Poll},
 	},
-	futures::{future::Shared, FutureExt},
+	futures::{FutureExt, future::Shared},
 	reth::api::PayloadBuilderAttributes,
 	reth_payload_builder::{PayloadJob as RethPayloadJobTrait, *},
 	std::sync::Arc,

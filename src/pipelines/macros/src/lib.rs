@@ -1,7 +1,7 @@
 use {
 	proc_macro::TokenStream,
 	quote::quote,
-	syn::{parse_macro_input, LitInt},
+	syn::{LitInt, parse_macro_input},
 };
 
 /// Generates `IntoPipeline` implementations for tuples of steps up to the
@@ -37,13 +37,6 @@ pub fn impl_into_pipeline_steps(input: TokenStream) -> TokenStream {
 
 /// Generates a single `IntoPipeline` implementation for a tuple of size `n`
 fn generate_tuple_impl(n: usize) -> proc_macro2::TokenStream {
-	// Generate mode type parameters: M0, M1, M2, ...
-	let mode_params: Vec<_> = (0..n)
-		.map(|i| {
-			syn::Ident::new(&format!("M{}", i), proc_macro2::Span::call_site())
-		})
-		.collect();
-
 	// Generate step type parameters: S0, S1, S2, ...
 	let step_params: Vec<_> = (0..n)
 		.map(|i| {
@@ -67,7 +60,7 @@ fn generate_tuple_impl(n: usize) -> proc_macro2::TokenStream {
 			});
 
 	quote! {
-			impl<P: Platform, #(#mode_params: StepKind),*, #(#step_params: Step<P, Kind = #mode_params>),*> IntoPipeline<P, ()> for (#(#step_params),*) {
+			impl<P: Platform, #(#step_params: Step<P>),*> IntoPipeline<P, ()> for (#(#step_params),*) {
 					fn into_pipeline(self) -> Pipeline<P> {
 							let (#(#step_vars),*) = self;
 							#with_step_calls

@@ -13,34 +13,30 @@ pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
 
 #[macro_export]
 macro_rules! make_step {
-	($name:ident, $kind:ty) => {
+	($name:ident) => {
 		#[derive(Debug, Clone)]
 		pub struct $name;
 		impl<P: Platform> Step<P> for $name {
-			type Kind = $kind;
-
 			async fn step(
 				self: std::sync::Arc<Self>,
-				_: <Self::Kind as $crate::pipelines::step::StepKind>::Payload<P>,
+				_: Checkpoint<P>,
 				_: StepContext<P>,
-			) -> ControlFlow<P, Self::Kind> {
+			) -> ControlFlow<P> {
 				todo!()
 			}
 		}
 	};
 
-	($name:ident, $kind:ty, $state:ident) => {
+	($name:ident, $state:ident) => {
 		#[allow(dead_code)]
 		#[derive(Debug, Clone)]
 		pub struct $name($state);
 		impl<P: Platform> Step<P> for $name {
-			type Kind = $kind;
-
 			async fn step(
 				self: std::sync::Arc<Self>,
-				_: <Self::Kind as $crate::pipelines::step::StepKind>::Payload<P>,
+				_: Checkpoint<P>,
 				_: StepContext<P>,
-			) -> ControlFlow<P, Self::Kind> {
+			) -> ControlFlow<P> {
 				todo!()
 			}
 		}

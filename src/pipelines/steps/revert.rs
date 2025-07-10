@@ -3,13 +3,11 @@ use {crate::*, std::sync::Arc};
 /// This step eliminates transactions that are reverted from the payload.
 pub struct RevertProtection;
 impl<P: Platform> Step<P> for RevertProtection {
-	type Kind = Simulated;
-
 	async fn step(
 		self: Arc<Self>,
-		payload: SimulatedPayload<P>,
+		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
-	) -> ControlFlow<P, Simulated> {
+	) -> ControlFlow<P> {
 		let history = payload.history();
 
 		if history.is_empty() {
@@ -19,12 +17,9 @@ impl<P: Platform> Step<P> for RevertProtection {
 		}
 
 		// identify the first failed transaction in the payload
-		let Some(first_failed) = history.iter().find(|checkpoint| {
-			!checkpoint
-				.result()
-				.map(|r| !r.is_success())
-				.unwrap_or(false)
-		}) else {
+		let Some(first_failed) =
+			history.iter().find(|checkpoint| !checkpoint.is_success())
+		else {
 			// none of the transactions have reverted, return the payload as is
 			return ControlFlow::Ok(payload);
 		};
@@ -42,28 +37,31 @@ impl<P: Platform> Step<P> for RevertProtection {
 			.expect("we're in a valid linear history");
 
 		loop {
-			if let Some(tx) = remaining.head().transaction() {
-				safe = match safe.apply(tx.clone()) {
-					Ok(new_checkpoint) => {
-						if new_checkpoint.result().expect("it is a tx").is_success() {
-							// if the transaction was applied successfully, we can
-							// use the new checkpoint as the base for the next
-							// transaction
-							new_checkpoint
-						} else {
-							// if the transaction reverted, we discard it and keep
-							// the previous base checkpoint
-							safe
-						}
-					}
-					Err(_) => safe,
-				};
-			}
-
-			remaining = match remaining.pop_first() {
-				Some(remaining) => remaining,
-				None => break, // no more transactions to process
+			// apply transactions from the unsafe region one by one on top of the
+			// safe region in the same order as they appear in the payload.
+			let Some(tx) = remaining
+				.pop_first()
+				.and_then(|tx| tx.transaction().cloned())
+			else {
+				// if there are no more transactions to process, we can return the
+				// safe checkpoint
+				break;
 			};
+
+			let Ok(new_checkpoint) = safe.apply(tx) else {
+				// if the transaction cannot be applied, we skip it and continue
+				// with the next one
+				continue;
+			};
+
+			if new_checkpoint.is_success() {
+				// if the transaction was applied successfully, we can
+				// use the new checkpoint as the base for the next
+				// transaction, otherwise we keep the previous
+				// checkpoint as the base because this transaction
+				// reverted and we don't want to include it in the payload
+				safe = new_checkpoint;
+			}
 		}
 
 		ControlFlow::Ok(safe)

@@ -45,16 +45,7 @@ fn nested_verbose() {
 }
 
 #[test]
-fn nested_one_concise_static() {
-	let top_level = Pipeline::<EthereumMainnet>::default()
-		.with_epilogue(BuilderEpilogue)
-		.with_pipeline(Loop, AppendNewTransactionFromPool::default());
-
-	println!("{top_level:#?}");
-}
-
-#[test]
-fn nested_one_concise_simulated() {
+fn nested_one_concise() {
 	let top_level = Pipeline::<EthereumMainnet>::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(Loop, (AppendNewTransactionFromPool::default(),));
@@ -65,8 +56,8 @@ fn nested_one_concise_simulated() {
 #[test]
 fn nested_many_concise() {
 	// synthesize dummy steps
-	make_step!(TestStep1, Static);
-	make_step!(TestStep2, Simulated);
+	make_step!(TestStep1);
+	make_step!(TestStep2);
 
 	let top_level = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
@@ -95,10 +86,10 @@ fn flashblocks_example_closure() {
 		interval: Duration,
 	}
 
-	make_step!(WebSocketBeginBlock, Simulated);
-	make_step!(WebSocketEndBlock, Simulated);
-	make_step!(FlashblockEpilogue, Static);
-	make_step!(PublishToWebSocket, Simulated, FlashblocksConfig);
+	make_step!(WebSocketBeginBlock);
+	make_step!(WebSocketEndBlock);
+	make_step!(FlashblockEpilogue);
+	make_step!(PublishToWebSocket, FlashblocksConfig);
 
 	#[derive(Debug)]
 	struct FlashblockLimits(FlashblocksConfig);
@@ -146,10 +137,10 @@ fn flashblocks_example_concise() {
 		interval: Duration,
 	}
 
-	make_step!(WebSocketBeginBlock, Simulated);
-	make_step!(WebSocketEndBlock, Simulated);
-	make_step!(FlashblockEpilogue, Static);
-	make_step!(PublishToWebSocket, Simulated, FlashblocksConfig);
+	make_step!(WebSocketBeginBlock);
+	make_step!(WebSocketEndBlock);
+	make_step!(FlashblockEpilogue);
+	make_step!(PublishToWebSocket, FlashblocksConfig);
 
 	#[derive(Debug)]
 	struct FlashblockLimits(FlashblocksConfig);

@@ -21,13 +21,11 @@ use {
 /// payload limits are reached or the pool is exhausted.
 pub struct GatherBestTransactions;
 impl<P: Platform> Step<P> for GatherBestTransactions {
-	type Kind = Simulated;
-
 	async fn step(
 		self: Arc<Self>,
-		payload: SimulatedPayload<P>,
+		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
-	) -> ControlFlow<P, Simulated> {
+	) -> ControlFlow<P> {
 		let mut payload = payload;
 		let mut txs = ctx.pool().best_transactions();
 
@@ -167,8 +165,6 @@ pub struct AppendNewTransactionFromPool {
 }
 
 impl<P: Platform> Step<P> for AppendNewTransactionFromPool {
-	type Kind = Simulated;
-
 	/// Clear the list of previously added transactions before the we begin
 	/// building for a new payload.
 	async fn before_job(
@@ -181,9 +177,9 @@ impl<P: Platform> Step<P> for AppendNewTransactionFromPool {
 
 	async fn step(
 		self: Arc<Self>,
-		payload: SimulatedPayload<P>,
+		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
-	) -> ControlFlow<P, Simulated> {
+	) -> ControlFlow<P> {
 		let mut txs = ctx.pool().best_transactions();
 
 		// history is the ordered list of all transactions that were applied since

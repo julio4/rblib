@@ -500,29 +500,29 @@ impl<'a, P: Platform> From<StepNavigator<'a, P>> for StepPath {
 mod test {
 	use super::*;
 
-	make_step!(Epilogue1, Static);
-	make_step!(Epilogue2, Static);
-	make_step!(Epilogue3, Static);
+	make_step!(Epilogue1);
+	make_step!(Epilogue2);
+	make_step!(Epilogue3);
 
-	make_step!(Prologue1, Static);
-	make_step!(Prologue2, Static);
+	make_step!(Prologue1);
+	make_step!(Prologue2);
 
-	make_step!(Step1, Static);
-	make_step!(Step2, Static);
-	make_step!(Step3, Static);
-	make_step!(Step4, Static);
+	make_step!(Step1);
+	make_step!(Step2);
+	make_step!(Step3);
+	make_step!(Step4);
 
-	make_step!(StepA, Static);
-	make_step!(StepB, Static);
-	make_step!(StepC, Static);
+	make_step!(StepA);
+	make_step!(StepB);
+	make_step!(StepC);
 
-	make_step!(StepX, Static);
-	make_step!(StepY, Static);
-	make_step!(StepZ, Static);
+	make_step!(StepX);
+	make_step!(StepY);
+	make_step!(StepZ);
 
-	make_step!(StepI, Simulated);
-	make_step!(StepII, Simulated);
-	make_step!(StepIII, Static);
+	make_step!(StepI);
+	make_step!(StepII);
+	make_step!(StepIII);
 
 	impl StepPath {
 		fn append_prologue(self) -> Self {

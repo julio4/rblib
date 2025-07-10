@@ -5,13 +5,11 @@ use {crate::*, std::sync::Arc};
 
 pub struct OptimismPrologue;
 impl Step<Optimism> for OptimismPrologue {
-	type Kind = Static;
-
 	async fn step(
 		self: Arc<Self>,
-		_payload: StaticPayload<Optimism>,
+		_payload: Checkpoint<Optimism>,
 		_ctx: StepContext<Optimism>,
-	) -> ControlFlow<Optimism, Static> {
+	) -> ControlFlow<Optimism> {
 		todo!()
 	}
 }

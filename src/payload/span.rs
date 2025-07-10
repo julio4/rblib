@@ -1,9 +1,9 @@
 use {
-	crate::{payload::checkpoint::Mutation, *},
-	alloy::primitives::TxHash,
-	core::ops::{Bound, RangeBounds},
+	crate::*,
+	alloy::{consensus::Transaction, primitives::TxHash},
 	reth::primitives::Recovered,
 	reth_ethereum::primitives::SignedTransaction,
+	std::collections::{VecDeque, vec_deque::IntoIter},
 	thiserror::Error,
 };
 
@@ -22,7 +22,7 @@ pub enum Error {
 /// Using a span you can also treat a number of checkpoints as a single
 /// aggregate of state transitions.
 pub struct Span<P: Platform> {
-	checkpoints: Vec<Checkpoint<P>>,
+	checkpoints: VecDeque<Checkpoint<P>>,
 }
 
 /// Construction
@@ -42,7 +42,7 @@ impl<P: Platform> Span<P> {
 			// it's a single-checkpoint span,
 			// we can return it directly
 			return Ok(Self {
-				checkpoints: vec![start.clone()],
+				checkpoints: [start.clone()].into_iter().collect(),
 			});
 		}
 
@@ -92,43 +92,34 @@ impl<P: Platform> Span<P> {
 /// Iteration
 impl<P: Platform> Span<P> {
 	/// The number of checkpoints in the span.
-	/// This number is not always equal to the number of transactions because
-	/// this will also include checkpoints that are not only transactions but also
-	/// barriers or other meta checkpoints.
 	pub fn len(&self) -> usize {
 		self.checkpoints.len()
 	}
 
-	/// Never returns true, as a span always contains at least one checkpoint.
+	/// Returns `true` if the span is empty, `false` otherwise.
 	pub fn is_empty(&self) -> bool {
-		assert!(!self.checkpoints.is_empty());
-		false
+		self.checkpoints.is_empty()
 	}
 
 	/// Returns the first checkpoint in the span
-	pub fn head(&self) -> &Checkpoint<P> {
-		self
-			.checkpoints
-			.first()
-			.expect("Span should always have at least one checkpoint")
+	pub fn first(&self) -> Option<&Checkpoint<P>> {
+		self.checkpoints.front()
 	}
 
 	/// Returns the last checkpoint in the span.
-	pub fn tail(&self) -> &Checkpoint<P> {
-		self
-			.checkpoints
-			.last()
-			.expect("Span should always have at least one checkpoint")
+	pub fn last(&self) -> Option<&Checkpoint<P>> {
+		self.checkpoints.back()
 	}
 
-	/// Returns a span with the first checkpoint removed.
-	pub fn pop_first(&self) -> Option<Span<P>> {
-		self.take(1..)
+	/// Removes the first checkpoint from the span and returns it.
+	/// Returns `None` if the span is empty.
+	pub fn pop_first(&mut self) -> Option<Checkpoint<P>> {
+		self.checkpoints.pop_front()
 	}
 
 	/// Returns a span with the last checkpoint removed.
-	pub fn pop_last(&self) -> Option<Span<P>> {
-		self.take(..self.checkpoints.len() - 1)
+	pub fn pop_last(&mut self) -> Option<Checkpoint<P>> {
+		self.checkpoints.pop_back()
 	}
 
 	/// Returns a checkpoint at the given index relative to the start of the span.
@@ -143,59 +134,16 @@ impl<P: Platform> Span<P> {
 		self.checkpoints.iter().any(|checkpoint| {
 			checkpoint
 				.transaction()
-				.map(|tx| *tx.tx_hash() == hash)
-				.unwrap_or_default()
+				.map(|tx| hash == *tx.tx_hash())
+				.unwrap_or(false)
 		})
-	}
-
-	/// Returns a sub-span of the current span.
-	pub fn take(&self, range: impl RangeBounds<usize>) -> Option<Span<P>> {
-		let start = range.start_bound();
-		let end = range.end_bound();
-
-		let start = match start {
-			Bound::Included(index) => {
-				if *index >= self.checkpoints.len() {
-					return None; // start is out of bounds
-				}
-				*index
-			}
-			Bound::Excluded(_) => unreachable!(),
-			Bound::Unbounded => 0,
-		};
-
-		let end = match end {
-			Bound::Included(index) => {
-				if *index > self.checkpoints.len() {
-					return None; // end is out of bounds
-				}
-				*index - 1
-			}
-			Bound::Excluded(index) => {
-				if *index >= self.checkpoints.len() {
-					return None; // end is out of bounds
-				}
-				*index
-			}
-			Bound::Unbounded => self.checkpoints.len() - 1,
-		};
-
-		let checkpoints = self.checkpoints[start..=end].to_vec();
-		if checkpoints.is_empty() {
-			return None; // empty span
-		}
-
-		Some(Span { checkpoints })
 	}
 
 	/// Returns an iterator over the checkpoints in the span.
 	/// The iteration order is from the ancestor checkpoint to the descendant
 	/// checkpoint.
 	pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Checkpoint<P>> {
-		Iter {
-			checkpoints: &self.checkpoints,
-			index: 0,
-		}
+		self.checkpoints.iter()
 	}
 
 	/// Iterates of all transactions in the span in chronological order as they
@@ -207,12 +155,7 @@ impl<P: Platform> Span<P> {
 	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
 		self
 			.iter()
-			.filter_map(|checkpoint| match checkpoint.mutation() {
-				Mutation::Transaction {
-					recovered: content, ..
-				} => Some(content),
-				_ => None,
-			})
+			.filter_map(|checkpoint| checkpoint.transaction())
 	}
 
 	/// Iterates over all blob transactions in the span.
@@ -220,11 +163,8 @@ impl<P: Platform> Span<P> {
 		&self,
 	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
 		self
-			.iter()
-			.filter_map(|checkpoint| match checkpoint.mutation() {
-				Mutation::Transaction { recovered, .. } => Some(recovered),
-				_ => None,
-			})
+			.transactions()
+			.filter(|tx| tx.blob_gas_used().is_some())
 	}
 }
 
@@ -244,52 +184,15 @@ impl<P: Platform> Span<P> {
 		self
 			.checkpoints
 			.iter()
-			.filter_map(|checkpoint| checkpoint.blob_gas_used())
+			.filter_map(|checkpoint| {
+				checkpoint.transaction().and_then(|tx| tx.blob_gas_used())
+			})
 			.sum()
 	}
 }
 
-/// An iterator over checkpoints in a span.
-/// The iteration order is from the ancestor checkpoint to the descendant
-/// checkpoint.
-pub struct Iter<'a, P: Platform> {
-	checkpoints: &'a [Checkpoint<P>],
-	index: usize,
-}
-
-impl<'a, P: Platform> Iterator for Iter<'a, P> {
-	type Item = &'a Checkpoint<P>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if self.index < self.checkpoints.len() {
-			let checkpoint = &self.checkpoints[self.index];
-			self.index += 1;
-			Some(checkpoint)
-		} else {
-			None
-		}
-	}
-}
-
-impl<'a, P: Platform> DoubleEndedIterator for Iter<'a, P> {
-	fn next_back(&mut self) -> Option<Self::Item> {
-		if self.index > 0 {
-			self.index -= 1;
-			Some(&self.checkpoints[self.index])
-		} else {
-			None
-		}
-	}
-}
-
-impl<'a, P: Platform> ExactSizeIterator for Iter<'a, P> {
-	fn len(&self) -> usize {
-		self.checkpoints.len()
-	}
-}
-
 impl<P: Platform> IntoIterator for Span<P> {
-	type IntoIter = std::vec::IntoIter<Checkpoint<P>>;
+	type IntoIter = IntoIter<Checkpoint<P>>;
 	type Item = Checkpoint<P>;
 
 	fn into_iter(self) -> Self::IntoIter {

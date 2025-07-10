@@ -44,9 +44,6 @@ impl<P: Platform> StepContext<P> {
 	/// during the payload building process. It does however include changes
 	/// applied by platform-specific [`BlockBuilder::apply_pre_execution_changes`]
 	/// for this block.
-	///
-	/// Intermediate state changes that are made by the pipeline are only
-	/// available in simulated steps through the simulated payload type.
 	pub fn provider(&self) -> &dyn StateProvider {
 		self.block.base_state()
 	}

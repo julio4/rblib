@@ -3,10 +3,7 @@
 //! This API is used to construct payload builders.
 
 use {
-	crate::{
-		pipelines::step::{StepKind, WrappedStep},
-		*,
-	},
+	crate::{pipelines::step::WrappedStep, *},
 	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
 	reth::builder::components::PayloadServiceBuilder,
@@ -18,8 +15,6 @@ mod exec;
 mod job;
 mod limits;
 mod service;
-mod simulated;
-mod r#static;
 mod step;
 pub mod steps;
 
@@ -31,8 +26,6 @@ pub use {
 	Behavior::{Loop, Once},
 	context::StepContext,
 	limits::{Limits, LimitsFactory},
-	simulated::{Simulated, SimulatedPayload},
-	r#static::{Static, StaticPayload},
 	step::{ControlFlow, Step},
 };
 
@@ -75,10 +68,7 @@ impl<P: Platform> Pipeline<P> {
 
 	/// A step that happens before any transaction is added to the block, executes
 	/// as the first step in the pipeline.
-	pub fn with_prologue<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Self {
+	pub fn with_prologue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
 		this.prologue = Some(Arc::new(WrappedStep::new(step)));
 		this
@@ -86,10 +76,7 @@ impl<P: Platform> Pipeline<P> {
 
 	/// A step that happens as the last step of the block after the whole payload
 	/// has been built.
-	pub fn with_epilogue<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Self {
+	pub fn with_epilogue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
 		this.epilogue = Some(Arc::new(WrappedStep::new(step)));
 		this
@@ -98,10 +85,7 @@ impl<P: Platform> Pipeline<P> {
 	/// A step that runs with an input that is the result of the previous step.
 	/// The order of steps definition is important, as it determines the flow of
 	/// data through the pipeline.
-	pub fn with_step<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Self {
+	pub fn with_step(self, step: impl Step<P>) -> Self {
 		let mut this = self;
 		this
 			.steps
@@ -244,17 +228,13 @@ impl<P: Platform> IntoPipeline<P, ()> for Pipeline<P> {
 	}
 }
 
-impl<P: Platform, M0: StepKind, S0: Step<P, Kind = M0>> IntoPipeline<P, ()>
-	for (S0,)
-{
+impl<P: Platform, S0: Step<P>> IntoPipeline<P, ()> for (S0,) {
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self.0)
 	}
 }
 
-impl<P: Platform, M0: StepKind, S0: Step<P, Kind = M0>> IntoPipeline<P, u8>
-	for S0
-{
+impl<P: Platform, S0: Step<P>> IntoPipeline<P, u8> for S0 {
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self)
 	}
@@ -265,33 +245,18 @@ impl_into_pipeline_steps!(32);
 
 /// Helper trait that supports the concise pipeline definition syntax.
 pub trait PipelineBuilderExt<P: Platform> {
-	fn with_prologue<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Pipeline<P>;
-
-	fn with_epilogue<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Pipeline<P>;
-
+	fn with_prologue(self, step: impl Step<P>) -> Pipeline<P>;
+	fn with_epilogue(self, step: impl Step<P>) -> Pipeline<P>;
 	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P>;
-
 	fn with_name(self, name: impl Into<String>) -> Pipeline<P>;
 }
 
 impl<P: Platform, T: IntoPipeline<P, ()>> PipelineBuilderExt<P> for T {
-	fn with_prologue<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Pipeline<P> {
+	fn with_prologue(self, step: impl Step<P>) -> Pipeline<P> {
 		self.into_pipeline().with_prologue(step)
 	}
 
-	fn with_epilogue<Mode: StepKind>(
-		self,
-		step: impl Step<P, Kind = Mode>,
-	) -> Pipeline<P> {
+	fn with_epilogue(self, step: impl Step<P>) -> Pipeline<P> {
 		self.into_pipeline().with_epilogue(step)
 	}
 

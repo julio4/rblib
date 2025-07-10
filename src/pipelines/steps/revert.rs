@@ -6,7 +6,7 @@ impl<P: Platform> Step<P> for RevertProtection {
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
-		ctx: StepContext<P>,
+		_: StepContext<P>,
 	) -> ControlFlow<P> {
 		let history = payload.history();
 
@@ -17,8 +17,9 @@ impl<P: Platform> Step<P> for RevertProtection {
 		}
 
 		// identify the first failed transaction in the payload
-		let Some(first_failed) =
-			history.iter().find(|checkpoint| !checkpoint.is_success())
+		let Some(first_failed) = history
+			.iter()
+			.position(|checkpoint| !checkpoint.is_success())
 		else {
 			// none of the transactions have reverted, return the payload as is
 			return ControlFlow::Ok(payload);
@@ -28,38 +29,33 @@ impl<P: Platform> Step<P> for RevertProtection {
 		// payload that have not reverted. We will use this as a base checkpoint
 		// and apply remaining transactions in the payload on top of it. We discard
 		// all transactions applied on top of this base that revert.
-		let mut safe = first_failed.prev().unwrap_or_else(|| ctx.block().start());
 
-		// We will attempt to apply all those transactions in the same order as they
-		// appear in the payload, starting from the first reverted transaction.
-		let mut remaining = first_failed
-			.to(&payload)
-			.expect("we're in a valid linear history");
+		// Split the payload history into two parts:
+		// - `safe`: a region of checkpoints that have not reverted, starting from
+		//   the beginning of the payload up to the first reverted transaction.
+		// - `remaining`: a region of checkpoints where the first reverted
+		//   transaction appeared. We will apply all those transactions on top of
+		//   the `safe` region in the same order as they appear in the payload.
+		let (safe, mut remaining) = history.split_at(first_failed);
+		let mut safe = safe.last().cloned().expect("at least baseline checkpoint");
 
-		loop {
-			// apply transactions from the unsafe region one by one on top of the
-			// safe region in the same order as they appear in the payload.
-			let Some(tx) = remaining
-				.pop_first()
-				.and_then(|tx| tx.transaction().cloned())
-			else {
-				// if there are no more transactions to process, we can return the
-				// safe checkpoint
-				break;
-			};
+		while let Some(tx) = remaining.pop_first() {
+			let tx = tx
+				.transaction()
+				.cloned()
+				.expect("baseline checkpoint is always successful");
 
 			let Ok(new_checkpoint) = safe.apply(tx) else {
-				// if the transaction cannot be applied, we skip it and continue
-				// with the next one
+				// if the transaction cannot be applied because of consensus rules, we
+				// skip it and move on to the next one.
 				continue;
 			};
 
 			if new_checkpoint.is_success() {
-				// if the transaction was applied successfully, we can
-				// use the new checkpoint as the base for the next
-				// transaction, otherwise we keep the previous
-				// checkpoint as the base because this transaction
-				// reverted and we don't want to include it in the payload
+				// if the transaction was applied and did not revert or halt, we can
+				// use the new checkpoint as the base for the next transaction,
+				// otherwise we keep the same base checkpoint and discard this
+				// checkpoint.
 				safe = new_checkpoint;
 			}
 		}

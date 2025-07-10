@@ -1,5 +1,5 @@
 use {
-	crate::{payload::span, *},
+	crate::*,
 	alloy::primitives::{Address, B256, KECCAK256_EMPTY, StorageValue, U256},
 	alloy_evm::{Evm, block::BlockExecutorFactory, evm::EvmFactory},
 	core::fmt::{Debug, Display},
@@ -7,10 +7,9 @@ use {
 		api::ConfigureEvm,
 		core::primitives::SignedTransaction,
 		primitives::Recovered,
-		providers::ProviderError,
 		revm::{
 			DatabaseRef,
-			db::{DBErrorMarker, WrapDatabaseRef},
+			db::WrapDatabaseRef,
 			state::{AccountInfo, Bytecode, EvmState},
 		},
 	},
@@ -47,14 +46,6 @@ pub enum Error<P: Platform> {
 	InvalidTransaction(InvalidTransactionError<P>),
 }
 
-#[derive(Debug, Clone, Error)]
-pub enum StateError {
-	#[error("Provider error: {0}")]
-	Provider(#[from] ProviderError),
-}
-
-impl DBErrorMarker for StateError {}
-
 /// Notes:
 ///  - There is no public API to create a checkpoint directly. Checkpoints are
 ///    created by the [`BlockContext`] when it starts a new payload building
@@ -64,24 +55,29 @@ impl DBErrorMarker for StateError {}
 ///    payload, they however cannot be used durectly to build a block. The block
 ///    building process is very node-specific and is part of the pipelines api,
 ///    which has more info and access to the underlying node facilities.
+///
+///  - Checkpoints are immutable, meaning that once a checkpoint is created, it
+///    cannot be changed. Instead, new checkpoints are created on top of the
+///    existing ones, forming a chain of checkpoints.
+///
+///  - Checkpoints are cheap to clone, discard and move around.
+///
+///  - Checkpoints are thread-safe.
+///
+///  - Checkpoints are always in a state that can be used to build a valid block
+///    payload. You can't create checkpoints with invalid transactions (such as
+///    invalid nonces, invalid signatures, etc.) that would invalidate the block
+///    payload according to consensus rules.
+///
+///  - Checkpoints are state providers, meaning that any checkpoint can be used
+///    as a database reference in an input to an EVM instance, when simulating
+///    transactions. The state of the checkpoint is the cumulative state of all
+///    state mutations applied since the beginning of the block payload,
+///    including the base state of the parent block of the block for which the
+///    payload is being built.
 pub struct Checkpoint<P: Platform> {
 	inner: Arc<CheckpointInner<P>>,
 }
-
-impl<P: Platform> Clone for Checkpoint<P> {
-	fn clone(&self) -> Self {
-		Self {
-			inner: Arc::clone(&self.inner),
-		}
-	}
-}
-
-impl<P: Platform> PartialEq for Checkpoint<P> {
-	fn eq(&self, other: &Self) -> bool {
-		Arc::ptr_eq(&self.inner, &other.inner)
-	}
-}
-impl<P: Platform> Eq for Checkpoint<P> {}
 
 /// Public read API
 impl<P: Platform> Checkpoint<P> {
@@ -106,34 +102,6 @@ impl<P: Platform> Checkpoint<P> {
 		})
 	}
 
-	/// Creates a new span that includes this checkpoints and all other
-	/// checkpoints that are between this checkpoint and the given checkpoint.
-	///
-	/// The two checkpoints must be part of the same linear history, meaning that
-	/// one of them must be a descendant of the other.
-	///
-	/// The other checkpoint can be either a previous or a future checkpoint.
-	pub fn to(&self, other: &Checkpoint<P>) -> Result<Span<P>, span::Error> {
-		Span::between(self, other)
-	}
-
-	/// Returns the first checkpoint in the chain of checkpoints since the
-	/// beginning of the block payload we're building.
-	pub fn root(&self) -> Checkpoint<P> {
-		let mut current = self.clone();
-		while let Some(prev) = current.prev() {
-			current = prev;
-		}
-		current
-	}
-
-	/// Returns a span that includes all checkpoints from the beginning of the
-	/// block payload we're building to the current checkpoint.
-	pub fn history(&self) -> Span<P> {
-		Span::between(self, &self.root())
-			.expect("history is always linear between self and root")
-	}
-
 	/// Returns the block context that is the root of theis checkpoint.
 	pub fn block(&self) -> &BlockContext<P> {
 		&self.inner.block
@@ -142,7 +110,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// The transaction that created this checkpoint.
 	pub fn transaction(&self) -> Option<&Recovered<types::Transaction<P>>> {
 		match &self.inner.mutation {
-			Mutation::Initial => None,
+			Mutation::Baseline => None,
 			Mutation::Transaction { transaction, .. } => Some(transaction),
 		}
 	}
@@ -150,7 +118,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// The execution result of the transaction that created this checkpoint.
 	pub fn result(&self) -> Option<&ExecutionResult<P>> {
 		match &self.inner.mutation {
-			Mutation::Initial => None,
+			Mutation::Baseline => None,
 			Mutation::Transaction { result, .. } => Some(&result.result),
 		}
 	}
@@ -159,23 +127,9 @@ impl<P: Platform> Checkpoint<P> {
 	/// transaction that created this checkpoint.
 	pub fn state(&self) -> Option<&EvmState> {
 		match &self.inner.mutation {
-			Mutation::Initial => None,
+			Mutation::Baseline => None,
 			Mutation::Transaction { result, .. } => Some(&result.state),
 		}
-	}
-
-	/// Gas used by this checkpoint.
-	pub fn gas_used(&self) -> u64 {
-		self.result().map(|result| result.gas_used()).unwrap_or(0)
-	}
-
-	/// Returns `true` if the transaction that created this checkpoint was
-	/// successful, `false` otherwise.
-	pub fn is_success(&self) -> bool {
-		self
-			.result()
-			.map(|result| result.is_success())
-			.unwrap_or(true)
 	}
 }
 
@@ -221,24 +175,24 @@ impl<P: Platform> Checkpoint<P> {
 	/// state of the parent block of the block for which the payload is
 	/// being built.
 	pub(super) fn new_at_block(block: BlockContext<P>) -> Self {
-		// at the beginning of the payload building process, we need to apply any
-		// pre-execution changes.
-
 		Self {
 			inner: Arc::new(CheckpointInner {
 				block,
 				prev: None,
 				depth: 0,
-				mutation: Mutation::Initial,
+				mutation: Mutation::Baseline,
 			}),
 		}
 	}
 }
 
+/// Describes the type of state mutation that was applied to the
+/// previous checkpoint to create this checkpoint.
 enum Mutation<P: Platform> {
-	/// An initial checkpoint that was created for an empty payload.
-	/// This mutation type is only valid for checkpoints at depth zero.
-	Initial,
+	/// An initial checkpoint that was created for an empty payload on top of the
+	/// parent block state. This mutation type is only valid for checkpoints at
+	/// depth zero.
+	Baseline,
 
 	/// A regular checkpoint that was created by applying a transaction.
 	Transaction {
@@ -249,6 +203,7 @@ enum Mutation<P: Platform> {
 	},
 }
 
+/// This is
 struct CheckpointInner<P: Platform> {
 	/// The block context for which this checkpoint was created.
 	block: BlockContext<P>,
@@ -303,6 +258,11 @@ impl<P: Platform> IntoRecoveredTx<P, u8> for Recovered<types::Transaction<P>> {
 	}
 }
 
+/// Any checkpoint can be used as a database reference for an EVM instance.
+/// The state at a checkpoint is the cumulative aggregate of all state mutations
+/// that occured in the current checkpoint and all its ancestors on top of the
+/// base state of the parent block of the block for which the payload is being
+/// built.
 impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	/// The database error type.
 	type Error = StateError;
@@ -366,6 +326,21 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	}
 }
 
+impl<P: Platform> Clone for Checkpoint<P> {
+	fn clone(&self) -> Self {
+		Self {
+			inner: Arc::clone(&self.inner),
+		}
+	}
+}
+
+impl<P: Platform> PartialEq for Checkpoint<P> {
+	fn eq(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.inner, &other.inner)
+	}
+}
+impl<P: Platform> Eq for Checkpoint<P> {}
+
 impl<P: Platform> Debug for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Checkpoint")
@@ -380,19 +355,19 @@ impl<P: Platform> Debug for Checkpoint<P> {
 
 impl<P: Platform> Display for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		let (Some(tx), Some(result)) = (self.transaction(), self.result()) else {
+			return write!(f, "[{}] (initial)", self.depth());
+		};
+
 		write!(
 			f,
 			"[{}] {} ({}, {} gas)",
 			self.depth(),
-			&self
-				.transaction()
-				.map(|tx| tx.tx_hash().to_string())
-				.unwrap_or_default(),
-			match self.result() {
-				Some(ExecutionResult::<P>::Success { .. }) => "success",
-				Some(ExecutionResult::<P>::Revert { .. }) => "revert",
-				Some(ExecutionResult::<P>::Halt { .. }) => "halt",
-				None => "initial",
+			tx.tx_hash(),
+			match result {
+				ExecutionResult::<P>::Success { .. } => "success",
+				ExecutionResult::<P>::Revert { .. } => "revert",
+				ExecutionResult::<P>::Halt { .. } => "halt",
 			},
 			self.gas_used(),
 		)

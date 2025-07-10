@@ -25,7 +25,6 @@ async fn empty_pipeline_builds_empty_payload() {
 #[tokio::test]
 async fn pipeline_with_no_txs_builds_empty_payload() {
 	let pipeline = Pipeline::default()
-		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
 		.with_step(RevertProtection);
@@ -38,12 +37,11 @@ async fn pipeline_with_no_txs_builds_empty_payload() {
 }
 
 #[tokio::test]
-async fn transfers_included_reverts_excluded_flat() {
-	let pipeline = Pipeline::default()
-		.with_epilogue(BuilderEpilogue)
-		.with_step(GatherBestTransactions)
-		.with_step(PriorityFeeOrdering)
-		.with_step(RevertProtection);
+async fn all_transactions_included() {
+	let pipeline = Pipeline::default().with_pipeline(
+		Loop,
+		(AppendNewTransactionFromPool::default(), PriorityFeeOrdering),
+	);
 
 	let node = LocalNode::ethereum(pipeline).await.unwrap();
 
@@ -85,73 +83,11 @@ async fn transfers_included_reverts_excluded_flat() {
 	);
 
 	assert!(
-		!block.includes(&reverts),
+		block.includes(&reverts),
 		"Block should not include any reverts"
 	);
 
-	// non-reverting transactions + builder epilogue tx (todo)
-	// assert_eq!(block.transactions.len(), transfers.len() + 1);
-}
-
-#[tokio::test]
-async fn transfers_included_reverts_excluded_loop() {
-	let pipeline = Pipeline::default()
-		.with_epilogue(BuilderEpilogue)
-		.with_pipeline(
-			Loop,
-			(
-				AppendNewTransactionFromPool::default(),
-				PriorityFeeOrdering,
-				RevertProtection,
-			),
-		);
-
-	let node = LocalNode::ethereum(pipeline).await.unwrap();
-
-	let mut transfers = vec![];
-	for i in 0..10 {
-		transfers.push(
-			*node
-				.new_transaction()
-				.random_valid_transfer()
-				.with_value(i)
-				.send()
-				.await
-				.unwrap()
-				.tx_hash(),
-		);
-	}
-
-	let mut reverts = vec![];
-	for i in 0..4 {
-		reverts.push(
-			*node
-				.new_transaction()
-				.random_reverting_transaction()
-				.with_value(3000 + i)
-				.send()
-				.await
-				.unwrap()
-				.tx_hash(),
-		);
-	}
-
-	let block = node.build_new_block().await.unwrap();
-
-	info!("Block built: {block:#?}");
-
-	assert!(
-		block.includes(&transfers),
-		"Block should include all valid transfers"
-	);
-
-	assert!(
-		!block.includes(&reverts),
-		"Block should not include any reverts"
-	);
-
-	// non-reverting transactions + builder epilogue tx (todo)
-	// assert_eq!(block.transactions.len(), transfers.len() + 1);
+	assert_eq!(block.transactions.len(), transfers.len() + reverts.len());
 }
 
 #[tokio::test]

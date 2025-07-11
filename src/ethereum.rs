@@ -136,7 +136,7 @@ impl<P: Platform> LimitsFactory<P> for EthereumDefaultLimits {
 			gas_limit = gas_limit.min(enclosing.gas_limit);
 		}
 
-		let limits = Limits::new(gas_limit);
+		let limits = Limits::with_gas_limit(gas_limit);
 
 		if let Some(mut blob_params) =
 			block.chainspec().blob_params_at_timestamp(timestamp)

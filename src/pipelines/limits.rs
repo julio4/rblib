@@ -41,7 +41,7 @@ pub struct Limits {
 }
 
 impl Limits {
-	pub fn new(gas_limit: u64) -> Self {
+	pub fn with_gas_limit(gas_limit: u64) -> Self {
 		Self {
 			gas_limit,
 			blob_params: None,

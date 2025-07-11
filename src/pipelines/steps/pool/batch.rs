@@ -171,7 +171,7 @@ mod tests {
 		const EXPECTED: usize = 100;
 
 		let mut output = OneStep::new(GatherBestTransactions)
-			.with_limits(Limits::new(21000 * EXPECTED as u64));
+			.with_limits(Limits::with_gas_limit(21000 * EXPECTED as u64));
 
 		for _ in 0..COUNT {
 			output = output.with_pool_tx(|builder| builder.random_valid_transfer());

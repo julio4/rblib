@@ -164,4 +164,26 @@ mod tests {
 		assert_eq!(payload.history().len(), 1 + COUNT);
 		assert_eq!(payload.history().transactions().count(), COUNT);
 	}
+
+	#[tokio::test]
+	async fn too_many_transactions() {
+		const COUNT: usize = 200;
+		const EXPECTED: usize = 100;
+
+		let mut output = OneStep::new(GatherBestTransactions)
+			.with_limits(Limits::new(21000 * EXPECTED as u64));
+
+		for _ in 0..COUNT {
+			output = output.with_pool_tx(|builder| builder.random_valid_transfer());
+		}
+
+		let output = output.run().await;
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		// we should reach the gas limit before we include all transactions
+		assert_eq!(payload.history().len(), 1 + EXPECTED);
+		assert_eq!(payload.history().transactions().count(), EXPECTED);
+	}
 }

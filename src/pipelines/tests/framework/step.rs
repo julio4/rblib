@@ -1,8 +1,11 @@
 use {
 	crate::{
+		BlockContext,
 		Checkpoint,
 		ControlFlow,
 		EthereumMainnet,
+		Limits,
+		LimitsFactory,
 		Pipeline,
 		Step,
 		StepContext,
@@ -62,6 +65,21 @@ impl OneStep {
 		}
 	}
 
+	pub fn with_limits(mut self, limits: Limits) -> Self {
+		struct FixedLimits(Limits);
+		impl LimitsFactory<EthereumMainnet> for FixedLimits {
+			fn create(
+				&self,
+				_: &BlockContext<EthereumMainnet>,
+				_: Option<&Limits>,
+			) -> Limits {
+				self.0.clone()
+			}
+		}
+		self.pipeline = self.pipeline.with_limits(FixedLimits(limits));
+		self
+	}
+
 	/// Adds a new transaction to the input payload of the step.
 	///
 	/// Note that transactions added through this method will not go through the
@@ -77,6 +95,8 @@ impl OneStep {
 	}
 
 	/// Adds a new transaction to the mempool and makes it available to the step.
+	/// Here we don't need to manage nonces, as the mempool will report the
+	/// pending transactions for the signer and nonces will be set automatically.
 	pub fn with_pool_tx(
 		mut self,
 		builder: impl FnMut(TransactionBuilder) -> TransactionBuilder + 'static,
@@ -124,12 +144,10 @@ impl OneStep {
 		let fail_res = self.fail_rx.try_recv();
 
 		if let Ok(ok) = ok_res {
-			tracing::info!("Received ok: {ok}");
 			return ControlFlow::Ok(ok);
 		}
 
 		if let Ok(fail_res) = fail_res {
-			tracing::error!("Received fail: {fail_res}");
 			return ControlFlow::Fail(fail_res);
 		}
 
@@ -137,7 +155,6 @@ impl OneStep {
 			unreachable!("did not receive ok, break or fail.")
 		};
 
-		tracing::info!("Received break: {break_res}");
 		ControlFlow::Break(break_res)
 	}
 }
@@ -190,7 +207,6 @@ impl Step<EthereumMainnet> for RecordOk {
 		payload: Checkpoint<EthereumMainnet>,
 		_: StepContext<EthereumMainnet>,
 	) -> ControlFlow<EthereumMainnet> {
-		tracing::info!("recording ok: {payload}");
 		self.sender.send(payload.clone()).unwrap();
 		ControlFlow::Ok(payload)
 	}
@@ -226,7 +242,6 @@ impl Step<EthereumMainnet> for RecordBreakAndFail {
 		payload: Checkpoint<EthereumMainnet>,
 		_: StepContext<EthereumMainnet>,
 	) -> ControlFlow<EthereumMainnet> {
-		tracing::info!("recording break: {payload}");
 		self.break_sender.send(payload.clone()).unwrap();
 		ControlFlow::Ok(payload)
 	}
@@ -238,7 +253,6 @@ impl Step<EthereumMainnet> for RecordBreakAndFail {
 		>,
 	) -> Result<(), PayloadBuilderError> {
 		if let Err(e) = result.as_ref() {
-			tracing::error!("recording fail: {e}");
 			self
 				.fail_sender
 				.send(ClonablePayloadBuilderError::from(e).into())

@@ -55,3 +55,77 @@ impl<P: Platform> Step<P> for RevertProtection {
 		ControlFlow::Ok(safe)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use {super::*, crate::pipelines::tests::*};
+
+	#[tokio::test]
+	async fn empty_payload() {
+		let output = OneStep::new(RevertProtection).run().await;
+
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		assert_eq!(payload.history().len(), 1);
+		assert_eq!(payload.history().transactions().count(), 0);
+	}
+
+	#[tokio::test]
+	async fn one_revert_one_ok() {
+		let output = OneStep::new(RevertProtection)
+			.with_payload_tx(|builder| builder.random_valid_transfer().with_nonce(0))
+			.with_payload_tx(|builder| {
+				builder.random_reverting_transaction().with_nonce(1)
+			})
+			.run()
+			.await;
+
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		assert_eq!(payload.history().transactions().count(), 1);
+	}
+
+	#[tokio::test]
+	async fn all_revert() {
+		let output = OneStep::new(RevertProtection)
+			.with_payload_tx(|builder| {
+				builder.random_reverting_transaction().with_nonce(0)
+			})
+			.with_payload_tx(|builder| {
+				builder.random_reverting_transaction().with_nonce(1)
+			})
+			.with_payload_tx(|builder| {
+				builder.random_reverting_transaction().with_nonce(2)
+			})
+			.run()
+			.await;
+
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		assert_eq!(payload.history().len(), 1);
+		assert_eq!(payload.history().transactions().count(), 0);
+	}
+
+	#[tokio::test]
+	async fn none_revert() {
+		let output = OneStep::new(RevertProtection)
+			.with_payload_tx(|builder| builder.random_valid_transfer().with_nonce(0))
+			.with_payload_tx(|builder| builder.random_valid_transfer().with_nonce(1))
+			.with_payload_tx(|builder| builder.random_valid_transfer().with_nonce(2))
+			.run()
+			.await;
+
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		assert_eq!(payload.history().len(), 4);
+		assert_eq!(payload.history().transactions().count(), 3);
+	}
+}

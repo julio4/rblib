@@ -446,6 +446,39 @@ impl Clone for ClonablePayloadBuilderError {
 	}
 }
 
+impl From<&PayloadBuilderError> for ClonablePayloadBuilderError {
+	fn from(error: &PayloadBuilderError) -> Self {
+		match error {
+			PayloadBuilderError::MissingParentHeader(fixed_bytes) => {
+				Self(PayloadBuilderError::MissingParentHeader(*fixed_bytes))
+			}
+			PayloadBuilderError::MissingParentBlock(fixed_bytes) => {
+				Self(PayloadBuilderError::MissingParentBlock(*fixed_bytes))
+			}
+			PayloadBuilderError::ChannelClosed => {
+				Self(PayloadBuilderError::ChannelClosed)
+			}
+			PayloadBuilderError::MissingPayload => {
+				Self(PayloadBuilderError::MissingPayload)
+			}
+			PayloadBuilderError::Internal(reth_error) => Self(
+				PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string())),
+			),
+			PayloadBuilderError::EvmExecutionError(error)
+			| PayloadBuilderError::Other(error) => Self(PayloadBuilderError::other(
+				WrappedErrorMessage(error.to_string()),
+			)),
+		}
+	}
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl ClonablePayloadBuilderError {
+	pub fn clone_original(original: &PayloadBuilderError) -> PayloadBuilderError {
+		Self::from(original).into()
+	}
+}
+
 impl From<Box<dyn core::error::Error>> for ClonablePayloadBuilderError {
 	fn from(error: Box<dyn core::error::Error>) -> Self {
 		Self(PayloadBuilderError::other(WrappedErrorMessage(

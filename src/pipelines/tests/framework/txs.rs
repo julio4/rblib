@@ -93,7 +93,7 @@ impl TransactionBuilder {
 	}
 
 	pub fn with_nonce(mut self, nonce: u64) -> Self {
-		self.tx.nonce = nonce;
+		self.nonce = Some(nonce);
 		self
 	}
 

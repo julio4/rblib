@@ -66,3 +66,6 @@ impl<P: Platform> StepContext<P> {
 		&self.limits
 	}
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+impl<P: Platform> StepContext<P> {}

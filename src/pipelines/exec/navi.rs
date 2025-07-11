@@ -222,10 +222,10 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 			// If there are no steps, but there is an epilogue, return it.
 			if pipeline.epilogue().is_some() {
 				return Some(Self(StepPath::epilogue(), vec![pipeline]));
-			} else {
-				// this is an empty pipeline, there is nothing executable.
-				return None;
 			}
+
+			// this is an empty pipeline, there is nothing executable.
+			return None;
 		}
 
 		// pipeline has steps, dig into the entrypoint of the first item
@@ -337,7 +337,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 }
 
 /// Private APIs
-impl<'a, P: Platform> StepNavigator<'a, P> {
+impl<P: Platform> StepNavigator<'_, P> {
 	/// Returns the loop behaviour of the pipeline containing the current step.
 	fn behavior(&self) -> Behavior {
 		// top-level pipelines are always `Once`.

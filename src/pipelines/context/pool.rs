@@ -37,8 +37,8 @@ use {
 /// A type that gives access to the transaction pool facilities inside a
 /// pipeline step without needing to know the concrete type of the pool.
 ///
-/// It is unfortunate that Reth's TransactionPool trait is not dyn-safe, because
-/// it inherits from `Clone`, which forces us to wrap it here.
+/// It is unfortunate that Reth's `TransactionPool` trait is not dyn-safe,
+/// because it inherits from `Clone`, which forces us to wrap it here.
 pub struct TransactionPool<P: Platform> {
 	vtable: TransactionPoolVTable<P>,
 }
@@ -67,7 +67,7 @@ impl<P: Platform> Debug for TransactionPool<P> {
 unsafe impl<P: Platform> Send for TransactionPool<P> {}
 unsafe impl<P: Platform> Sync for TransactionPool<P> {}
 
-/// VTable struct that captures all methods from the TransactionPool trait
+/// V-Table struct that captures all methods from the `TransactionPool` trait
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 struct TransactionPoolVTable<P: Platform> {
@@ -254,14 +254,15 @@ struct TransactionPoolVTable<P: Platform> {
 }
 
 impl<P: Platform> TransactionPoolVTable<P> {
-	/// Creates a new VTable from a TransactionPool implementation
+	/// Creates a new vtable from a `TransactionPool` implementation
+	#[allow(clippy::too_many_lines)]
 	pub fn new<Pool: traits::PoolBounds<P>>(pool: Pool) -> Self {
 		let self_ptr = Box::into_raw(Box::new(pool)) as *const u8;
 
 		Self {
 			self_ptr,
 			clone: |self_ptr: *const u8, other: Self| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				let cloned_self_ptr =
 					Box::into_raw(Box::new(pool.clone())) as *const u8;
 
@@ -271,180 +272,180 @@ impl<P: Platform> TransactionPoolVTable<P> {
 				}
 			},
 			pool_size: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pool_size()
 			},
 			block_info: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.block_info()
 			},
 			add_transaction: |self_ptr: *const u8, origin, tx| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.add_transaction(origin, tx).boxed()
 			},
 			add_transaction_and_subscribe: |self_ptr: *const u8, origin, tx| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.add_transaction_and_subscribe(origin, tx).boxed()
 			},
 			add_transactions: |self_ptr: *const u8, origin, txs| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.add_transactions(origin, txs).boxed()
 			},
 			transaction_event_listener: |self_ptr: *const u8, tx_hash| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.transaction_event_listener(tx_hash)
 			},
 			all_transactions_event_listener: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.all_transactions_event_listener()
 			},
 			pending_transactions_listener_for: |self_ptr: *const u8, kind| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pending_transactions_listener_for(kind)
 			},
 			blob_transaction_sidecars_listener: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.blob_transaction_sidecars_listener()
 			},
 			new_transactions_listener_for: |self_ptr: *const u8, kind| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.new_transactions_listener_for(kind)
 			},
 			pooled_transaction_hashes: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pooled_transaction_hashes()
 			},
 			pooled_transaction_hashes_max: |self_ptr: *const u8, max| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pooled_transaction_hashes_max(max)
 			},
 			pooled_transactions: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pooled_transactions()
 			},
 			pooled_transactions_max: |self_ptr: *const u8, max| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pooled_transactions_max(max)
 			},
 			get_pooled_transaction_elements:
 				|self_ptr: *const u8, tx_hashes, limit| {
-					let pool = unsafe { &*(self_ptr as *const Pool) };
+					let pool = unsafe { &*self_ptr.cast::<Pool>() };
 					pool.get_pooled_transaction_elements(tx_hashes, limit)
 				},
 			get_pooled_transaction_element: |self_ptr: *const u8, tx_hash| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_pooled_transaction_element(tx_hash)
 			},
 			best_transactions: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.best_transactions()
 			},
 			best_transactions_with_attributes: |self_ptr: *const u8, attributes| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.best_transactions_with_attributes(attributes)
 			},
 			pending_transactions: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pending_transactions()
 			},
 			pending_transactions_max: |self_ptr: *const u8, max| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.pending_transactions_max(max)
 			},
 			queued_transactions: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.queued_transactions()
 			},
 			all_transactions: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.all_transactions()
 			},
 			remove_transactions: |self_ptr: *const u8, hashes| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.remove_transactions(hashes)
 			},
 			remove_transactions_and_descendants: |self_ptr: *const u8, hashes| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.remove_transactions_and_descendants(hashes)
 			},
 			remove_transactions_by_sender: |self_ptr: *const u8, sender| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.remove_transactions_by_sender(sender)
 			},
 			contains: |self_ptr: *const u8, tx_hash| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.contains(tx_hash)
 			},
 			get: |self_ptr: *const u8, tx_hash| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get(tx_hash)
 			},
 			get_all: |self_ptr: *const u8, txs| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_all(txs)
 			},
 			on_propagated: |self_ptr: *const u8, txs| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
-				pool.on_propagated(txs)
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
+				pool.on_propagated(txs);
 			},
 			get_transactions_by_sender: |self_ptr: *const u8, sender| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_transactions_by_sender(sender)
 			},
 			get_pending_transactions_by_sender: |self_ptr: *const u8, sender| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_pending_transactions_by_sender(sender)
 			},
 			get_queued_transactions_by_sender: |self_ptr: *const u8, sender| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_queued_transactions_by_sender(sender)
 			},
 			get_highest_transaction_by_sender: |self_ptr: *const u8, sender| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_highest_transaction_by_sender(sender)
 			},
 			get_highest_consecutive_transaction_by_sender:
 				|self_ptr: *const u8, sender, nonce| {
-					let pool = unsafe { &*(self_ptr as *const Pool) };
+					let pool = unsafe { &*self_ptr.cast::<Pool>() };
 					pool.get_highest_consecutive_transaction_by_sender(sender, nonce)
 				},
 			get_transaction_by_sender_and_nonce:
 				|self_ptr: *const u8, sender, nonce| {
-					let pool = unsafe { &*(self_ptr as *const Pool) };
+					let pool = unsafe { &*self_ptr.cast::<Pool>() };
 					pool.get_transaction_by_sender_and_nonce(sender, nonce)
 				},
 			get_transactions_by_origin: |self_ptr: *const u8, origin| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_transactions_by_origin(origin)
 			},
 			get_pending_transactions_by_origin: |self_ptr: *const u8, origin| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_pending_transactions_by_origin(origin)
 			},
 			unique_senders: |self_ptr: *const u8| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.unique_senders()
 			},
 			get_blob: |self_ptr: *const u8, tx_hash| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_blob(tx_hash)
 			},
 			get_all_blobs: |self_ptr: *const u8, tx_hashes| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_all_blobs(tx_hashes)
 			},
 			get_all_blobs_exact: |self_ptr: *const u8, tx_hashes| {
-				let pool = unsafe { &*(self_ptr as *const Pool) };
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
 				pool.get_all_blobs_exact(tx_hashes)
 			},
 			get_blobs_for_versioned_hashes_v1:
 				|self_ptr: *const u8, versioned_hashes| {
-					let pool = unsafe { &*(self_ptr as *const Pool) };
+					let pool = unsafe { &*self_ptr.cast::<Pool>() };
 					pool.get_blobs_for_versioned_hashes_v1(versioned_hashes)
 				},
 			get_blobs_for_versioned_hashes_v2:
 				|self_ptr: *const u8, versioned_hashes| {
-					let pool = unsafe { &*(self_ptr as *const Pool) };
+					let pool = unsafe { &*self_ptr.cast::<Pool>() };
 					pool.get_blobs_for_versioned_hashes_v2(versioned_hashes)
 				},
 		}

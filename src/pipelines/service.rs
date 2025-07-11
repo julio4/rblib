@@ -118,8 +118,8 @@ where
 /// node startup inside `spawn_payload_builder_service`.
 ///
 /// The responsibility of this type is to respond to new payload requests when
-/// FCU calls come from the CL Node. Each FCU call will generate a new PayloadID
-/// on its side and will pass it to the `new_payload_job` method.
+/// FCU calls come from the CL Node. Each FCU call will generate a new
+/// `PayloadID` on its side and will pass it to the `new_payload_job` method.
 pub struct JobGenerator<Plat, Provider, Pool>
 where
 	Plat: Platform,
@@ -189,9 +189,6 @@ where
 		)
 		.map_err(PayloadBuilderError::other)?;
 
-		let pipeline = Arc::clone(&self.pipeline);
-		let service_ctx = Arc::clone(&self.service);
-
-		Ok(PayloadJob::new(pipeline, block_ctx, service_ctx))
+		Ok(PayloadJob::new(&self.pipeline, block_ctx, &self.service))
 	}
 }

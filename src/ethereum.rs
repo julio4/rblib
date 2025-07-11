@@ -1,11 +1,12 @@
 use {
 	super::*,
 	crate::traits::{PoolBounds, ProviderBounds},
-	alloy::consensus::{BlockHeader, Transaction},
+	alloy::consensus::Transaction,
 	reth::{
 		chainspec::EthChainSpec,
 		payload::PayloadBuilderAttributes,
 		primitives::Recovered,
+		revm::{cached::CachedReads, cancelled::CancelOnDrop},
 	},
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
 	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
@@ -49,6 +50,7 @@ impl Platform for EthereumMainnet {
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self> {
+		use alloy::consensus::BlockHeader;
 		NextBlockEnvAttributes {
 			timestamp: attributes.timestamp,
 			suggested_fee_recipient: attributes.suggested_fee_recipient,
@@ -79,9 +81,9 @@ impl Platform for EthereumMainnet {
 		};
 
 		let build_args = BuildArguments::<_, types::BuiltPayload<Self>>::new(
-			Default::default(),
+			CachedReads::default(),
 			payload_config,
-			Default::default(),
+			CancelOnDrop::default(),
 			None,
 		);
 
@@ -95,7 +97,14 @@ impl Platform for EthereumMainnet {
 			transaction_pool,
 			builder_config,
 			build_args,
-			|_| transactions,
+			|_| {
+				transactions
+					as Box<
+						dyn BestTransactions<
+							Item = Arc<ValidPoolTransaction<Self::PooledTransaction>>,
+						>,
+					>
+			},
 		)?
 		.into_payload()
 		.ok_or_else(|| PayloadBuilderError::MissingPayload)
@@ -118,6 +127,7 @@ impl<P: Platform> LimitsFactory<P> for EthereumDefaultLimits {
 		block: &BlockContext<P>,
 		enclosing: Option<&Limits>,
 	) -> Limits {
+		use alloy::consensus::BlockHeader;
 		let timestamp = block.attributes().timestamp();
 		let parent_gas_limit = block.parent().gas_limit();
 		let mut gas_limit = self.0.gas_limit(parent_gas_limit);

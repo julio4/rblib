@@ -8,16 +8,19 @@ impl<P: Platform> Step<P> for RevertProtection {
 		payload: Checkpoint<P>,
 		_: StepContext<P>,
 	) -> ControlFlow<P> {
-		let history = payload.history();
-
-		if history.is_empty() {
-			// if there are no transactions in the payload, we can skip revert
-			// protection
+		if payload.is_empty() {
+			// if there are no transactions in the payload, so no reverts
 			return ControlFlow::Ok(payload);
 		}
 
-		// identify the first failed transaction in the payload
-		let Some(first_failed) = history
+		let history = payload.history();
+
+		// First identify a valid prefix of the payload history that does not
+		// contain any reverted transactions. This will be the baseline checkpoint
+		// that we will use to apply the remaining transactions. Nothing in this
+		// prefix needs to be re-executed.
+
+		let Some(prefix_len) = history
 			.iter()
 			.position(|checkpoint| !checkpoint.is_success())
 		else {
@@ -25,19 +28,8 @@ impl<P: Platform> Step<P> for RevertProtection {
 			return ControlFlow::Ok(payload);
 		};
 
-		// This is a contiguous region of transactions from the beginning of the
-		// payload that have not reverted. We will use this as a base checkpoint
-		// and apply remaining transactions in the payload on top of it. We discard
-		// all transactions applied on top of this base that revert.
-
-		// Split the payload history into two parts:
-		// - `safe`: a region of checkpoints that have not reverted, starting from
-		//   the beginning of the payload up to the first reverted transaction.
-		// - `remaining`: a region of checkpoints where the first reverted
-		//   transaction appeared. We will apply all those transactions on top of
-		//   the `safe` region in the same order as they appear in the payload.
-		let (safe, mut remaining) = history.split_at(first_failed);
-		let mut safe = safe.last().cloned().expect("at least baseline checkpoint");
+		let (valid, mut remaining) = history.split_at(prefix_len);
+		let mut safe = valid.last().cloned().expect("at least baseline checkpoint");
 
 		while let Some(tx) = remaining.pop_first() {
 			let tx = tx

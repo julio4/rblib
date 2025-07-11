@@ -5,10 +5,11 @@
 
 mod builder;
 mod pool;
+mod priority_fee;
 mod profit;
 mod revert;
 
-pub use {builder::*, pool::*, profit::*, revert::*};
+pub use {builder::*, pool::*, priority_fee::*, profit::*, revert::*};
 
 #[cfg(feature = "optimism")]
 mod optimism;

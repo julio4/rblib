@@ -50,16 +50,19 @@ impl Limits {
 		}
 	}
 
+	#[must_use]
 	pub fn with_blob_params(mut self, blob_params: BlobParams) -> Self {
 		self.blob_params = Some(blob_params);
 		self
 	}
 
+	#[must_use]
 	pub fn with_max_transactions(mut self, max_transactions: usize) -> Self {
 		self.max_transactions = Some(max_transactions);
 		self
 	}
 
+	#[must_use]
 	pub fn with_deadline(mut self, deadline: Instant) -> Self {
 		self.deadline = Some(deadline);
 		self

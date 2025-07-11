@@ -68,6 +68,7 @@ impl<P: Platform> Pipeline<P> {
 
 	/// A step that happens before any transaction is added to the block, executes
 	/// as the first step in the pipeline.
+	#[must_use]
 	pub fn with_prologue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
 		this.prologue = Some(Arc::new(WrappedStep::new(step)));
@@ -76,6 +77,7 @@ impl<P: Platform> Pipeline<P> {
 
 	/// A step that happens as the last step of the block after the whole payload
 	/// has been built.
+	#[must_use]
 	pub fn with_epilogue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
 		this.epilogue = Some(Arc::new(WrappedStep::new(step)));
@@ -85,6 +87,7 @@ impl<P: Platform> Pipeline<P> {
 	/// A step that runs with an input that is the result of the previous step.
 	/// The order of steps definition is important, as it determines the flow of
 	/// data through the pipeline.
+	#[must_use]
 	pub fn with_step(self, step: impl Step<P>) -> Self {
 		let mut this = self;
 		this
@@ -94,6 +97,7 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// Adds a nested pipeline to the current pipeline.
+	#[must_use]
 	pub fn with_pipeline<T>(
 		self,
 		behavior: Behavior,
@@ -108,6 +112,7 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// Sets payload building limits for the pipeline.
+	#[must_use]
 	pub fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Self {
 		let mut this = self;
 		this.limits = Some(Box::new(limits) as Box<dyn LimitsFactory<P>>);
@@ -173,7 +178,7 @@ impl<P: Platform> Pipeline<P> {
 		for step in &self.steps {
 			match step {
 				StepOrPipeline::Step(wrapped_step) => {
-					f(Arc::clone(wrapped_step)).await?
+					f(Arc::clone(wrapped_step)).await?;
 				}
 				StepOrPipeline::Pipeline(_, pipeline) => {
 					Box::pin(pipeline.for_each_step(f)).await?;

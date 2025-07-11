@@ -71,13 +71,12 @@ impl<
 		Self {
 			cursor: Cursor::<P>::Initializing({
 				let block = block.clone();
-				let service = Arc::clone(&service);
 				let pipeline = Arc::clone(&pipeline);
 				let limits = match pipeline.limits() {
 					Some(limits) => limits.create(&block, None),
 					None => P::DefaultLimits::default().create(&block, None),
 				};
-				let context = Arc::new(StepContext::new(block, service, limits));
+				let context = Arc::new(StepContext::new(block, &service, limits));
 
 				async move {
 					pipeline
@@ -107,7 +106,6 @@ impl<
 {
 	fn create_step_context(&self, step: &StepPath) -> StepContext<P> {
 		let block = self.context.block.clone();
-		let service = Arc::clone(&self.context.service);
 		let pipeline = Arc::clone(&self.context.pipeline);
 		let step = step.navigator(&pipeline).expect(
 			"Invalid step path. This is a bug in the pipeline executor \
@@ -120,7 +118,7 @@ impl<
 			Some(limits) => limits.create(&block, None),
 			None => P::DefaultLimits::default().create(&block, None),
 		};
-		StepContext::new(block, service, limits)
+		StepContext::new(block, &self.context.service, limits)
 	}
 
 	/// This method creates a future that encapsulates the execution an an async
@@ -131,10 +129,10 @@ impl<
 	/// cursor and polled whenever the executor is polled.
 	fn execute_step(
 		&self,
-		path: StepPath,
+		path: &StepPath,
 		input: Checkpoint<P>,
 	) -> Pin<Box<dyn Future<Output = ControlFlow<P>> + Send>> {
-		let context = self.create_step_context(&path);
+		let context = self.create_step_context(path);
 		let step = Arc::clone(
 			path
 				.navigator(&self.context.pipeline)
@@ -155,7 +153,7 @@ impl<
 	/// structure.
 	fn advance_cursor(
 		&self,
-		path: StepPath,
+		path: &StepPath,
 		output: ControlFlow<P>,
 	) -> Cursor<P> {
 		// we need this type to determine the next step to execute
@@ -209,35 +207,27 @@ impl<
 	/// After pipeline steps are initialized, this method will identify the first
 	/// step to execute in the pipeline and prepare the cursor to run it.
 	fn first_step(&self) -> Cursor<P> {
-		match StepNavigator::entrypoint(&self.context.pipeline) {
-			// we have executable steps in the pipeline
-			Some(navigator) => {
-				Cursor::BeforeStep(navigator.into(), self.context.block.start())
-			}
+		if let Some(navigator) = StepNavigator::entrypoint(&self.context.pipeline) {
+			Cursor::BeforeStep(navigator.into(), self.context.block.start())
+		} else {
+			debug!(
+				"empty pipeline, building empty payloads for attributes: {:?}",
+				self.context.block.attributes()
+			);
 
-			// Nothing executable in the pipeline, we can build an empty payload and
-			// finalize the pipeline immediately.
-			None => {
-				debug!(
-					"empty pipeline, building empty payloads for attributes: {:?}",
-					self.context.block.attributes()
-				);
+			let block = self.context.block.clone();
 
-				let block = self.context.block.clone();
-				let service = Arc::clone(&self.context.service);
-
-				Cursor::<P>::Finalizing(
-					self.finalize(
-						P::construct_payload(
-							&block,
-							Vec::new(),
-							service.pool(),
-							service.provider(),
-						)
-						.map_err(ClonablePayloadBuilderError),
-					),
-				)
-			}
+			Cursor::<P>::Finalizing(
+				self.finalize(
+					P::construct_payload(
+						&block,
+						Vec::new(),
+						self.context.service.pool(),
+						self.context.service.provider(),
+					)
+					.map_err(ClonablePayloadBuilderError),
+				),
+			)
 		}
 	}
 
@@ -247,7 +237,7 @@ impl<
 		&self,
 		output: PipelineOutput<P>,
 	) -> Pin<Box<dyn Future<Output = PipelineOutput<P>> + Send>> {
-		let output = Arc::new(output.map_err(|e| e.into()));
+		let output = Arc::new(output.map_err(Into::into));
 		let pipeline = Arc::clone(&self.context.pipeline);
 
 		async move {
@@ -291,7 +281,7 @@ where
 		if let Cursor::Initializing(ref mut future) = executor.cursor {
 			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
 				match output {
-					Ok(_) => {
+					Ok(()) => {
 						trace!("{} initialized successfully", executor.context.pipeline);
 						executor.cursor = executor.first_step();
 					}
@@ -346,7 +336,7 @@ where
 
 			trace!("{} will execute step {path:?}", executor.context.pipeline,);
 
-			let running_future = executor.execute_step(path.clone(), input);
+			let running_future = executor.execute_step(&path, input);
 			executor.cursor = Cursor::StepInProgress(path, running_future);
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
@@ -361,7 +351,7 @@ where
 				);
 
 				// step has completed, we can advance the cursor
-				executor.cursor = executor.advance_cursor(path.clone(), output);
+				executor.cursor = executor.advance_cursor(path, output);
 			}
 
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
@@ -448,10 +438,8 @@ impl Clone for ClonablePayloadBuilderError {
 			PayloadBuilderError::Internal(reth_error) => Self(
 				PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string())),
 			),
-			PayloadBuilderError::EvmExecutionError(error) => Self(
-				PayloadBuilderError::other(WrappedErrorMessage(error.to_string())),
-			),
-			PayloadBuilderError::Other(error) => Self(PayloadBuilderError::other(
+			PayloadBuilderError::EvmExecutionError(error)
+			| PayloadBuilderError::Other(error) => Self(PayloadBuilderError::other(
 				WrappedErrorMessage(error.to_string()),
 			)),
 		}

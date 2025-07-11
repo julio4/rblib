@@ -30,7 +30,7 @@ pub enum Error<P: Platform> {
 /// incrementally built payloads, all rooted at the same parent block.
 ///
 /// Usually instances of this type are created as a response to CL client
-/// ForkchoiceUpdated requests with PayloadAttributes that signals the need
+/// `ForkchoiceUpdated` requests with `PayloadAttributes` that signals the need
 /// to start constructing a new payload on top of a given block.
 ///
 /// This type is cheap to clone.
@@ -78,12 +78,12 @@ impl<P: Platform> BlockContext<P> {
 
 		Ok(Self {
 			inner: Arc::new(BlockContextInner {
-				evm_env,
 				parent,
 				attribs,
+				evm_env,
+				block_env,
 				base_state,
 				evm_config,
-				block_env,
 				chainspec,
 			}),
 		})
@@ -99,13 +99,13 @@ impl<P: Platform> BlockContext<P> {
 	}
 
 	/// Returns the payload attributes that were supplied by the CL client
-	/// during the ForkchoiceUpdated request.
+	/// during the `ForkchoiceUpdated` request.
 	pub fn attributes(&self) -> &types::PayloadBuilderAttributes<P> {
 		&self.inner.attribs
 	}
 
 	/// Returns the payload ID that was supplied by the CL client
-	/// during the ForkchoiceUpdated request inside the payload attributes.
+	/// during the `ForkchoiceUpdated` request inside the payload attributes.
 	pub fn payload_id(&self) -> PayloadId {
 		self.attributes().payload_id()
 	}
@@ -191,7 +191,7 @@ struct BlockContextInner<P: Platform> {
 	parent: SealedHeader<types::Header<P>>,
 
 	/// The payload attributes we've got from the CL client
-	/// during the ForkchoiceUpdated request.
+	/// during the `ForkchoiceUpdated` request.
 	attribs: types::PayloadBuilderAttributes<P>,
 
 	/// Context object for constucting evm instance for the block that is being

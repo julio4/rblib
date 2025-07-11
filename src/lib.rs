@@ -139,7 +139,7 @@ pub mod types {
 	pub type EvmError<P: Platform> =
 		<P::EvmConfig as reth::api::ConfigureEvm>::Error;
 
-	/// Extracts the ChainSpec type from the platform definition.
+	/// Extracts the `ChainSpec` type from the platform definition.
 	pub type ChainSpec<P: Platform> =
 		<P::NodeTypes as reth::api::NodeTypes>::ChainSpec;
 }

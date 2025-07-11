@@ -10,7 +10,7 @@ use {
 		*,
 	},
 	alloy::{
-		eips::BlockNumberOrTag,
+		eips::{BlockNumberOrTag, eip7685::RequestsOrHash},
 		primitives::{B256, U256},
 		providers::{Identity, Provider, ProviderBuilder, RootProvider},
 		rpc::types::{Block, Transaction},
@@ -63,6 +63,7 @@ impl LocalNode {
 		let task_manager = task_manager();
 		let config = default_node_config();
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
+
 		let node_handle = NodeBuilder::new(config.clone())
 			.testing_node(task_manager.executor())
 			.with_types::<EthereumNode>()
@@ -74,8 +75,9 @@ impl LocalNode {
 				let _ = rpc_ready_tx.send(());
 				Ok(())
 			})
-			.launch()
-			.await?;
+			.launch();
+
+		let node_handle = Box::pin(node_handle).await?;
 
 		let exit_future = node_handle.node_exit_future;
 		let boxed_handle = Box::new(node_handle.node);
@@ -186,7 +188,7 @@ impl LocalNode {
 			payload,
 			vec![],
 			B256::ZERO,
-			Default::default(),
+			RequestsOrHash::default(),
 		)
 		.await?;
 
@@ -256,21 +258,13 @@ impl Future for LocalNode {
 pub fn default_node_config() -> NodeConfig<ChainSpec> {
 	let tempdir = std::env::temp_dir();
 	let random_id = nanoid!();
-
-	let data_path = tempdir
-		.join(format!("rblib.{random_id}.datadir"))
-		.to_path_buf();
+	let data_path = tempdir.join(format!("rblib.{random_id}.datadir"));
 
 	std::fs::create_dir_all(&data_path)
 		.expect("Failed to create temporary data directory");
 
-	let rpc_ipc_path = tempdir
-		.join(format!("rblib.{random_id}.rpc-ipc"))
-		.to_path_buf();
-
-	let auth_ipc_path = tempdir
-		.join(format!("rblib.{random_id}.auth-ipc"))
-		.to_path_buf();
+	let rpc_ipc_path = tempdir.join(format!("rblib.{random_id}.rpc-ipc"));
+	let auth_ipc_path = tempdir.join(format!("rblib.{random_id}.auth-ipc"));
 
 	let mut rpc = RpcServerArgs::default().with_auth_ipc();
 	rpc.ws = false;

@@ -1,5 +1,6 @@
 use {
 	super::{types, *},
+	alloy::primitives::Bytes,
 	reth::primitives::Recovered,
 	reth_optimism_forks::OpHardforks,
 	reth_optimism_node::{
@@ -49,7 +50,7 @@ impl Platform for Optimism {
 					))
 					.unwrap_or_default()
 			} else {
-				Default::default()
+				Bytes::default()
 			},
 		}
 	}

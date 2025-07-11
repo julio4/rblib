@@ -45,14 +45,14 @@ where
 	Provider: traits::ProviderBounds<P>,
 {
 	pub fn new(
-		pipeline: Arc<Pipeline<P>>,
+		pipeline: &Arc<Pipeline<P>>,
 		block: BlockContext<P>,
-		service: Arc<ServiceContext<P, Provider, Pool>>,
+		service: &Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
 		let fut = ExecutorFuture::new(PipelineExecutor::run(
-			Arc::clone(&pipeline),
+			Arc::clone(pipeline),
 			block.clone(),
-			Arc::clone(&service),
+			Arc::clone(service),
 		));
 
 		debug!("Creating new PayloadJob with block context: {block:#?}");
@@ -130,7 +130,7 @@ where
 		// execution are propagated and stop they payload job future immediately.
 		if let Poll::Ready(Err(e)) = self.get_mut().fut.poll_unpin(cx) {
 			return Poll::Ready(Err(e));
-		};
+		}
 
 		// On happy paths or in-progress pipielines, keep the future alive. Reth
 		// will drop it when a payload is resolved.
@@ -208,7 +208,7 @@ where
 				}
 			}
 		}
-		.map_err(|e| e.into())
+		.map_err(Into::into)
 	}
 }
 

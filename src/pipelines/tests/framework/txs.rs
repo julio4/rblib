@@ -34,7 +34,7 @@ impl TransactionBuilder {
 			base_fee: None,
 			tx: TxEip1559 {
 				chain_id: 1,
-				gas_limit: 210000,
+				gas_limit: 210_000,
 				..Default::default()
 			},
 		}
@@ -50,9 +50,9 @@ impl TransactionBuilder {
 		self
 	}
 
-	pub fn with_funded_account(self, key: u64) -> Self {
+	pub fn with_funded_account(self, key: u32) -> Self {
 		assert!(
-			key < FUNDED_PRIVATE_KEYS.len() as u64,
+			(key as usize) < FUNDED_PRIVATE_KEYS.len(),
 			"Key index out of bounds, must be less than {}",
 			FUNDED_PRIVATE_KEYS.len()
 		);
@@ -65,6 +65,16 @@ impl TransactionBuilder {
 			)
 			.expect("invalid hardcoded builder private key"),
 		)
+	}
+
+	pub fn with_random_funded_account(self) -> Self {
+		#[allow(clippy::cast_possible_truncation)]
+		let key = rand::random::<u32>() % FUNDED_PRIVATE_KEYS.len() as u32;
+		self.with_funded_account(key)
+	}
+
+	pub fn with_default_signer(self) -> Self {
+		self.with_funded_account(0)
 	}
 
 	pub fn with_value(mut self, value: u128) -> Self {
@@ -105,6 +115,11 @@ impl TransactionBuilder {
 		self
 	}
 
+	pub fn with_random_priority_fee(self) -> Self {
+		let max_priority_fee_per_gas = rand::random::<u64>() % 100_000 + 1;
+		self.with_max_priority_fee_per_gas(u128::from(max_priority_fee_per_gas))
+	}
+
 	pub fn with_input(mut self, input: Bytes) -> Self {
 		self.tx.input = input;
 		self
@@ -117,7 +132,7 @@ impl TransactionBuilder {
 
 	pub async fn build(mut self) -> Recovered<TxEnvelope> {
 		if self.signer.is_none() {
-			self = self.with_funded_account(0);
+			self = self.with_default_signer();
 		}
 
 		let signer = self.signer.unwrap();
@@ -132,30 +147,30 @@ impl TransactionBuilder {
 				.expect("Failed to get transaction count"),
 		};
 
-		let base_fee = match self.base_fee {
-			Some(base_fee) => base_fee,
-			None => {
-				let previous_base_fee = self
-					.provider
-					.get_block_by_number(BlockNumberOrTag::Latest)
-					.await
-					.expect("failed to get latest block")
-					.expect("latest block should exist")
-					.header
-					.base_fee_per_gas
-					.unwrap_or(MIN_PROTOCOL_BASE_FEE);
+		let base_fee = if let Some(base_fee) = self.base_fee {
+			base_fee
+		} else {
+			let previous_base_fee = self
+				.provider
+				.get_block_by_number(BlockNumberOrTag::Latest)
+				.await
+				.expect("failed to get latest block")
+				.expect("latest block should exist")
+				.header
+				.base_fee_per_gas
+				.unwrap_or(MIN_PROTOCOL_BASE_FEE);
 
-				max(previous_base_fee as u128, MIN_PROTOCOL_BASE_FEE as u128)
-			}
+			max(
+				u128::from(previous_base_fee),
+				u128::from(MIN_PROTOCOL_BASE_FEE),
+			)
 		};
 
 		self.tx.nonce = nonce;
 		self.tx.max_fee_per_gas = base_fee + self.tx.max_priority_fee_per_gas;
 
 		let signature_hash = self.tx.signature_hash();
-		let signature = signer
-			.sign_message(signature_hash)
-			.expect("Failed to sign transaction hash");
+		let signature = signer.sign_message(signature_hash);
 		let signed_tx = TransactionSigned::new_unhashed(self.tx.into(), signature);
 
 		Recovered::new_unchecked(signed_tx.into(), signer.address)

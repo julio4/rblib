@@ -154,11 +154,11 @@ pub struct AppendNewTransactionFromPool {
 	/// This is especially visible in the following scenario:
 	///
 	/// Loop:
-	///  - AppendNewTransactionFromPool, adds tx A and B
-	///  - RevertProtection, Removes tx B,
-	///  - AppendNewTransactionFromPool, adds B
-	///  - RevertProtection, Removed tx B,
-	///  - AppendNewTransactionFromPool, adds B, etc.
+	///  - `AppendNewTransactionFromPool`, adds tx A and B
+	///  - `RevertProtection`, Removes tx B,
+	///  - `AppendNewTransactionFromPool`, adds B
+	///  - `RevertProtection`, Removed tx B,
+	///  - `AppendNewTransactionFromPool`, adds B, etc.
 	///
 	/// This list is cleared at the end of each payload job.
 	previously_added: DashSet<TxHash>,

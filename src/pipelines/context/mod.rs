@@ -9,7 +9,6 @@ use {
 	},
 	pool::TransactionPool,
 	reth::{primitives::SealedHeader, providers::StateProvider},
-	std::sync::Arc,
 };
 
 mod pool;
@@ -23,7 +22,7 @@ pub struct StepContext<Plat: Platform> {
 impl<P: Platform> StepContext<P> {
 	pub fn new<Pool, Provider>(
 		block: BlockContext<P>,
-		service: Arc<ServiceContext<P, Provider, Pool>>,
+		service: &ServiceContext<P, Provider, Pool>,
 		limits: Limits,
 	) -> Self
 	where

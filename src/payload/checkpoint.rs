@@ -46,31 +46,41 @@ pub enum Error<P: Platform> {
 	InvalidTransaction(InvalidTransactionError<P>),
 }
 
+/// Checkpoints represent an atomic incremental change in the payload building
+/// process.
+///
 /// Notes:
 ///  - There is no public API to create a checkpoint directly. Checkpoints are
 ///    created by the [`BlockContext`] when it starts a new payload building
 ///    process or by mutatations applied to an already existing checkpoint.
 ///
 ///  - Checkpoints contain all the information needed to assemble a full block
-///    payload, they however cannot be used durectly to build a block. The block
-///    building process is very node-specific and is part of the pipelines api,
-///    which has more info and access to the underlying node facilities.
+///    payload, they however cannot be used directly to assemble a block. The
+///    block assembly process is very node-specific and is part of the pipelines
+///    api, which has more info and access to the underlying node facilities.
 ///
 ///  - Checkpoints are immutable, meaning that once a checkpoint is created, it
-///    cannot be changed. Instead, new checkpoints are created on top of the
+///    cannot be changed. Instead, new checkpoints can be created on top of the
 ///    existing ones, forming a chain of checkpoints.
 ///
-///  - Checkpoints are cheap to clone, discard and move around.
+///  - Checkpoints may represent forks in the payload building process. Two
+///    checkpoints can share a common ancestor, without having linear history
+///    between them. Each of the diverging checkpoints can be used to build
+///    alternative versions of the payload.
 ///
-///  - Checkpoints are thread-safe.
+///  - Checkpoints are cheap to clone, discard and move around. They are
+///    expensive to create, as they require executing a transaction by the EVM
+///    and storing the resulting state changes.
+///
+///  - Checkpoints are thread-safe, Send + Sync + 'static.
 ///
 ///  - Checkpoints are always in a state that can be used to build a valid block
 ///    payload. You can't create checkpoints with invalid transactions (such as
 ///    invalid nonces, invalid signatures, etc.) that would invalidate the block
-///    payload according to consensus rules.
+///    payload validity according to consensus rules.
 ///
 ///  - Checkpoints are state providers, meaning that any checkpoint can be used
-///    as a database reference in an input to an EVM instance, when simulating
+///    as a database reference in an input to an EVM instance when simulating
 ///    transactions. The state of the checkpoint is the cumulative state of all
 ///    state mutations applied since the beginning of the block payload,
 ///    including the base state of the parent block of the block for which the
@@ -228,7 +238,7 @@ impl<P: Platform> From<Checkpoint<P>> for Vec<types::Transaction<P>> {
 		checkpoint
 			.history()
 			.transactions()
-			.map(|tx| tx.clone_inner())
+			.map(Recovered::clone_inner)
 			.collect()
 	}
 }

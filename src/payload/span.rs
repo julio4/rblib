@@ -140,7 +140,9 @@ impl<P: Platform> Span<P> {
 	/// Returns an iterator over the checkpoints in the span.
 	/// The iteration order is from the ancestor checkpoint to the descendant
 	/// checkpoint.
-	pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Checkpoint<P>> {
+	pub fn iter(
+		&self,
+	) -> impl DoubleEndedIterator<Item = &Checkpoint<P>> + Clone {
 		self.checkpoints.iter()
 	}
 }
@@ -149,7 +151,7 @@ impl<P: Platform> Span<P> {
 impl<P: Platform> Span<P> {
 	/// Creates a span from an iterator of checkpoints.
 	///
-	/// This is an internal method and does not check if the checkpoints
+	/// This is an internal method and does not check if checkpoints
 	/// form a linear history. It's the caller's responsibility to ensure
 	/// that the checkpoints are in the correct order and form a linear history.
 	pub(crate) unsafe fn from_iter_unchecked(
@@ -173,7 +175,7 @@ impl<P: Platform> IntoIterator for Span<P> {
 impl<P: Platform> Display for Span<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		if self.is_empty() {
-			return write!(f, "[empty span]");
+			return write!(f, "[empty]");
 		}
 
 		write!(

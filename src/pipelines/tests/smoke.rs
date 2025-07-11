@@ -52,6 +52,8 @@ async fn all_transactions_included() {
 				.new_transaction()
 				.random_valid_transfer()
 				.with_value(i)
+				.with_random_funded_account()
+				.with_random_priority_fee()
 				.send()
 				.await
 				.unwrap()
@@ -66,6 +68,8 @@ async fn all_transactions_included() {
 				.new_transaction()
 				.random_reverting_transaction()
 				.with_value(3000 + i)
+				.with_random_priority_fee()
+				.with_random_funded_account()
 				.send()
 				.await
 				.unwrap()
@@ -91,7 +95,8 @@ async fn all_transactions_included() {
 }
 
 #[tokio::test]
-#[ignore]
+#[ignore = "This test never completes but we want to make sure that this \
+            syntax compiles"]
 async fn reth_minimal_integration_example() {
 	use {
 		reth::cli::Cli,
@@ -112,6 +117,7 @@ async fn reth_minimal_integration_example() {
 
 	Cli::parse_args()
 		.run(|builder, _| async move {
+			#[allow(clippy::large_futures)]
 			let handle = builder
 				.with_types::<EthereumNode>()
 				.with_components(

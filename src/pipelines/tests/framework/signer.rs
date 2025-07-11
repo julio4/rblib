@@ -27,24 +27,20 @@ impl Signer {
 		})
 	}
 
-	pub fn sign_message(
-		&self,
-		message: B256,
-	) -> Result<Signature, secp256k1::Error> {
+	pub fn sign_message(&self, message: B256) -> Signature {
 		let s = SECP256K1.sign_ecdsa_recoverable(
 			Message::from_digest(message.into()),
 			&self.secret,
 		);
 		let (rec_id, data) = s.serialize_compact();
 
-		let signature = Signature::new(
+		Signature::new(
 			U256::try_from_be_slice(&data[..32])
 				.expect("The slice has at most 32 bytes"),
 			U256::try_from_be_slice(&data[32..64])
 				.expect("The slice has at most 32 bytes"),
 			i32::from(rec_id) != 0,
-		);
-		Ok(signature)
+		)
 	}
 
 	#[allow(dead_code)]

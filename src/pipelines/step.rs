@@ -114,7 +114,7 @@ impl<P: Platform> ControlFlow<P> {
 	pub fn try_into_payload(self) -> Result<Checkpoint<P>, Self> {
 		match self {
 			ControlFlow::Ok(payload) | ControlFlow::Break(payload) => Ok(payload),
-			_ => Err(self),
+			ControlFlow::Fail(_) => Err(self),
 		}
 	}
 

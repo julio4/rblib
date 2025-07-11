@@ -1,12 +1,18 @@
 use {
 	crate::{Checkpoint, Platform, Span, SpanError},
 	alloy::consensus::Transaction,
+	reth::revm::context::result::ExecutionResult,
 };
 
 /// Quality of Life extensions for the `Checkpoint` type.
 pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
+	/// Returns `true` if this checkpoint is the baseline checkpoint in the
+	/// history, and has no transactions in its history.
+	fn is_empty(&self) -> bool;
+
 	/// Returns the first checkpoint in the chain of checkpoints since the
 	/// beginning of the block payload we're building.
+	#[must_use]
 	fn root(&self) -> Self;
 
 	/// Gas used by this checkpoint.
@@ -46,6 +52,12 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
+	/// Returns `true` if this checkpoint is the baseline checkpoint in the
+	/// history, and has no transactions in its history.
+	fn is_empty(&self) -> bool {
+		self.depth() == 0
+	}
+
 	/// Returns the first checkpoint in the chain of checkpoints since the
 	/// beginning of the block payload we're building.
 	fn root(&self) -> Checkpoint<P> {
@@ -58,7 +70,7 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 
 	/// Gas used by this checkpoint.
 	fn gas_used(&self) -> u64 {
-		self.result().map(|result| result.gas_used()).unwrap_or(0)
+		self.result().map_or(0, ExecutionResult::gas_used)
 	}
 
 	/// Returns the effective tip for this transaction.
@@ -78,10 +90,7 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// Returns `true` if the transaction that created this checkpoint was
 	/// successful, `false` otherwise.
 	fn is_success(&self) -> bool {
-		self
-			.result()
-			.map(|result| result.is_success())
-			.unwrap_or(true)
+		self.result().is_none_or(ExecutionResult::is_success)
 	}
 
 	/// Returns `true` if this checkpoint was created by applying a
@@ -98,6 +107,10 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 
 	/// Returns a span that includes all checkpoints from the beginning of the
 	/// block payload we're building to the current checkpoint.
+	///
+	/// This span is guaranteed to always have at least one checkpoint,
+	/// which is the baseline checkpoint that is the root of the
+	/// checkpoint history.
 	fn history(&self) -> Span<P> {
 		Span::between(self, &self.root())
 			.expect("history is always linear between self and root")

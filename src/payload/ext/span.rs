@@ -47,8 +47,7 @@ impl<P: Platform> SpanExt<P> for Span<P> {
 		self.iter().any(|checkpoint| {
 			checkpoint
 				.transaction()
-				.map(|tx| hash == *tx.tx_hash())
-				.unwrap_or(false)
+				.is_some_and(|tx| hash == *tx.tx_hash())
 		})
 	}
 
@@ -73,7 +72,7 @@ impl<P: Platform> SpanExt<P> for Span<P> {
 
 	/// Returns the total gas used by all checkpoints in the span.
 	fn gas_used(&self) -> u64 {
-		self.iter().map(|checkpoint| checkpoint.gas_used()).sum()
+		self.iter().map(CheckpointExt::gas_used).sum()
 	}
 
 	/// Returns the total blob gas used by all blob transactions in the span.
@@ -99,7 +98,8 @@ impl<P: Platform> SpanExt<P> for Span<P> {
 		let right = self.iter().skip(mid).cloned();
 
 		// SAFETY: we know that the checkpoints in `left` and `right` form a linear
-		// history because they are taken from the same span.
+		// history because they are taken from the same span and spans have no
+		// public apis that allow creating non-linear histories.
 		unsafe {
 			(
 				Span::from_iter_unchecked(left),

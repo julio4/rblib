@@ -241,7 +241,7 @@ impl Step<EthereumMainnet> for RecordBreakAndFail {
 			tracing::error!("recording fail: {e}");
 			self
 				.fail_sender
-				.send(ClonablePayloadBuilderError::clone_original(e))
+				.send(ClonablePayloadBuilderError::from(e).into())
 				.unwrap();
 		}
 		Ok(())

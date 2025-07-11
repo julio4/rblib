@@ -472,13 +472,6 @@ impl From<&PayloadBuilderError> for ClonablePayloadBuilderError {
 	}
 }
 
-#[cfg(any(test, feature = "test-utils"))]
-impl ClonablePayloadBuilderError {
-	pub fn clone_original(original: &PayloadBuilderError) -> PayloadBuilderError {
-		Self::from(original).into()
-	}
-}
-
 impl From<Box<dyn core::error::Error>> for ClonablePayloadBuilderError {
 	fn from(error: Box<dyn core::error::Error>) -> Self {
 		Self(PayloadBuilderError::other(WrappedErrorMessage(

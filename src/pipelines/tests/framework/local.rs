@@ -2,10 +2,9 @@ use {
 	crate::{
 		pipelines::tests::{
 			DEFAULT_BLOCK_GAS_LIMIT,
+			FundedAccounts,
 			ONE_ETH,
-			Signer,
 			TransactionBuilder,
-			framework::FUNDED_PRIVATE_KEYS,
 		},
 		*,
 	},
@@ -284,12 +283,7 @@ pub fn default_node_config() -> NodeConfig<ChainSpec> {
 		static_files_path: None,
 	};
 
-	let funded_accounts = FUNDED_PRIVATE_KEYS.iter().map(|prv| {
-		let address = Signer::try_from_secret(
-			prv.parse().expect("Invalid hardcoded private key"),
-		)
-		.expect("Failed to create signer from hardcoded private key")
-		.address;
+	let funded_accounts = FundedAccounts::addresses().map(|address| {
 		let account =
 			GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH));
 		(address, account)

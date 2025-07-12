@@ -14,12 +14,18 @@ pub trait TransactionBuilderExt {
 
 impl TransactionBuilderExt for TransactionBuilder {
 	fn random_valid_transfer(self) -> Self {
-		self.with_to(Address::random()).with_value(1)
+		self
+			.with_to(Address::random())
+			.with_value(1)
+			.with_random_funded_account()
 	}
 
 	fn random_reverting_transaction(self) -> Self {
 		// PUSH1 0x00 PUSH1 0x00 REVERT
-		self.with_create().with_input(hex!("60006000fd").into())
+		self
+			.with_create()
+			.with_input(hex!("60006000fd").into())
+			.with_random_funded_account()
 	}
 }
 

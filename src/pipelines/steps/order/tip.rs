@@ -24,81 +24,49 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 		// create a span that contains all checkpoints in the payload.
 		let history = payload.history();
 
-		// group transactions by their sender, and for each sender keep a list of
-		// transactions signed by them ordered by their nonce.
-		let mut txs = TxsQueue::from(&history);
+		// Get the correct order of transactions in the payload
+		let ordered = TxsQueue::from(&history).ordered(payload.block().base_fee());
 
-		// identify the prefix of the payload history where transactions are
-		// correctly ordered by effective priority fee, taking into account nonce
-		// dependencies of senders.
-		let mut prefix_len = 1;
+		// Get the current order of transactions in the payload
+		let existing = history.transactions();
 
-		for (pos, (a, b)) in history.iter().tuple_windows().enumerate() {
-			if let (Some(tx_a), Some(tx_b)) = (a.transaction(), b.transaction()) {
-				// pop the next eligible transaction for this sender, it should be the
-				// current tx_a that we are checking.
-				let expected_tx_a =
-					txs.pop_by_signer(tx_a.signer()).expect("bug in TxsQueue");
+		// find the position of the first transaction that is not in the correct
+		// order
+		let Some(first_misordered) = existing
+			.zip(ordered.clone())
+			.position(|(a, b)| a.tx_hash() != b.tx_hash())
+		else {
+			// all transactions in the payload are already in the correct order
+			return ControlFlow::Ok(payload);
+		};
 
-				if expected_tx_a.tx_hash() != tx_a.tx_hash() {
-					// the transaction is not in the correct nonce order.
-					break;
-				}
+		// we will need to reapply transactions in the correct order skipping the
+		// correctly ordered prefix.
+		let mut last_ordered_checkpoint = history
+			.at(first_misordered)
+			.cloned()
+			.expect("first_misordered is valid index");
 
-				// if the transaction is not ordered by effective priority fee,
-				if a.effective_tip_per_gas() < b.effective_tip_per_gas() {
-					// check if there is a justification for this misordering due to nonce
-					// dependencies.
+		let first_unordered_tx = ordered.skip(first_misordered);
 
-					let best_next_tx = txs
-						.peek_best(payload.block().base_fee())
-						.expect("should have at least one transaction in the queue");
-
-					if best_next_tx.tx_hash() != tx_b.tx_hash() {
-						// the next best transaction in the queue is not the one we are
-						// checking, so we can break here, because the order is incorrect.
-						break;
-					}
+		for tx in first_unordered_tx {
+			last_ordered_checkpoint = match last_ordered_checkpoint.apply(tx.clone())
+			{
+				Ok(checkpoint) => checkpoint,
+				Err(e) => {
+					return ControlFlow::Fail(PayloadBuilderError::other(Box::new(e)));
 				}
 			}
-
-			// +2 because we are using tuple_windows which gives us pairs
-			// of checkpoints, so we need to add 1 to the position to get the
-			// length of the prefix and the first checkpoint is the baseline
-			// checkpoint with no tx in it.
-			prefix_len = pos + 2;
-		}
-
-		if prefix_len == history.len() {
-			// the whole history is ordered correctly,
-			// we can return the payload as is.
-			return ControlFlow::Ok(payload);
-		}
-
-		// we need to reorder the payload past the ordered prefix.
-		let (ordered, unordered) = history.split_at(prefix_len);
-
-		let mut ordered = ordered
-			.last()
-			.cloned()
-			.expect("at least baseline checkpoint");
-
-		let mut unordered = TxsQueue::from(&unordered);
-		while let Some(tx) = unordered.pop_best(payload.block().base_fee()) {
-			// apply the next best transaction to the ordered payload.
-			ordered = match ordered.apply(tx.clone()) {
-				Ok(new_checkpoint) => new_checkpoint,
-				Err(e) => return ControlFlow::Fail(PayloadBuilderError::other(e)),
-			};
 		}
 
 		assert_eq!(
-			ordered.depth(),
-			history.len(),
-			"ordered payload should have the same depth as the original payload"
+			last_ordered_checkpoint.depth(),
+			payload.depth(),
+			"payload length should not change after reordering transactions"
 		);
 
-		ControlFlow::Ok(ordered)
+		// return the payload with the transactions in the correct order
+		ControlFlow::Ok(last_ordered_checkpoint)
 	}
 }
 
@@ -177,22 +145,263 @@ impl<'a, P: Platform> TxsQueue<'a, P> {
 		self.pop_by_signer(best_signer)
 	}
 
-	/// Returns a reference to the next best eligible transaction without removing
-	/// it from the queue.
-	pub fn peek_best(
-		&self,
+	/// Returns all transactions in the correct priority fee order respecting
+	/// nonce dependencies.
+	pub fn ordered(
+		mut self,
 		base_fee: u64,
-	) -> Option<&'a Recovered<types::Transaction<P>>> {
-		use alloy::consensus::transaction::Transaction;
-		let best_signer = self
-			.eligible()
-			.max_by_key(|tx| tx.effective_tip_per_gas(base_fee))
-			.map(Recovered::signer)?;
+	) -> impl Iterator<Item = &'a Recovered<types::Transaction<P>>> + Clone {
+		let mut output = Vec::new();
 
-		self
-			.0
-			.get(&best_signer)
-			.and_then(|txs| txs.front())
-			.copied()
+		while let Some(tx) = self.pop_best(base_fee) {
+			output.push(tx);
+		}
+
+		output.into_iter()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use {
+		super::*,
+		crate::pipelines::tests::{
+			FundedAccounts,
+			OneStep,
+			TransactionBuilder,
+			TransactionBuilderExt,
+		},
+		alloy::consensus::Transaction,
+	};
+
+	fn make_tx(
+		builder: TransactionBuilder,
+		sender_id: u32,
+		nonce: u64,
+		tip: u128,
+	) -> TransactionBuilder {
+		builder
+			.random_valid_transfer()
+			.with_funded_account(sender_id)
+			.with_nonce(nonce)
+			.with_max_priority_fee_per_gas(tip)
+	}
+
+	async fn test_ordering(
+		payload: Vec<(u32, u64, u128)>, // signer_id, nonce, tip
+		expected: Vec<(u32, u64, u128)>,
+	) {
+		let mut step = OneStep::new(PriorityFeeOrdering);
+
+		for (sender_id, nonce, tip) in payload {
+			step = step.with_payload_tx(move |b| make_tx(b, sender_id, nonce, tip));
+		}
+
+		let output = step.run().await;
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		let history = payload.history();
+		let txs = history.transactions().collect::<Vec<_>>();
+
+		assert_eq!(txs.len(), expected.len());
+		for (i, (expected_signer, expected_nonce, expected_tip)) in
+			expected.into_iter().enumerate()
+		{
+			assert_eq!(txs[i].signer(), FundedAccounts::address(expected_signer));
+			assert_eq!(txs[i].nonce(), expected_nonce);
+			assert_eq!(txs[i].max_priority_fee_per_gas(), Some(expected_tip));
+		}
+	}
+
+	#[tokio::test]
+	async fn correct_order_remains_unchanged_nonce_deps() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 160),
+			(2, 1, 155),
+			(1, 1, 150),
+			(1, 2, 190),
+			(1, 3, 160),
+			(2, 2, 120),
+			(2, 3, 170),
+		];
+
+		test_ordering(payload.clone(), payload).await;
+	}
+
+	#[tokio::test]
+	async fn correct_order_remains_unchanged_no_nonce_deps() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 160),
+			(3, 0, 155),
+			(4, 0, 150),
+			(5, 0, 140),
+			(6, 0, 130),
+			(7, 0, 120),
+			(8, 0, 110),
+		];
+
+		test_ordering(payload.clone(), payload).await;
+	}
+
+	#[tokio::test]
+	async fn everything_unordered_no_nonce_deps() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(4, 0, 120),
+			(5, 0, 175),
+			(6, 0, 190),
+			(7, 0, 155),
+			(8, 0, 140),
+		];
+
+		let expected = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(7, 0, 155),
+			(2, 0, 150),
+			(8, 0, 140),
+			(4, 0, 120),
+		];
+
+		test_ordering(payload, expected).await;
+	}
+
+	#[tokio::test]
+	async fn everything_unordered_nonce_deps() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(2, 1, 160),
+			(1, 1, 120),
+			(5, 0, 175),
+			(6, 0, 190),
+			(7, 0, 155),
+			(8, 0, 140),
+		];
+
+		let expected = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(7, 0, 155),
+			(2, 0, 150),
+			(2, 1, 160),
+			(8, 0, 140),
+			(1, 1, 120),
+		];
+
+		test_ordering(payload, expected).await;
+	}
+
+	#[tokio::test]
+	async fn partially_unordered_no_nonce_deps() {
+		let payload = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(4, 0, 120),
+			(7, 0, 155),
+			(8, 0, 140),
+		];
+		let expected = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(7, 0, 155),
+			(2, 0, 150),
+			(8, 0, 140),
+			(4, 0, 120),
+		];
+
+		test_ordering(payload, expected).await;
+	}
+
+	#[tokio::test]
+	async fn partially_unordered_nonce_deps() {
+		let payload = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(4, 0, 120),
+			(4, 1, 155),
+			(8, 0, 140),
+		];
+		let expected = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(2, 0, 150),
+			(8, 0, 140),
+			(4, 0, 120),
+			(4, 1, 155),
+		];
+
+		test_ordering(payload, expected).await;
+	}
+
+	#[tokio::test]
+	async fn only_last_pair_unordered_no_nonce_deps() {
+		let payload = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(7, 0, 155),
+			(2, 0, 150),
+			(4, 0, 120),
+			(8, 0, 140),
+		];
+		let expected = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(7, 0, 155),
+			(2, 0, 150),
+			(8, 0, 140),
+			(4, 0, 120),
+		];
+
+		test_ordering(payload, expected).await;
+	}
+
+	#[tokio::test]
+	async fn only_last_pair_unordered_nonce_deps() {
+		let payload = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(7, 0, 155),
+			(2, 0, 150),
+			(4, 0, 120),
+			(4, 1, 140),
+		];
+		let expected = vec![
+			(6, 0, 190),
+			(5, 0, 175),
+			(1, 0, 170),
+			(3, 0, 160),
+			(7, 0, 155),
+			(2, 0, 150),
+			(4, 0, 120),
+			(4, 1, 140),
+		];
+
+		test_ordering(payload, expected).await;
 	}
 }

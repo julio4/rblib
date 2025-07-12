@@ -150,13 +150,13 @@ mod tests {
 	#[tokio::test]
 	async fn many_transactions() {
 		const COUNT: usize = 15;
-		let mut output = OneStep::new(GatherBestTransactions);
+		let mut step = OneStep::new(GatherBestTransactions);
 
 		for _ in 0..COUNT {
-			output = output.with_pool_tx(|builder| builder.random_valid_transfer());
+			step = step.with_pool_tx(|builder| builder.random_valid_transfer());
 		}
 
-		let output = output.run().await;
+		let output = step.run().await;
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};

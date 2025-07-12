@@ -2,7 +2,7 @@
 
 use {
 	super::signer::Signer,
-	crate::pipelines::tests::framework::FUNDED_PRIVATE_KEYS,
+	crate::pipelines::tests::FundedAccounts,
 	alloy::{
 		consensus::{SignableTransaction, TxEip1559, TxEnvelope},
 		eips::{BlockNumberOrTag, Encodable2718, eip1559::MIN_PROTOCOL_BASE_FEE},
@@ -51,26 +51,11 @@ impl TransactionBuilder {
 	}
 
 	pub fn with_funded_account(self, key: u32) -> Self {
-		assert!(
-			(key as usize) < FUNDED_PRIVATE_KEYS.len(),
-			"Key index out of bounds, must be less than {}",
-			FUNDED_PRIVATE_KEYS.len()
-		);
-
-		self.with_signer(
-			Signer::try_from_secret(
-				FUNDED_PRIVATE_KEYS[key as usize]
-					.parse()
-					.expect("invalid hardcoded builder private key"),
-			)
-			.expect("invalid hardcoded builder private key"),
-		)
+		self.with_signer(FundedAccounts::signer(key))
 	}
 
 	pub fn with_random_funded_account(self) -> Self {
-		#[allow(clippy::cast_possible_truncation)]
-		let key = rand::random::<u32>() % FUNDED_PRIVATE_KEYS.len() as u32;
-		self.with_funded_account(key)
+		self.with_signer(FundedAccounts::random())
 	}
 
 	pub fn with_default_signer(self) -> Self {

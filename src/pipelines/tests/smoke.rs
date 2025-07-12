@@ -103,7 +103,7 @@ async fn reth_minimal_integration_example() {
 		reth_ethereum::node::{EthereumNode, node::EthereumAddOns},
 	};
 
-	let pipeline = Pipeline::<EthereumMainnet>::default()
+	let pipeline = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(
 			Loop,

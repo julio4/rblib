@@ -3,7 +3,7 @@ use {
 		BlockContext,
 		Checkpoint,
 		ControlFlow,
-		EthereumMainnet,
+		Ethereum,
 		Limits,
 		LimitsFactory,
 		Pipeline,
@@ -31,19 +31,19 @@ use {
 /// It allows to run a single step with a predefined list of transactions in the
 /// payload as an input and returns the output of the step control flow result.
 pub struct OneStep {
-	pipeline: Pipeline<EthereumMainnet>,
+	pipeline: Pipeline<Ethereum>,
 	pool_txs: Vec<Box<dyn FnMut(TransactionBuilder) -> TransactionBuilder>>,
 	input_txs: Vec<Box<dyn FnMut(TransactionBuilder) -> TransactionBuilder>>,
 	payload_tx: UnboundedSender<Tx>,
-	ok_rx: UnboundedReceiver<Checkpoint<EthereumMainnet>>,
+	ok_rx: UnboundedReceiver<Checkpoint<Ethereum>>,
 	fail_rx: UnboundedReceiver<PayloadBuilderError>,
-	break_rx: UnboundedReceiver<Checkpoint<EthereumMainnet>>,
+	break_rx: UnboundedReceiver<Checkpoint<Ethereum>>,
 }
 
-type Tx = Recovered<types::Transaction<EthereumMainnet>>;
+type Tx = Recovered<types::Transaction<Ethereum>>;
 
 impl OneStep {
-	pub fn new(step: impl Step<EthereumMainnet>) -> Self {
+	pub fn new(step: impl Step<Ethereum>) -> Self {
 		let (prepopulate, payload_tx) = PopulatePayload::new();
 		let (record_ok, ok_rx) = RecordOk::new();
 		let (record_fail, fail_rx, break_rx) = RecordBreakAndFail::new();
@@ -67,10 +67,10 @@ impl OneStep {
 
 	pub fn with_limits(mut self, limits: Limits) -> Self {
 		struct FixedLimits(Limits);
-		impl LimitsFactory<EthereumMainnet> for FixedLimits {
+		impl LimitsFactory<Ethereum> for FixedLimits {
 			fn create(
 				&self,
-				_: &BlockContext<EthereumMainnet>,
+				_: &BlockContext<Ethereum>,
 				_: Option<&Limits>,
 			) -> Limits {
 				self.0.clone()
@@ -105,7 +105,7 @@ impl OneStep {
 		self
 	}
 
-	pub async fn run(mut self) -> ControlFlow<EthereumMainnet> {
+	pub async fn run(mut self) -> ControlFlow<Ethereum> {
 		use alloy::eips::Decodable2718;
 		let local_node = LocalNode::ethereum(self.pipeline).await.unwrap();
 		let input_txs = self
@@ -116,11 +116,10 @@ impl OneStep {
 
 		for tx in input_txs {
 			let encoded = tx.build().await.encoded_2718();
-			let tx =
-				types::Transaction::<EthereumMainnet>::decode_2718(&mut &encoded[..])
-					.unwrap()
-					.try_into_recovered()
-					.unwrap();
+			let tx = types::Transaction::<Ethereum>::decode_2718(&mut &encoded[..])
+				.unwrap()
+				.try_into_recovered()
+				.unwrap();
 			self.payload_tx.send(tx).unwrap();
 		}
 
@@ -175,12 +174,12 @@ impl PopulatePayload {
 	}
 }
 
-impl Step<EthereumMainnet> for PopulatePayload {
+impl Step<Ethereum> for PopulatePayload {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<EthereumMainnet>,
-		_: StepContext<EthereumMainnet>,
-	) -> ControlFlow<EthereumMainnet> {
+		payload: Checkpoint<Ethereum>,
+		_: StepContext<Ethereum>,
+	) -> ControlFlow<Ethereum> {
 		let mut payload = payload;
 		while let Ok(tx) = self.receiver.lock().await.try_recv() {
 			payload = payload.apply(tx).expect("Failed to apply transaction");
@@ -191,22 +190,22 @@ impl Step<EthereumMainnet> for PopulatePayload {
 }
 
 struct RecordOk {
-	sender: UnboundedSender<Checkpoint<EthereumMainnet>>,
+	sender: UnboundedSender<Checkpoint<Ethereum>>,
 }
 
 impl RecordOk {
-	pub fn new() -> (Self, UnboundedReceiver<Checkpoint<EthereumMainnet>>) {
+	pub fn new() -> (Self, UnboundedReceiver<Checkpoint<Ethereum>>) {
 		let (sender, receiver) = unbounded_channel();
 		(Self { sender }, receiver)
 	}
 }
 
-impl Step<EthereumMainnet> for RecordOk {
+impl Step<Ethereum> for RecordOk {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<EthereumMainnet>,
-		_: StepContext<EthereumMainnet>,
-	) -> ControlFlow<EthereumMainnet> {
+		payload: Checkpoint<Ethereum>,
+		_: StepContext<Ethereum>,
+	) -> ControlFlow<Ethereum> {
 		self.sender.send(payload.clone()).unwrap();
 		ControlFlow::Ok(payload)
 	}
@@ -214,14 +213,14 @@ impl Step<EthereumMainnet> for RecordOk {
 
 struct RecordBreakAndFail {
 	fail_sender: UnboundedSender<PayloadBuilderError>,
-	break_sender: UnboundedSender<Checkpoint<EthereumMainnet>>,
+	break_sender: UnboundedSender<Checkpoint<Ethereum>>,
 }
 
 impl RecordBreakAndFail {
 	pub fn new() -> (
 		Self,
 		UnboundedReceiver<PayloadBuilderError>,
-		UnboundedReceiver<Checkpoint<EthereumMainnet>>,
+		UnboundedReceiver<Checkpoint<Ethereum>>,
 	) {
 		let (fail_sender, fail_receiver) = unbounded_channel();
 		let (break_sender, break_receiver) = unbounded_channel();
@@ -236,21 +235,19 @@ impl RecordBreakAndFail {
 	}
 }
 
-impl Step<EthereumMainnet> for RecordBreakAndFail {
+impl Step<Ethereum> for RecordBreakAndFail {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<EthereumMainnet>,
-		_: StepContext<EthereumMainnet>,
-	) -> ControlFlow<EthereumMainnet> {
+		payload: Checkpoint<Ethereum>,
+		_: StepContext<Ethereum>,
+	) -> ControlFlow<Ethereum> {
 		self.break_sender.send(payload.clone()).unwrap();
 		ControlFlow::Ok(payload)
 	}
 
 	async fn after_job(
 		self: Arc<Self>,
-		result: Arc<
-			Result<types::BuiltPayload<EthereumMainnet>, PayloadBuilderError>,
-		>,
+		result: Arc<Result<types::BuiltPayload<Ethereum>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		if let Err(e) = result.as_ref() {
 			self
@@ -263,34 +260,34 @@ impl Step<EthereumMainnet> for RecordBreakAndFail {
 }
 
 struct AlwaysBreak;
-impl Step<EthereumMainnet> for AlwaysBreak {
+impl Step<Ethereum> for AlwaysBreak {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<EthereumMainnet>,
-		_: StepContext<EthereumMainnet>,
-	) -> ControlFlow<EthereumMainnet> {
+		payload: Checkpoint<Ethereum>,
+		_: StepContext<Ethereum>,
+	) -> ControlFlow<Ethereum> {
 		ControlFlow::Break(payload)
 	}
 }
 
 struct AlwaysOk;
-impl Step<EthereumMainnet> for AlwaysOk {
+impl Step<Ethereum> for AlwaysOk {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<EthereumMainnet>,
-		_: StepContext<EthereumMainnet>,
-	) -> ControlFlow<EthereumMainnet> {
+		payload: Checkpoint<Ethereum>,
+		_: StepContext<Ethereum>,
+	) -> ControlFlow<Ethereum> {
 		ControlFlow::Ok(payload)
 	}
 }
 
 struct AlwaysFail;
-impl Step<EthereumMainnet> for AlwaysFail {
+impl Step<Ethereum> for AlwaysFail {
 	async fn step(
 		self: Arc<Self>,
-		_: Checkpoint<EthereumMainnet>,
-		_: StepContext<EthereumMainnet>,
-	) -> ControlFlow<EthereumMainnet> {
+		_: Checkpoint<Ethereum>,
+		_: StepContext<Ethereum>,
+	) -> ControlFlow<Ethereum> {
 		ControlFlow::Fail(PayloadBuilderError::ChannelClosed)
 	}
 }

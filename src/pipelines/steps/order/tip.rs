@@ -42,16 +42,13 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 
 		// we will need to reapply transactions in the correct order skipping the
 		// correctly ordered prefix.
-		let mut last_ordered_checkpoint = history
+		let mut ordered_prefix = history
 			.at(first_misordered)
 			.cloned()
 			.expect("first_misordered is valid index");
 
-		let first_unordered_tx = ordered.skip(first_misordered);
-
-		for tx in first_unordered_tx {
-			last_ordered_checkpoint = match last_ordered_checkpoint.apply(tx.clone())
-			{
+		for tx in ordered.skip(first_misordered) {
+			ordered_prefix = match ordered_prefix.apply(tx.clone()) {
 				Ok(checkpoint) => checkpoint,
 				Err(e) => {
 					return ControlFlow::Fail(PayloadBuilderError::other(Box::new(e)));
@@ -60,13 +57,13 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 		}
 
 		assert_eq!(
-			last_ordered_checkpoint.depth(),
+			ordered_prefix.depth(),
 			payload.depth(),
 			"payload length should not change after reordering transactions"
 		);
 
 		// return the payload with the transactions in the correct order
-		ControlFlow::Ok(last_ordered_checkpoint)
+		ControlFlow::Ok(ordered_prefix)
 	}
 }
 

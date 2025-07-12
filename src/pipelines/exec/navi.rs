@@ -540,7 +540,7 @@ mod test {
 
 	#[test]
 	fn find_entrypoint() {
-		let empty = Pipeline::<EthereumMainnet>::default();
+		let empty = Pipeline::<Ethereum>::default();
 		assert!(StepNavigator::entrypoint(&empty).is_none());
 
 		macro_rules! assert_entrypoint {
@@ -561,14 +561,14 @@ mod test {
 
 		// one step with no prologue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::default().with_step(Step1),
+			Pipeline::<Ethereum>::default().with_step(Step1),
 			StepPath::step0(),
 			vec![""]
 		);
 
 		// one step with prologue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one")
+			Pipeline::<Ethereum>::named("one")
 				.with_prologue(Prologue1)
 				.with_step(Step1),
 			StepPath::prologue(),
@@ -577,14 +577,14 @@ mod test {
 
 		// no steps, but with epilogue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one").with_epilogue(Epilogue1),
+			Pipeline::<Ethereum>::named("one").with_epilogue(Epilogue1),
 			StepPath::epilogue(),
 			vec!["one"]
 		);
 
 		// one nested step with no prologue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one")
+			Pipeline::<Ethereum>::named("one")
 				.with_pipeline(Loop, (Step1,).with_name("two")),
 			StepPath::step0().concat(StepPath::step0()),
 			vec!["one", "two"]
@@ -592,7 +592,7 @@ mod test {
 
 		// one nested step with prologue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+			Pipeline::<Ethereum>::named("one").with_pipeline(
 				Loop,
 				(Step1,).with_prologue(Prologue1).with_name("two")
 			),
@@ -602,19 +602,19 @@ mod test {
 
 		// one nested pipeline with no steps, but with epilogue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one")
+			Pipeline::<Ethereum>::named("one")
 				.with_pipeline(Loop, Pipeline::named("two").with_epilogue(Epilogue1)),
 			StepPath::step0().append_epilogue(),
 			vec!["one", "two"]
 		);
 
-		let nested_empty_pipeline = Pipeline::<EthereumMainnet>::default()
-			.with_pipeline(Loop, Pipeline::default());
+		let nested_empty_pipeline =
+			Pipeline::<Ethereum>::default().with_pipeline(Loop, Pipeline::default());
 		assert!(StepNavigator::entrypoint(&nested_empty_pipeline).is_none());
 
 		// two levels of nested steps with no prologue
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+			Pipeline::<Ethereum>::named("one").with_pipeline(
 				Loop,
 				Pipeline::named("two").with_pipeline(Loop, (Step1,).with_name("three"))
 			),
@@ -624,7 +624,7 @@ mod test {
 
 		// two levels of nested steps with prologue at first level
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+			Pipeline::<Ethereum>::named("one").with_pipeline(
 				Loop,
 				Pipeline::named("two")
 					.with_prologue(Prologue1)
@@ -636,7 +636,7 @@ mod test {
 
 		// two levels of nested steps with prologue at second level
 		assert_entrypoint!(
-			Pipeline::<EthereumMainnet>::named("one").with_pipeline(
+			Pipeline::<Ethereum>::named("one").with_pipeline(
 				Loop,
 				Pipeline::named("two").with_pipeline(
 					Loop,
@@ -650,7 +650,7 @@ mod test {
 
 	#[test]
 	fn identify_loop_behavior() {
-		let pipeline = Pipeline::<EthereumMainnet>::default()
+		let pipeline = Pipeline::<Ethereum>::default()
 			.with_step(Step1)
 			.with_step(Step2)
 			.with_step(Step3);
@@ -658,26 +658,26 @@ mod test {
 		assert_eq!(navigator.behavior(), Behavior::Once);
 
 		let pipeline =
-			Pipeline::<EthereumMainnet>::default().with_pipeline(Loop, (Step1,));
+			Pipeline::<Ethereum>::default().with_pipeline(Loop, (Step1,));
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
 		assert_eq!(navigator.behavior(), Behavior::Loop);
 
 		let pipeline =
-			Pipeline::<EthereumMainnet>::default().with_pipeline(Once, (Step1,));
+			Pipeline::<Ethereum>::default().with_pipeline(Once, (Step1,));
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
 		assert_eq!(navigator.behavior(), Behavior::Once);
 	}
 
 	#[test]
 	fn step_ref_access() {
-		let pipeline = Pipeline::<EthereumMainnet>::default()
+		let pipeline = Pipeline::<Ethereum>::default()
 			.with_step(Step1)
 			.with_step(Step2)
 			.with_step(Step3);
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
 		assert!(navigator.step().name().ends_with("Step1"));
 
-		let pipeline = Pipeline::<EthereumMainnet>::default()
+		let pipeline = Pipeline::<Ethereum>::default()
 			.with_prologue(Prologue1)
 			.with_step(Step1)
 			.with_step(Step2)
@@ -685,7 +685,7 @@ mod test {
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
 		assert!(navigator.step().name().ends_with("Prologue1"));
 
-		let pipeline = Pipeline::<EthereumMainnet>::default()
+		let pipeline = Pipeline::<Ethereum>::default()
 			.with_pipeline(Loop, Pipeline::default().with_epilogue(Epilogue1));
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
 		assert!(navigator.step().name().ends_with("Epilogue1"));
@@ -693,10 +693,10 @@ mod test {
 
 	#[test]
 	fn control_flow() {
-		let pipeline = Pipeline::<EthereumMainnet>::named("top")
+		let pipeline = Pipeline::<Ethereum>::named("top")
 			.with_step(Step1)
 			.with_step(Step2)
-			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
+			.with_pipeline(Loop, |nested: Pipeline<Ethereum>| {
 				nested
 					.with_step(StepA)
 					.with_pipeline(
@@ -788,10 +788,10 @@ mod test {
 
 	#[test]
 	fn create_navigator() {
-		let pipeline = Pipeline::<EthereumMainnet>::named("top")
+		let pipeline = Pipeline::<Ethereum>::named("top")
 			.with_step(Step1)
 			.with_step(Step2)
-			.with_pipeline(Loop, |nested: Pipeline<EthereumMainnet>| {
+			.with_pipeline(Loop, |nested: Pipeline<Ethereum>| {
 				nested
 					.with_step(StepA)
 					.with_pipeline(

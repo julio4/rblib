@@ -56,9 +56,7 @@ pub struct LocalNode {
 impl LocalNode {
 	const MIN_BLOCK_TIME: Duration = Duration::from_secs(1);
 
-	pub async fn ethereum(
-		pipeline: Pipeline<EthereumMainnet>,
-	) -> eyre::Result<Self> {
+	pub async fn ethereum(pipeline: Pipeline<Ethereum>) -> eyre::Result<Self> {
 		let task_manager = task_manager();
 		let config = default_node_config();
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();

@@ -5,7 +5,7 @@ use {
 
 #[test]
 fn only_steps() {
-	let pipeline = Pipeline::<EthereumMainnet>::default()
+	let pipeline = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
@@ -30,9 +30,9 @@ fn only_steps_optimism_specific() {
 #[test]
 fn nested_verbose() {
 	let top_level =
-		Pipeline::<EthereumMainnet>::default().with_epilogue(BuilderEpilogue);
+		Pipeline::<Ethereum>::default().with_epilogue(BuilderEpilogue);
 
-	let nested = Pipeline::<EthereumMainnet>::default()
+	let nested = Pipeline::<Ethereum>::default()
 		.with_step(AppendOneTransactionFromPool::default())
 		.with_step(PriorityFeeOrdering)
 		.with_step(TotalProfitOrdering)
@@ -46,7 +46,7 @@ fn nested_verbose() {
 
 #[test]
 fn nested_one_concise() {
-	let top_level = Pipeline::<EthereumMainnet>::default()
+	let top_level = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(Loop, (AppendOneTransactionFromPool::default(),));
 

@@ -33,9 +33,9 @@ use {
 
 /// Platform definition for ethereum mainnet.
 #[derive(Debug, Clone, Default)]
-pub struct EthereumMainnet;
+pub struct Ethereum;
 
-impl Platform for EthereumMainnet {
+impl Platform for Ethereum {
 	type DefaultLimits = EthereumDefaultLimits;
 	type EvmConfig = EthEvmConfig;
 	type NodeTypes = EthereumNode;

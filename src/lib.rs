@@ -18,7 +18,7 @@ pub use optimism::Optimism;
 mod ethereum;
 
 #[cfg(feature = "ethereum")]
-pub use ethereum::EthereumMainnet;
+pub use ethereum::Ethereum;
 
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.

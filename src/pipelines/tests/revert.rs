@@ -9,7 +9,7 @@ async fn empty_payload_when_all_txs_revert_loop() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
-			AppendNewTransactionFromPool::default(),
+			AppendOneTransactionFromPool::default(),
 			PriorityFeeOrdering,
 			RevertProtection,
 		),
@@ -41,7 +41,7 @@ async fn transfers_included_reverts_excluded_loop() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
-			AppendNewTransactionFromPool::default(),
+			AppendOneTransactionFromPool::default(),
 			PriorityFeeOrdering,
 			RevertProtection,
 		),

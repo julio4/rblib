@@ -40,7 +40,7 @@ async fn pipeline_with_no_txs_builds_empty_payload() {
 async fn all_transactions_included() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
-		(AppendNewTransactionFromPool::default(), PriorityFeeOrdering),
+		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
 	);
 
 	let node = LocalNode::ethereum(pipeline).await.unwrap();
@@ -108,7 +108,7 @@ async fn reth_minimal_integration_example() {
 		.with_pipeline(
 			Loop,
 			(
-				AppendNewTransactionFromPool::default(),
+				AppendOneTransactionFromPool::default(),
 				PriorityFeeOrdering,
 				TotalProfitOrdering,
 				RevertProtection,

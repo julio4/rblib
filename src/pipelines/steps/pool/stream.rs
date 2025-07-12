@@ -16,8 +16,8 @@ use {
 	std::{collections::HashSet, sync::Arc, time::Instant},
 };
 
-/// This step will append one new transaction from the pool to the current
-/// payload.
+/// This step will append one new transaction from the pool at the end of the
+/// current payload.
 ///
 /// It will only append a new transaction if the current payload
 /// remains within the payload limits of the pipeline after the transaction is
@@ -34,7 +34,7 @@ use {
 /// append new transactions to the payload in each iteration of the loop until
 /// the pool is exhausted or the payload limits are reached.
 #[derive(Default)]
-pub struct AppendNewTransactionFromPool {
+pub struct AppendOneTransactionFromPool {
 	/// Keeps track of the transactions that were added to the payload in this
 	/// payload building run. This is used to avoid infinite loops where some
 	/// future step of the pipeline removed a previously added transaction from
@@ -54,7 +54,7 @@ pub struct AppendNewTransactionFromPool {
 	previously_added: DashSet<TxHash>,
 }
 
-impl<P: Platform> Step<P> for AppendNewTransactionFromPool {
+impl<P: Platform> Step<P> for AppendOneTransactionFromPool {
 	/// Clear the list of previously added transactions before the we begin
 	/// building for a new payload.
 	async fn before_job(

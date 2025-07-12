@@ -1,4 +1,4 @@
 mod batch;
-mod one;
+mod stream;
 
-pub use {batch::GatherBestTransactions, one::AppendNewTransactionFromPool};
+pub use {batch::GatherBestTransactions, stream::AppendOneTransactionFromPool};

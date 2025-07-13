@@ -4,15 +4,24 @@ use {
 			DEFAULT_BLOCK_GAS_LIMIT,
 			FundedAccounts,
 			ONE_ETH,
-			TransactionBuilder,
+			TransactionRequestExt,
+			framework::node::{ConsensusDriver, LocalNode},
 		},
 		*,
 	},
 	alloy::{
-		eips::{BlockNumberOrTag, eip7685::RequestsOrHash},
+		eips::{BlockNumberOrTag, Encodable2718, eip7685::RequestsOrHash},
+		network::{EthereumWallet, TransactionBuilder, TxSigner},
 		primitives::{B256, U256},
-		providers::{Identity, Provider, ProviderBuilder, RootProvider},
+		providers::{
+			Identity,
+			PendingTransactionBuilder,
+			Provider,
+			ProviderBuilder,
+			RootProvider,
+		},
 		rpc::types::{Block, Transaction},
+		signers::Signature,
 	},
 	alloy_genesis::GenesisAccount,
 	core::{
@@ -28,7 +37,7 @@ use {
 		builder::{NodeBuilder, NodeConfig},
 		chainspec::{ChainSpec, DEV, EthChainSpec, MAINNET},
 		core::exit::NodeExitFuture,
-		rpc::types::engine::ForkchoiceState,
+		rpc::types::{TransactionRequest, engine::ForkchoiceState},
 		tasks::TaskManager,
 	},
 	reth_ethereum::node::{
@@ -37,6 +46,8 @@ use {
 		engine::EthPayloadAttributes,
 		node::EthereumAddOns,
 	},
+	reth_ipc::client::IpcClientBuilder,
+	reth_payload_builder::PayloadId,
 	reth_rpc_api::EngineApiClient,
 	std::{
 		sync::Arc,
@@ -45,7 +56,7 @@ use {
 	tokio::sync::oneshot,
 };
 
-pub struct LocalNode {
+pub struct TestEthereumNode {
 	exit_future: NodeExitFuture,
 	task_manager: Option<TaskManager>,
 	config: NodeConfig<ChainSpec>,
@@ -53,10 +64,10 @@ pub struct LocalNode {
 	_node_handle: Box<dyn Any + Send>, // keeps reth alive
 }
 
-impl LocalNode {
+impl TestEthereumNode {
 	const MIN_BLOCK_TIME: Duration = Duration::from_secs(1);
 
-	pub async fn ethereum(pipeline: Pipeline<Ethereum>) -> eyre::Result<Self> {
+	pub async fn new(pipeline: Pipeline<Ethereum>) -> eyre::Result<Self> {
 		let task_manager = task_manager();
 		let config = default_node_config();
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
@@ -104,9 +115,86 @@ impl LocalNode {
 		&self.provider
 	}
 
-	pub fn new_transaction(&self) -> TransactionBuilder {
-		TransactionBuilder::new(self.provider().clone())
+	pub fn build_tx(&self) -> TransactionRequest {
+		TransactionRequest::default()
 			.with_chain_id(self.chain_id())
+			.with_random_funded_signer()
+			.with_gas_limit(210_000)
+	}
+
+	pub async fn send_tx(
+		&self,
+		request: TransactionRequest,
+	) -> eyre::Result<PendingTransactionBuilder<alloy::network::Ethereum>> {
+		let Some(from) = request.from else {
+			return Err(eyre::eyre!(
+				"Transaction request must have a 'from' field, use sign_and_send_tx \
+				 instead"
+			));
+		};
+
+		let Some(signer) = FundedAccounts::by_address(from) else {
+			return Err(eyre::eyre!("No funded account found for address: {}", from));
+		};
+
+		self
+			.sign_and_send_tx(request.with_from(signer.address()), signer)
+			.await
+	}
+
+	pub async fn sign_and_send_tx(
+		&self,
+		request: TransactionRequest,
+		signer: impl TxSigner<Signature> + Sync + Send + 'static,
+	) -> eyre::Result<PendingTransactionBuilder<alloy::network::Ethereum>> {
+		let request = request.with_from(signer.address());
+
+		// if nonce is not explictly set, fetch it from the provider
+		let request = match request.nonce {
+			Some(_) => request,
+			None => request.nonce(
+				self
+					.provider
+					.get_transaction_count(signer.address())
+					.pending()
+					.await
+					.expect("Failed to get transaction count"),
+			),
+		};
+
+		let request =
+			match (request.max_fee_per_gas, request.max_priority_fee_per_gas) {
+				(Some(max_fee), Some(max_priority_fee)) => request
+					.with_max_fee_per_gas(max_fee)
+					.with_max_priority_fee_per_gas(max_priority_fee),
+				(None, Some(_)) => {
+					let fee_estimate = self.provider().estimate_eip1559_fees().await?;
+					request.max_fee_per_gas(fee_estimate.max_fee_per_gas)
+				}
+				(Some(_), None) => {
+					let fee_estimate = self.provider().estimate_eip1559_fees().await?;
+					request
+						.max_priority_fee_per_gas(fee_estimate.max_priority_fee_per_gas)
+				}
+				(None, None) => {
+					let fee_estimate = self.provider().estimate_eip1559_fees().await?;
+					request
+						.max_fee_per_gas(fee_estimate.max_fee_per_gas)
+						.max_priority_fee_per_gas(fee_estimate.max_priority_fee_per_gas)
+				}
+			};
+
+		let encoded = request
+			.build(&EthereumWallet::new(signer))
+			.await
+			.map_err(|e| eyre::eyre!("Failed to build transaction: {e}"))?
+			.encoded_2718();
+
+		self
+			.provider()
+			.send_raw_transaction(&encoded)
+			.await
+			.map_err(Into::into)
 	}
 
 	pub async fn build_new_block(&self) -> eyre::Result<Block<Transaction>> {
@@ -228,7 +316,7 @@ impl LocalNode {
 	}
 }
 
-impl Drop for LocalNode {
+impl Drop for TestEthereumNode {
 	fn drop(&mut self) {
 		if let Some(task_manager) = self.task_manager.take() {
 			task_manager.graceful_shutdown_with_timeout(Duration::from_secs(3));
@@ -244,7 +332,7 @@ impl Drop for LocalNode {
 	}
 }
 
-impl Future for LocalNode {
+impl Future for TestEthereumNode {
 	type Output = eyre::Result<()>;
 
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -302,4 +390,150 @@ pub fn default_node_config() -> NodeConfig<ChainSpec> {
 
 fn task_manager() -> TaskManager {
 	TaskManager::new(tokio::runtime::Handle::current())
+}
+
+pub async fn ethereum_node(
+	pipeline: Pipeline<Ethereum>,
+) -> eyre::Result<
+	LocalNode<Ethereum, alloy::network::Ethereum, EthConsensusDriver>,
+> {
+	LocalNode::new(EthConsensusDriver, default_node_config(), move |builder| {
+		builder
+			.with_types::<EthereumNode>()
+			.with_components(
+				EthereumNode::components().payload(pipeline.into_service()),
+			)
+			.with_add_ons(EthereumAddOns::default())
+	})
+	.await
+}
+
+pub struct EthConsensusDriver;
+
+impl ConsensusDriver<Ethereum, alloy::network::Ethereum>
+	for EthConsensusDriver
+{
+	type Params = ();
+
+	async fn start_building(
+		&self,
+		node: &LocalNode<Ethereum, alloy::network::Ethereum, Self>,
+		target_timestamp: u64,
+		_: &Self::Params,
+	) -> eyre::Result<PayloadId> {
+		let ipc_path = node.config().rpc.auth_ipc_path.clone();
+		let ipc_client = IpcClientBuilder::default()
+			.build(&ipc_path)
+			.await
+			.expect("Failed to create ipc client");
+
+		let latest_block = node
+			.provider()
+			.get_block_by_number(BlockNumberOrTag::Latest)
+			.await?
+			.expect("Latest block should exist");
+
+		let payload_attributes = EthPayloadAttributes {
+			timestamp: target_timestamp,
+			withdrawals: Some(vec![]),
+			parent_beacon_block_root: Some(B256::ZERO),
+			..Default::default()
+		};
+
+		// Start the production of a new block
+		let fcu_result = EngineApiClient::<EthEngineTypes>::fork_choice_updated_v3(
+			&ipc_client,
+			ForkchoiceState {
+				head_block_hash: latest_block.header.hash,
+				safe_block_hash: latest_block.header.hash,
+				finalized_block_hash: latest_block.header.hash,
+			},
+			Some(payload_attributes),
+		)
+		.await?;
+
+		if fcu_result.is_invalid() {
+			return Err(eyre::eyre!("Forkchoice update failed: {fcu_result:#?}"));
+		}
+
+		Ok(fcu_result.payload_id.expect(
+			"validated that it is a valid result and should have a payload ID",
+		))
+	}
+
+	async fn finish_building(
+		&self,
+		node: &LocalNode<Ethereum, alloy::network::Ethereum, Self>,
+		payload_id: PayloadId,
+		_: &Self::Params,
+	) -> eyre::Result<Block> {
+		let ipc_path = node.config().rpc.auth_ipc_path.clone();
+		let ipc_client = IpcClientBuilder::default()
+			.build(&ipc_path)
+			.await
+			.expect("Failed to create ipc client");
+
+		let latest_block = node
+			.provider()
+			.get_block_by_number(BlockNumberOrTag::Latest)
+			.await?
+			.expect("Latest block should exist");
+
+		// Retrieve the payload using the payload ID
+		let getpayload_result = EngineApiClient::<EthEngineTypes>::get_payload_v4(
+			&ipc_client,
+			payload_id,
+		)
+		.await?;
+
+		let payload = getpayload_result.execution_payload.clone();
+		let new_block_hash = payload.payload_inner.payload_inner.block_hash;
+
+		// Give the newly built payload to the EL node and let it validate it.
+		let new_payload_result = EngineApiClient::<EthEngineTypes>::new_payload_v4(
+			&ipc_client,
+			payload,
+			vec![],
+			B256::ZERO,
+			RequestsOrHash::default(),
+		)
+		.await?;
+
+		if new_payload_result.is_invalid() {
+			return Err(eyre::eyre!(
+				"Failed to set new payload: {new_payload_result:#?}"
+			));
+		}
+
+		// update the canonical chain with the new block without triggering new
+		// payload production
+		let fcu_result = EngineApiClient::<EthEngineTypes>::fork_choice_updated_v3(
+			&ipc_client,
+			ForkchoiceState {
+				head_block_hash: new_block_hash,
+				safe_block_hash: latest_block.header.hash,
+				finalized_block_hash: latest_block.header.hash,
+			},
+			None,
+		)
+		.await?;
+
+		if fcu_result.is_invalid() {
+			return Err(eyre::eyre!("Forkchoice update failed: {fcu_result:#?}"));
+		}
+
+		let block = node
+			.provider()
+			.get_block_by_number(BlockNumberOrTag::Latest)
+			.full()
+			.await?
+			.expect("New block should exist");
+
+		assert_eq!(
+			block.header.hash, new_block_hash,
+			"New block hash should match the one returned by the payload"
+		);
+
+		Ok(block)
+	}
 }

@@ -162,27 +162,9 @@ impl<'a, P: Platform> TxsQueue<'a, P> {
 mod tests {
 	use {
 		super::*,
-		crate::pipelines::tests::{
-			FundedAccounts,
-			OneStep,
-			TransactionBuilder,
-			TransactionBuilderExt,
-		},
+		crate::pipelines::tests::{FundedAccounts, OneStep, TransactionRequestExt},
 		alloy::consensus::Transaction,
 	};
-
-	fn make_tx(
-		builder: TransactionBuilder,
-		sender_id: u32,
-		nonce: u64,
-		tip: u128,
-	) -> TransactionBuilder {
-		builder
-			.random_valid_transfer()
-			.with_funded_account(sender_id)
-			.with_nonce(nonce)
-			.with_max_priority_fee_per_gas(tip)
-	}
 
 	async fn test_ordering(
 		payload: Vec<(u32, u64, u128)>, // signer_id, nonce, tip
@@ -191,7 +173,12 @@ mod tests {
 		let mut step = OneStep::new(PriorityFeeOrdering);
 
 		for (sender_id, nonce, tip) in payload {
-			step = step.with_payload_tx(move |b| make_tx(b, sender_id, nonce, tip));
+			step = step.with_payload_tx(move |b| {
+				b.transfer()
+					.with_funded_signer(sender_id)
+					.nonce(nonce)
+					.max_priority_fee_per_gas(tip)
+			});
 		}
 
 		let output = step.run().await;
@@ -210,6 +197,12 @@ mod tests {
 			assert_eq!(txs[i].nonce(), expected_nonce);
 			assert_eq!(txs[i].max_priority_fee_per_gas(), Some(expected_tip));
 		}
+	}
+
+	#[tokio::test]
+	async fn empty_payload() {
+		let payload = vec![];
+		test_ordering(payload.clone(), payload).await;
 	}
 
 	#[tokio::test]

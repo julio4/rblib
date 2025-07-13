@@ -1,0 +1,14 @@
+[package]
+name = "op2"
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.86"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/flashbots/rblib"
+repository = "https://github.com/flashbots/rblib"
+description = "Next-Gen Optimism L2 Block Builder"
+exclude = [".github/"]
+publish = false
+
+[dependencies]
+rblib = { path = "../../" }

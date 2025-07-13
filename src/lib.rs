@@ -112,8 +112,13 @@ pub mod types {
 	/// Extracts the block header type from the platform definition.
 	pub type Header<P: Platform> = <Block<P> as reth::api::Block>::Header;
 
-	/// Extracts the type used by FCU when the CL node requests a new payload to
-	/// be built by the EL node.
+	/// Extracts the platform-specific payload attributes type that comes from the
+	/// CL node.
+	pub type PayloadAttributes<P: Platform> =
+		<NodePayloadTypes<P> as reth::api::PayloadTypes>::PayloadAttributes;
+
+	/// Extracts the type used internally during payload building  when the CL
+	/// node requests a new payload to be built by the EL node.
 	pub type PayloadBuilderAttributes<P: Platform> =
 		<NodePayloadTypes<P> as reth::api::PayloadTypes>::PayloadBuilderAttributes;
 

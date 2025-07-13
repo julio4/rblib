@@ -123,7 +123,7 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 mod tests {
 	use {
 		super::*,
-		crate::pipelines::tests::{OneStep, TransactionBuilderExt},
+		crate::pipelines::tests::{OneStep, TransactionRequestExt},
 	};
 
 	#[tokio::test]
@@ -138,7 +138,7 @@ mod tests {
 	#[tokio::test]
 	async fn one_transaction() {
 		let output = OneStep::new(GatherBestTransactions)
-			.with_pool_tx(|builder| builder.random_valid_transfer())
+			.with_pool_tx(|builder| builder.transfer())
 			.run()
 			.await;
 		let ControlFlow::Ok(payload) = output else {
@@ -153,7 +153,7 @@ mod tests {
 		let mut step = OneStep::new(GatherBestTransactions);
 
 		for _ in 0..COUNT {
-			step = step.with_pool_tx(|builder| builder.random_valid_transfer());
+			step = step.with_pool_tx(|builder| builder.transfer());
 		}
 
 		let output = step.run().await;
@@ -174,7 +174,7 @@ mod tests {
 			.with_limits(Limits::with_gas_limit(21000 * EXPECTED as u64));
 
 		for _ in 0..COUNT {
-			output = output.with_pool_tx(|builder| builder.random_valid_transfer());
+			output = output.with_pool_tx(|builder| builder.transfer());
 		}
 
 		let output = output.run().await;

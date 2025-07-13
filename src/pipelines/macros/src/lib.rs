@@ -39,15 +39,13 @@ pub fn impl_into_pipeline_steps(input: TokenStream) -> TokenStream {
 fn generate_tuple_impl(n: usize) -> proc_macro2::TokenStream {
 	// Generate step type parameters: S0, S1, S2, ...
 	let step_params: Vec<_> = (0..n)
-		.map(|i| {
-			syn::Ident::new(&format!("S{}", i), proc_macro2::Span::call_site())
-		})
+		.map(|i| syn::Ident::new(&format!("S{i}"), proc_macro2::Span::call_site()))
 		.collect();
 
 	// Generate destructuring pattern: (step0, step1, step2, ...)
 	let step_vars: Vec<_> = (0..n)
 		.map(|i| {
-			syn::Ident::new(&format!("step{}", i), proc_macro2::Span::call_site())
+			syn::Ident::new(&format!("step{i}"), proc_macro2::Span::call_site())
 		})
 		.collect();
 

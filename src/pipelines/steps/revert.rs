@@ -75,18 +75,8 @@ mod tests {
 	#[tokio::test]
 	async fn one_revert_one_ok() {
 		let output = OneStep::new(RevertProtection)
-			.with_payload_tx(|builder| {
-				builder
-					.random_valid_transfer()
-					.with_default_signer()
-					.with_nonce(0)
-			})
-			.with_payload_tx(|builder| {
-				builder
-					.random_reverting_transaction()
-					.with_default_signer()
-					.with_nonce(1)
-			})
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(1))
 			.run()
 			.await;
 
@@ -100,24 +90,9 @@ mod tests {
 	#[tokio::test]
 	async fn all_revert() {
 		let output = OneStep::new(RevertProtection)
-			.with_payload_tx(|builder| {
-				builder
-					.random_reverting_transaction()
-					.with_default_signer()
-					.with_nonce(0)
-			})
-			.with_payload_tx(|builder| {
-				builder
-					.random_reverting_transaction()
-					.with_default_signer()
-					.with_nonce(1)
-			})
-			.with_payload_tx(|builder| {
-				builder
-					.random_reverting_transaction()
-					.with_default_signer()
-					.with_nonce(2)
-			})
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(0))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(1))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(2))
 			.run()
 			.await;
 
@@ -132,24 +107,9 @@ mod tests {
 	#[tokio::test]
 	async fn none_revert() {
 		let output = OneStep::new(RevertProtection)
-			.with_payload_tx(|builder| {
-				builder
-					.random_valid_transfer()
-					.with_default_signer()
-					.with_nonce(0)
-			})
-			.with_payload_tx(|builder| {
-				builder
-					.random_valid_transfer()
-					.with_default_signer()
-					.with_nonce(1)
-			})
-			.with_payload_tx(|builder| {
-				builder
-					.random_valid_transfer()
-					.with_default_signer()
-					.with_nonce(2)
-			})
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(1))
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(2))
 			.run()
 			.await;
 

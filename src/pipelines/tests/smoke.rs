@@ -1,20 +1,16 @@
 use {
 	super::framework::*,
 	crate::{steps::*, *},
+	alloy::{network::TransactionBuilder, primitives::U256},
 	tracing::info,
 };
 
 #[tokio::test]
 async fn empty_pipeline_builds_empty_payload() {
 	let empty_pipeline = Pipeline::default();
-	let node = LocalNode::ethereum(empty_pipeline).await.unwrap();
+	let node = TestEthereumNode::new(empty_pipeline).await.unwrap();
 	for _ in 0..10 {
-		let _ = node
-			.new_transaction()
-			.random_valid_transfer()
-			.send()
-			.await
-			.unwrap();
+		let _ = node.send_tx(node.build_tx().transfer()).await.unwrap();
 	}
 	let block = node.build_new_block().await.unwrap();
 
@@ -29,7 +25,7 @@ async fn pipeline_with_no_txs_builds_empty_payload() {
 		.with_step(PriorityFeeOrdering)
 		.with_step(RevertProtection);
 
-	let node = LocalNode::ethereum(pipeline).await.unwrap();
+	let node = TestEthereumNode::new(pipeline).await.unwrap();
 	let block = node.build_new_block().await.unwrap();
 
 	assert_eq!(block.header.number, 1);
@@ -43,41 +39,36 @@ async fn all_transactions_included() {
 		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
 	);
 
-	let node = LocalNode::ethereum(pipeline).await.unwrap();
+	let node = ethereum_node(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
-		transfers.push(
-			*node
-				.new_transaction()
-				.random_valid_transfer()
-				.with_value(i)
-				.with_random_funded_account()
-				.with_random_priority_fee()
-				.send()
-				.await
-				.unwrap()
-				.tx_hash(),
-		);
+		let tx = node
+			.build_tx()
+			.transfer()
+			.with_value(U256::from(i))
+			.with_random_priority_fee();
+		transfers.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
 	let mut reverts = vec![];
 	for i in 0..4 {
 		reverts.push(
 			*node
-				.new_transaction()
-				.random_reverting_transaction()
-				.with_value(3000 + i)
-				.with_random_priority_fee()
-				.with_random_funded_account()
-				.send()
+				.send_tx(
+					node
+						.build_tx()
+						.reverting()
+						.with_value(U256::from(3000 + i))
+						.with_random_priority_fee(),
+				)
 				.await
 				.unwrap()
 				.tx_hash(),
 		);
 	}
 
-	let block = node.build_new_block().await.unwrap();
+	let block = node.next_block().await.unwrap();
 
 	info!("Block built: {block:#?}");
 

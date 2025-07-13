@@ -11,12 +11,12 @@ use {
 		StepContext,
 		pipelines::{
 			exec::ClonablePayloadBuilderError,
-			tests::{LocalNode, TransactionBuilder},
+			tests::{TestEthereumNode, TransactionRequestExt},
 		},
 		types,
 	},
 	alloy::eips::Encodable2718,
-	reth::primitives::Recovered,
+	reth::{primitives::Recovered, rpc::types::TransactionRequest},
 	reth_ethereum::primitives::SignedTransaction,
 	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
@@ -32,8 +32,8 @@ use {
 /// payload as an input and returns the output of the step control flow result.
 pub struct OneStep {
 	pipeline: Pipeline<Ethereum>,
-	pool_txs: Vec<Box<dyn FnMut(TransactionBuilder) -> TransactionBuilder>>,
-	input_txs: Vec<Box<dyn FnMut(TransactionBuilder) -> TransactionBuilder>>,
+	pool_txs: Vec<Box<dyn FnMut(TransactionRequest) -> TransactionRequest>>,
+	input_txs: Vec<Box<dyn FnMut(TransactionRequest) -> TransactionRequest>>,
 	payload_tx: UnboundedSender<Tx>,
 	ok_rx: UnboundedReceiver<Checkpoint<Ethereum>>,
 	fail_rx: UnboundedReceiver<PayloadBuilderError>,
@@ -88,7 +88,7 @@ impl OneStep {
 	/// "pending" transactions count
 	pub fn with_payload_tx(
 		mut self,
-		builder: impl FnMut(TransactionBuilder) -> TransactionBuilder + 'static,
+		builder: impl FnMut(TransactionRequest) -> TransactionRequest + 'static,
 	) -> Self {
 		self.input_txs.push(Box::new(builder));
 		self
@@ -99,7 +99,7 @@ impl OneStep {
 	/// pending transactions for the signer and nonces will be set automatically.
 	pub fn with_pool_tx(
 		mut self,
-		builder: impl FnMut(TransactionBuilder) -> TransactionBuilder + 'static,
+		builder: impl FnMut(TransactionRequest) -> TransactionRequest + 'static,
 	) -> Self {
 		self.pool_txs.push(Box::new(builder));
 		self
@@ -107,15 +107,25 @@ impl OneStep {
 
 	pub async fn run(mut self) -> ControlFlow<Ethereum> {
 		use alloy::eips::Decodable2718;
-		let local_node = LocalNode::ethereum(self.pipeline).await.unwrap();
+		let local_node = TestEthereumNode::new(self.pipeline).await.unwrap();
 		let input_txs = self
 			.input_txs
 			.into_iter()
-			.map(|mut tx| tx(local_node.new_transaction()))
+			.map(|mut tx| {
+				tx(
+					local_node
+						.build_tx()
+						.max_fee_per_gas(2_000_000_001)
+						.max_priority_fee_per_gas(1),
+				)
+			})
 			.collect::<Vec<_>>();
 
 		for tx in input_txs {
-			let encoded = tx.build().await.encoded_2718();
+			let encoded = tx
+				.build_with_known_signer()
+				.expect("Transaction is not using one of the known prefunded signers")
+				.encoded_2718();
 			let tx = types::Transaction::<Ethereum>::decode_2718(&mut &encoded[..])
 				.unwrap()
 				.try_into_recovered()
@@ -126,12 +136,12 @@ impl OneStep {
 		let pool_txs = self
 			.pool_txs
 			.into_iter()
-			.map(|mut tx| tx(local_node.new_transaction()))
+			.map(|mut tx| tx(local_node.build_tx()))
 			.collect::<Vec<_>>();
 
 		for tx in pool_txs {
-			let _ = tx
-				.send()
+			let _ = local_node
+				.send_tx(tx)
 				.await
 				.expect("Failed to send transaction to the pool");
 		}

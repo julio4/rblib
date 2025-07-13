@@ -170,7 +170,7 @@ mod tests {
 		payload: Vec<(u32, u64, u128)>, // signer_id, nonce, tip
 		expected: Vec<(u32, u64, u128)>,
 	) {
-		let mut step = OneStep::new(PriorityFeeOrdering);
+		let mut step = OneStep::<Ethereum>::new(PriorityFeeOrdering);
 
 		for (sender_id, nonce, tip) in payload {
 			step = step.with_payload_tx(move |b| {

@@ -1,21 +1,73 @@
 mod accounts;
 mod driver;
-mod ethereum;
 mod node;
-mod optimism;
 mod step;
 mod utils;
 
-pub use {
-	accounts::FundedAccounts,
-	ethereum::{TestEthereumNode, ethereum_node},
-	optimism::TestOptimismNode,
-	step::OneStep,
-	utils::*,
+pub use {accounts::FundedAccounts, step::OneStep, utils::*};
+use {
+	alloy::{
+		consensus::{SignableTransaction, Signed},
+		signers::Signature,
+	},
+	reth_ethereum::primitives::SignedTransaction,
 };
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
+
+/// A type used in tests to bind alloy's network traits to a specific platform.
+pub trait NetworkSelector {
+	type Network: alloy::network::Network<
+			UnsignedTx: SignableTransaction<Signature>,
+			TxEnvelope: From<Signed<select::UnsignedTx<Self>, Signature>>
+			              + SignedTransaction,
+		>;
+}
+
+#[cfg(feature = "ethereum")]
+mod ethereum;
+
+#[cfg(feature = "optimism")]
+mod optimism;
+
+#[cfg(feature = "ethereum")]
+impl NetworkSelector for crate::Ethereum {
+	type Network = alloy::network::Ethereum;
+}
+
+#[cfg(feature = "optimism")]
+impl NetworkSelector for crate::Optimism {
+	type Network = op_alloy::network::Optimism;
+}
+
+/// This trait is used to automatically select the correct local test node type
+/// based on the platform that is being tested.
+pub trait TestNodeFactory<P: crate::Platform + NetworkSelector> {
+	type ConsensusDriver: node::ConsensusDriver<P>;
+
+	async fn create_test_node(
+		pipeline: crate::Pipeline<P>,
+	) -> eyre::Result<node::LocalNode<P, Self::ConsensusDriver>>;
+}
+
+mod select {
+	use super::NetworkSelector;
+
+	pub type Network<P: NetworkSelector> = <P as NetworkSelector>::Network;
+
+	pub type BlockResponse<P: NetworkSelector> =
+		<Network<P> as alloy::network::Network>::BlockResponse;
+
+	pub type TxEnvelope<P: NetworkSelector> =
+		<Network<P> as alloy::network::Network>::TxEnvelope;
+
+	pub type UnsignedTx<P: NetworkSelector> =
+		<Network<P> as alloy::network::Network>::UnsignedTx;
+
+	pub type TransactionRequest<P: NetworkSelector> =
+		<Network<P> as alloy::network::Network>::TransactionRequest;
+}
 
 /// This gets invoked before any tests, when the cargo test framework loads the
 /// test library.

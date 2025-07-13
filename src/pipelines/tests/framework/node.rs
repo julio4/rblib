@@ -1,10 +1,10 @@
 use {
-	super::utils::TransactionRequestExt,
+	super::{NetworkSelector, select, utils::TransactionRequestExt},
 	crate::{Platform, pipelines::tests::FundedAccounts, types},
 	alloy::{
-		consensus::{BlockHeader, SignableTransaction, Signed},
+		consensus::{BlockHeader, SignableTransaction},
 		eips::{BlockNumberOrTag, Encodable2718},
-		network::{BlockResponse, Network, TransactionBuilder, TxSignerSync},
+		network::{BlockResponse, TransactionBuilder, TxSignerSync},
 		providers::*,
 		signers::Signature,
 	},
@@ -33,7 +33,7 @@ use {
 /// Types implementing this trait emulate a consensus node and are responsible
 /// for generating `ForkChoiceUpdate`, `GetPayload`, `SetPayload` and other
 /// Engine API calls to trigger payload building and canonical chain updates.
-pub trait ConsensusDriver<P: Platform, N: Network>:
+pub trait ConsensusDriver<P: Platform + NetworkSelector>:
 	Sized + Unpin + Send + Sync + 'static
 {
 	type Params: Default;
@@ -44,7 +44,7 @@ pub trait ConsensusDriver<P: Platform, N: Network>:
 	/// scheduling the payload build process and receiving a payload ID.
 	async fn start_building(
 		&self,
-		node: &LocalNode<P, N, Self>,
+		node: &LocalNode<P, Self>,
 		target_timestamp: u64,
 		params: &Self::Params,
 	) -> eyre::Result<PayloadId>;
@@ -56,38 +56,44 @@ pub trait ConsensusDriver<P: Platform, N: Network>:
 	/// built payload then set it as the canonical payload on the node.
 	async fn finish_building(
 		&self,
-		node: &LocalNode<P, N, Self>,
+		node: &LocalNode<P, Self>,
 		payload_id: PayloadId,
 		params: &Self::Params,
-	) -> eyre::Result<N::BlockResponse>;
+	) -> eyre::Result<select::BlockResponse<P>>;
 }
 
 /// This is used to create local execution nodes for testing purposes that can
 /// be used to test payload building pipelines. This type contains everything to
 /// trigger full payload building lifecycle and interact with the node through
 /// RPC.
-pub struct LocalNode<P, N, C>
+pub struct LocalNode<P, C>
 where
-	P: Platform,
-	N: Network,
-	C: ConsensusDriver<P, N>,
+	P: Platform + NetworkSelector,
+	C: ConsensusDriver<P>,
 {
-	consensus: C,
-	exit_future: NodeExitFuture,
-	config: NodeConfig<types::ChainSpec<P>>,
-	provider: RootProvider<N>,
-	task_manager: Option<TaskManager>,
-	block_time: Duration,
-	_node_handle: Box<dyn Any + Send>, // keeps reth alive
+	/// The consensus driver used to build blocks and interact with the node.
+	pub consensus: C,
+	/// The exit future that can be used to wait for the node to exit. In
+	/// practice this never completes, because the node is kept alive until the
+	/// test is done.
+	pub exit_future: NodeExitFuture,
+	/// The configuration of the node.
+	pub config: NodeConfig<types::ChainSpec<P>>,
+	/// The provider used to interact with the node.
+	pub provider: RootProvider<select::Network<P>>,
+	/// The task manager used to manage tasks in the node.
+	pub task_manager: Option<TaskManager>,
+	/// The block time used by the node.
+	pub block_time: Duration,
+	/// Keeps reth alive, this is used to ensure that the node does not exit
+	/// while we are still using it.
+	_node_handle: Box<dyn Any + Send>,
 }
 
-impl<P, N, C> LocalNode<P, N, C>
+impl<P, C> LocalNode<P, C>
 where
-	P: Platform,
-	N: Network,
-	C: ConsensusDriver<P, N>,
-	N::UnsignedTx: SignableTransaction<Signature>,
-	N::TxEnvelope: From<Signed<N::UnsignedTx, Signature>>,
+	P: Platform + NetworkSelector,
+	C: ConsensusDriver<P>,
 {
 	/// Unless otherwise specified, The payload building process will be given
 	/// this amount of time to return a payload. Also blocks cannot have lower
@@ -138,9 +144,10 @@ where
 		// Wait for the RPC server to be ready before returning
 		rpc_ready_rx.await.expect("Failed to receive ready signal");
 
-		let provider = ProviderBuilder::<Identity, Identity, N>::default()
-			.connect_ipc(config.rpc.ipcpath.clone().into())
-			.await?;
+		let provider =
+			ProviderBuilder::<Identity, Identity, select::Network<P>>::default()
+				.connect_ipc(config.rpc.ipcpath.clone().into())
+				.await?;
 
 		Ok(Self {
 			consensus,
@@ -153,6 +160,7 @@ where
 		})
 	}
 
+	#[expect(dead_code)]
 	pub fn set_block_time(&mut self, block_time: Duration) {
 		self.block_time = block_time.max(Self::MIN_BLOCK_TIME);
 	}
@@ -168,20 +176,21 @@ where
 	}
 
 	/// Returns a provider connected to this local node instance.
-	pub const fn provider(&self) -> &RootProvider<N> {
+	pub const fn provider(&self) -> &RootProvider<select::Network<P>> {
 		&self.provider
 	}
 
 	/// Returns a reference to the node's consensus driver.
 	/// In most cases you will not want to use this method directly, but rather
 	/// use the `next_block` method to trigger the building of a new block.
+	#[expect(dead_code)]
 	pub const fn consensus(&self) -> &C {
 		&self.consensus
 	}
 
 	/// Triggers the building of a new block on this node with default paramters
 	/// and returns the newly built block.
-	pub async fn next_block(&self) -> eyre::Result<N::BlockResponse> {
+	pub async fn next_block(&self) -> eyre::Result<select::BlockResponse<P>> {
 		self.next_block_with_params(C::Params::default()).await
 	}
 
@@ -190,7 +199,7 @@ where
 	pub async fn next_block_with_params(
 		&self,
 		params: C::Params,
-	) -> eyre::Result<N::BlockResponse> {
+	) -> eyre::Result<select::BlockResponse<P>> {
 		let latest_block = self
 			.provider()
 			.get_block_by_number(BlockNumberOrTag::Latest)
@@ -223,8 +232,8 @@ where
 	}
 
 	/// Creates a new transaction builder compatible with this local node.
-	pub fn build_tx(&self) -> impl TransactionBuilder<N> {
-		N::TransactionRequest::default()
+	pub fn build_tx(&self) -> select::TransactionRequest<P> {
+		select::TransactionRequest::<P>::default()
 			.with_chain_id(self.chain_id())
 			.with_random_funded_signer()
 			.with_gas_limit(210_000)
@@ -239,8 +248,8 @@ where
 	/// explicitly.
 	pub async fn send_tx(
 		&self,
-		request: impl TransactionBuilder<N>,
-	) -> eyre::Result<PendingTransactionBuilder<N>> {
+		request: impl TransactionBuilder<select::Network<P>>,
+	) -> eyre::Result<PendingTransactionBuilder<select::Network<P>>> {
 		let Some(from) = request.from() else {
 			return Err(eyre::eyre!(
 				"Transaction request must have a 'from' field, use sign_and_send_tx \
@@ -260,9 +269,9 @@ where
 	/// using the provided signer.
 	pub async fn sign_and_send_tx(
 		&self,
-		request: impl TransactionBuilder<N>,
+		request: impl TransactionBuilder<select::Network<P>>,
 		signer: impl TxSignerSync<Signature> + Send + Sync + 'static,
-	) -> eyre::Result<PendingTransactionBuilder<N>> {
+	) -> eyre::Result<PendingTransactionBuilder<select::Network<P>>> {
 		let request = request.with_from(signer.address());
 
 		// if nonce is not explictly set, fetch it from the provider
@@ -304,7 +313,7 @@ where
 
 		let mut tx = request.build_unsigned()?;
 		let signature = signer.sign_transaction_sync(&mut tx)?;
-		let envelope: N::TxEnvelope = tx.into_signed(signature).into();
+		let envelope: select::TxEnvelope<P> = tx.into_signed(signature).into();
 		let encoded = envelope.encoded_2718();
 
 		self
@@ -315,11 +324,10 @@ where
 	}
 }
 
-impl<P, N, C> Drop for LocalNode<P, N, C>
+impl<P, C> Drop for LocalNode<P, C>
 where
-	P: Platform,
-	N: Network,
-	C: ConsensusDriver<P, N>,
+	P: Platform + NetworkSelector,
+	C: ConsensusDriver<P>,
 {
 	fn drop(&mut self) {
 		if let Some(task_manager) = self.task_manager.take() {
@@ -336,11 +344,10 @@ where
 	}
 }
 
-impl<P, N, C> Future for LocalNode<P, N, C>
+impl<P, C> Future for LocalNode<P, C>
 where
-	P: Platform,
-	N: Network,
-	C: ConsensusDriver<P, N>,
+	P: Platform + NetworkSelector,
+	C: ConsensusDriver<P>,
 {
 	type Output = eyre::Result<()>;
 

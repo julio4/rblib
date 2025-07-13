@@ -128,7 +128,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn empty_pool() {
-		let output = OneStep::new(GatherBestTransactions).run().await;
+		let output = OneStep::<Ethereum>::new(GatherBestTransactions).run().await;
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
@@ -137,7 +137,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn one_transaction() {
-		let output = OneStep::new(GatherBestTransactions)
+		let output = OneStep::<Ethereum>::new(GatherBestTransactions)
 			.with_pool_tx(|builder| builder.transfer())
 			.run()
 			.await;
@@ -150,7 +150,7 @@ mod tests {
 	#[tokio::test]
 	async fn many_transactions() {
 		const COUNT: usize = 15;
-		let mut step = OneStep::new(GatherBestTransactions);
+		let mut step = OneStep::<Ethereum>::new(GatherBestTransactions);
 
 		for _ in 0..COUNT {
 			step = step.with_pool_tx(|builder| builder.transfer());
@@ -170,7 +170,7 @@ mod tests {
 		const COUNT: usize = 200;
 		const EXPECTED: usize = 100;
 
-		let mut output = OneStep::new(GatherBestTransactions)
+		let mut output = OneStep::<Ethereum>::new(GatherBestTransactions)
 			.with_limits(Limits::with_gas_limit(21000 * EXPECTED as u64));
 
 		for _ in 0..COUNT {

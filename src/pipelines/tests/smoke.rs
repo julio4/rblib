@@ -8,11 +8,12 @@ use {
 #[tokio::test]
 async fn empty_pipeline_builds_empty_payload() {
 	let empty_pipeline = Pipeline::default();
-	let node = TestEthereumNode::new(empty_pipeline).await.unwrap();
+	let node = Ethereum::create_test_node(empty_pipeline).await.unwrap();
+
 	for _ in 0..10 {
 		let _ = node.send_tx(node.build_tx().transfer()).await.unwrap();
 	}
-	let block = node.build_new_block().await.unwrap();
+	let block = node.next_block().await.unwrap();
 
 	assert_eq!(block.header.number, 1);
 	assert!(block.transactions.is_empty(), "Block should be empty");
@@ -25,8 +26,8 @@ async fn pipeline_with_no_txs_builds_empty_payload() {
 		.with_step(PriorityFeeOrdering)
 		.with_step(RevertProtection);
 
-	let node = TestEthereumNode::new(pipeline).await.unwrap();
-	let block = node.build_new_block().await.unwrap();
+	let node = Ethereum::create_test_node(pipeline).await.unwrap();
+	let block = node.next_block().await.unwrap();
 
 	assert_eq!(block.header.number, 1);
 	assert!(block.transactions.is_empty(), "Block should be empty");
@@ -39,7 +40,7 @@ async fn all_transactions_included() {
 		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
 	);
 
-	let node = ethereum_node(pipeline).await.unwrap();
+	let node = Ethereum::create_test_node(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {

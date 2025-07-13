@@ -1,8 +1,4 @@
-use alloy::{
-	network::EthereumWallet,
-	primitives::Address,
-	signers::local::PrivateKeySigner,
-};
+use alloy::{primitives::Address, signers::local::PrivateKeySigner};
 
 /// Those accounts are defined in the gensis block of the test local node,
 /// each prefunded with 100 ETH and nonces starting from 0.
@@ -61,13 +57,5 @@ impl FundedAccounts {
 
 	pub fn by_address(address: Address) -> Option<PrivateKeySigner> {
 		Self::signers().find(|signer| signer.address() == address)
-	}
-
-	pub fn wallet(key: u32) -> EthereumWallet {
-		EthereumWallet::new(Self::signer(key))
-	}
-
-	pub fn wallet_by_address(address: Address) -> Option<EthereumWallet> {
-		Self::by_address(address).map(EthereumWallet::new)
 	}
 }

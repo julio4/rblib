@@ -1,7 +1,7 @@
 use {
 	super::framework::*,
 	crate::{steps::*, *},
-	alloy::primitives::U256,
+	alloy::{network::TransactionBuilder, primitives::U256},
 	tracing::info,
 };
 
@@ -16,15 +16,15 @@ async fn empty_payload_when_all_txs_revert_loop() {
 		),
 	);
 
-	let node = TestEthereumNode::new(pipeline).await.unwrap();
+	let node = Ethereum::create_test_node(pipeline).await.unwrap();
 
 	let mut reverts = vec![];
 	for i in 0..10 {
-		let tx = node.build_tx().reverting().value(U256::from(3000 + i));
+		let tx = node.build_tx().reverting().with_value(U256::from(3000 + i));
 		reverts.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
-	let block = node.build_new_block().await.unwrap();
+	let block = node.next_block().await.unwrap();
 	assert_eq!(block.header.number, 1);
 	assert!(block.transactions.is_empty(), "Block should be empty");
 }
@@ -40,21 +40,21 @@ async fn transfers_included_reverts_excluded_loop() {
 		),
 	);
 
-	let node = TestEthereumNode::new(pipeline).await.unwrap();
+	let node = Ethereum::create_test_node(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
-		let tx = node.build_tx().transfer().value(U256::from(i));
+		let tx = node.build_tx().transfer().with_value(U256::from(i));
 		transfers.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
 	let mut reverts = vec![];
 	for i in 0..4 {
-		let tx = node.build_tx().reverting().value(U256::from(3000 + i));
+		let tx = node.build_tx().reverting().with_value(U256::from(3000 + i));
 		reverts.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
-	let block = node.build_new_block().await.unwrap();
+	let block = node.next_block().await.unwrap();
 
 	info!("Block built: {block:#?}");
 
@@ -79,21 +79,21 @@ async fn transfers_included_reverts_excluded_flat() {
 		.with_step(PriorityFeeOrdering)
 		.with_step(RevertProtection);
 
-	let node = TestEthereumNode::new(pipeline).await.unwrap();
+	let node = Ethereum::create_test_node(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
-		let tx = node.build_tx().transfer().value(U256::from(i));
+		let tx = node.build_tx().transfer().with_value(U256::from(i));
 		transfers.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
 	let mut reverts = vec![];
 	for i in 0..4 {
-		let tx = node.build_tx().reverting().value(U256::from(3000 + i));
+		let tx = node.build_tx().reverting().with_value(U256::from(3000 + i));
 		reverts.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
-	let block = node.build_new_block().await.unwrap();
+	let block = node.next_block().await.unwrap();
 
 	info!("Block built: {block:#?}");
 

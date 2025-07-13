@@ -7,17 +7,20 @@ use {
 		Limits,
 		LimitsFactory,
 		Pipeline,
+		Platform,
 		Step,
 		StepContext,
 		pipelines::{
 			exec::ClonablePayloadBuilderError,
-			tests::{TestEthereumNode, TransactionRequestExt},
+			tests::{
+				NetworkSelector,
+				TransactionRequestExt,
+				framework::{TestNodeFactory, select},
+			},
 		},
 		types,
 	},
-	alloy::eips::Encodable2718,
-	reth::{primitives::Recovered, rpc::types::TransactionRequest},
-	reth_ethereum::primitives::SignedTransaction,
+	alloy::{eips::Encodable2718, network::TransactionBuilder},
 	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
 	tokio::sync::{
@@ -26,29 +29,29 @@ use {
 	},
 };
 
-/// This test util is used in unit tests for a single step.
+/// This test util is used in unit tests for testing a single step in isolation.
 ///
 /// It allows to run a single step with a predefined list of transactions in the
 /// payload as an input and returns the output of the step control flow result.
-pub struct OneStep {
-	pipeline: Pipeline<Ethereum>,
-	pool_txs: Vec<Box<dyn FnMut(TransactionRequest) -> TransactionRequest>>,
-	input_txs: Vec<Box<dyn FnMut(TransactionRequest) -> TransactionRequest>>,
-	payload_tx: UnboundedSender<Tx>,
-	ok_rx: UnboundedReceiver<Checkpoint<Ethereum>>,
+///
+/// The step is invoked with full node facilities and in realistic condition.
+pub struct OneStep<P: Platform + NetworkSelector = Ethereum> {
+	pipeline: Pipeline<P>,
+	pool_txs: Vec<BoxedTxBuilderFn<P>>,
+	input_txs: Vec<BoxedTxBuilderFn<P>>,
+	payload_tx: UnboundedSender<select::TxEnvelope<P>>,
+	ok_rx: UnboundedReceiver<Checkpoint<P>>,
 	fail_rx: UnboundedReceiver<PayloadBuilderError>,
-	break_rx: UnboundedReceiver<Checkpoint<Ethereum>>,
+	break_rx: UnboundedReceiver<Checkpoint<P>>,
 }
 
-type Tx = Recovered<types::Transaction<Ethereum>>;
-
-impl OneStep {
-	pub fn new(step: impl Step<Ethereum>) -> Self {
+impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
+	pub fn new(step: impl Step<P>) -> Self {
 		let (prepopulate, payload_tx) = PopulatePayload::new();
 		let (record_ok, ok_rx) = RecordOk::new();
 		let (record_fail, fail_rx, break_rx) = RecordBreakAndFail::new();
 
-		let pipeline = Pipeline::default()
+		let pipeline = Pipeline::<P>::default()
 			.with_step(prepopulate)
 			.with_step(step)
 			.with_step(record_ok)
@@ -67,12 +70,8 @@ impl OneStep {
 
 	pub fn with_limits(mut self, limits: Limits) -> Self {
 		struct FixedLimits(Limits);
-		impl LimitsFactory<Ethereum> for FixedLimits {
-			fn create(
-				&self,
-				_: &BlockContext<Ethereum>,
-				_: Option<&Limits>,
-			) -> Limits {
+		impl<P: Platform> LimitsFactory<P> for FixedLimits {
+			fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
 				self.0.clone()
 			}
 		}
@@ -88,7 +87,10 @@ impl OneStep {
 	/// "pending" transactions count
 	pub fn with_payload_tx(
 		mut self,
-		builder: impl FnMut(TransactionRequest) -> TransactionRequest + 'static,
+		builder: impl FnMut(
+			select::TransactionRequest<P>,
+		) -> select::TransactionRequest<P>
+		+ 'static,
 	) -> Self {
 		self.input_txs.push(Box::new(builder));
 		self
@@ -99,15 +101,17 @@ impl OneStep {
 	/// pending transactions for the signer and nonces will be set automatically.
 	pub fn with_pool_tx(
 		mut self,
-		builder: impl FnMut(TransactionRequest) -> TransactionRequest + 'static,
+		builder: impl FnMut(
+			select::TransactionRequest<P>,
+		) -> select::TransactionRequest<P>
+		+ 'static,
 	) -> Self {
 		self.pool_txs.push(Box::new(builder));
 		self
 	}
 
-	pub async fn run(mut self) -> ControlFlow<Ethereum> {
-		use alloy::eips::Decodable2718;
-		let local_node = TestEthereumNode::new(self.pipeline).await.unwrap();
+	pub async fn run(mut self) -> ControlFlow<P> {
+		let local_node = P::create_test_node(self.pipeline).await.unwrap();
 		let input_txs = self
 			.input_txs
 			.into_iter()
@@ -115,22 +119,19 @@ impl OneStep {
 				tx(
 					local_node
 						.build_tx()
-						.max_fee_per_gas(2_000_000_001)
-						.max_priority_fee_per_gas(1),
+						.with_max_fee_per_gas(2_000_000_001)
+						.with_max_priority_fee_per_gas(1),
 				)
 			})
 			.collect::<Vec<_>>();
 
 		for tx in input_txs {
-			let encoded = tx
-				.build_with_known_signer()
-				.expect("Transaction is not using one of the known prefunded signers")
-				.encoded_2718();
-			let tx = types::Transaction::<Ethereum>::decode_2718(&mut &encoded[..])
-				.unwrap()
-				.try_into_recovered()
+			self
+				.payload_tx
+				.send(tx.build_with_known_signer().expect(
+					"Transaction is not using one of the known prefunded signers",
+				))
 				.unwrap();
-			self.payload_tx.send(tx).unwrap();
 		}
 
 		let pool_txs = self
@@ -146,7 +147,7 @@ impl OneStep {
 				.expect("Failed to send transaction to the pool");
 		}
 
-		let _ = local_node.build_new_block().await;
+		let _ = local_node.next_block().await;
 
 		let ok_res = self.ok_rx.try_recv();
 		let break_res = self.break_rx.try_recv();
@@ -168,12 +169,12 @@ impl OneStep {
 	}
 }
 
-struct PopulatePayload {
-	receiver: Mutex<UnboundedReceiver<Tx>>,
+struct PopulatePayload<P: Platform + NetworkSelector> {
+	receiver: Mutex<UnboundedReceiver<select::TxEnvelope<P>>>,
 }
 
-impl PopulatePayload {
-	pub fn new() -> (Self, UnboundedSender<Tx>) {
+impl<P: Platform + NetworkSelector> PopulatePayload<P> {
+	pub fn new() -> (Self, UnboundedSender<select::TxEnvelope<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(
 			Self {
@@ -184,53 +185,61 @@ impl PopulatePayload {
 	}
 }
 
-impl Step<Ethereum> for PopulatePayload {
+impl<P: Platform + NetworkSelector> Step<P> for PopulatePayload<P> {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<Ethereum>,
-		_: StepContext<Ethereum>,
-	) -> ControlFlow<Ethereum> {
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
+		use alloy::eips::Decodable2718;
+
 		let mut payload = payload;
 		while let Ok(tx) = self.receiver.lock().await.try_recv() {
-			payload = payload.apply(tx).expect("Failed to apply transaction");
+			// unfortunatelly encoding and dcoding with 2718 is the only generic way
+			// to handle transaction types across different platforms and networks
+			// and SDKs that we are working with.
+			let encoded = tx.encoded_2718();
+			let decoded = types::Transaction::<P>::decode_2718(&mut &encoded[..])
+				.expect("Failed to decode transaction");
+			payload = payload.apply(decoded).expect("Failed to apply transaction");
 		}
 
 		ControlFlow::Ok(payload)
 	}
 }
 
-struct RecordOk {
-	sender: UnboundedSender<Checkpoint<Ethereum>>,
+struct RecordOk<P: Platform> {
+	sender: UnboundedSender<Checkpoint<P>>,
 }
 
-impl RecordOk {
-	pub fn new() -> (Self, UnboundedReceiver<Checkpoint<Ethereum>>) {
+impl<P: Platform> RecordOk<P> {
+	pub fn new() -> (Self, UnboundedReceiver<Checkpoint<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(Self { sender }, receiver)
 	}
 }
 
-impl Step<Ethereum> for RecordOk {
+impl<P: Platform> Step<P> for RecordOk<P> {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<Ethereum>,
-		_: StepContext<Ethereum>,
-	) -> ControlFlow<Ethereum> {
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
 		self.sender.send(payload.clone()).unwrap();
 		ControlFlow::Ok(payload)
 	}
 }
 
-struct RecordBreakAndFail {
+struct RecordBreakAndFail<P: Platform> {
 	fail_sender: UnboundedSender<PayloadBuilderError>,
-	break_sender: UnboundedSender<Checkpoint<Ethereum>>,
+	break_sender: UnboundedSender<Checkpoint<P>>,
 }
 
-impl RecordBreakAndFail {
+impl<P: Platform> RecordBreakAndFail<P> {
 	pub fn new() -> (
 		Self,
 		UnboundedReceiver<PayloadBuilderError>,
-		UnboundedReceiver<Checkpoint<Ethereum>>,
+		UnboundedReceiver<Checkpoint<P>>,
 	) {
 		let (fail_sender, fail_receiver) = unbounded_channel();
 		let (break_sender, break_receiver) = unbounded_channel();
@@ -245,19 +254,19 @@ impl RecordBreakAndFail {
 	}
 }
 
-impl Step<Ethereum> for RecordBreakAndFail {
+impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<Ethereum>,
-		_: StepContext<Ethereum>,
-	) -> ControlFlow<Ethereum> {
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
 		self.break_sender.send(payload.clone()).unwrap();
 		ControlFlow::Ok(payload)
 	}
 
 	async fn after_job(
 		self: Arc<Self>,
-		result: Arc<Result<types::BuiltPayload<Ethereum>, PayloadBuilderError>>,
+		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		if let Err(e) = result.as_ref() {
 			self
@@ -270,52 +279,56 @@ impl Step<Ethereum> for RecordBreakAndFail {
 }
 
 struct AlwaysBreak;
-impl Step<Ethereum> for AlwaysBreak {
+impl<P: Platform> Step<P> for AlwaysBreak {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<Ethereum>,
-		_: StepContext<Ethereum>,
-	) -> ControlFlow<Ethereum> {
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
 		ControlFlow::Break(payload)
 	}
 }
 
 struct AlwaysOk;
-impl Step<Ethereum> for AlwaysOk {
+impl<P: Platform> Step<P> for AlwaysOk {
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<Ethereum>,
-		_: StepContext<Ethereum>,
-	) -> ControlFlow<Ethereum> {
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
 		ControlFlow::Ok(payload)
 	}
 }
 
 struct AlwaysFail;
-impl Step<Ethereum> for AlwaysFail {
+impl<P: Platform> Step<P> for AlwaysFail {
 	async fn step(
 		self: Arc<Self>,
-		_: Checkpoint<Ethereum>,
-		_: StepContext<Ethereum>,
-	) -> ControlFlow<Ethereum> {
+		_: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
 		ControlFlow::Fail(PayloadBuilderError::ChannelClosed)
 	}
 }
 
 #[tokio::test]
 async fn break_is_recorded() {
-	let step = OneStep::new(AlwaysBreak).run().await;
+	let step = OneStep::<Ethereum>::new(AlwaysBreak).run().await;
 	assert!(matches!(step, ControlFlow::Break(_)));
 }
 
 #[tokio::test]
 async fn ok_is_recorded() {
-	let step = OneStep::new(AlwaysOk).run().await;
+	let step = OneStep::<Ethereum>::new(AlwaysOk).run().await;
 	assert!(matches!(step, ControlFlow::Ok(_)));
 }
 
 #[tokio::test]
 async fn fail_is_recorded() {
-	let step = OneStep::new(AlwaysFail).run().await;
+	let step = OneStep::<Ethereum>::new(AlwaysFail).run().await;
 	assert!(matches!(step, ControlFlow::Fail(_)));
 }
+
+type BoxedTxBuilderFn<P> = Box<
+	dyn FnMut(select::TransactionRequest<P>) -> select::TransactionRequest<P>,
+>;

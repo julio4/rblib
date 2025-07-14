@@ -39,6 +39,7 @@ ethereum = [
 ]
 
 pipelines = [
+  "pipelines-macros",
   "tokio",
   "futures",
   "reth-transaction-pool",
@@ -63,7 +64,7 @@ test-utils = [
 
 [dependencies]
 # internal dependencies
-pipelines-macros = { path = "src/pipelines/macros" }
+pipelines-macros = { path = "src/pipelines/macros", optional = true }
 
 # Common dependencies
 alloy = "1.0.18"
@@ -118,16 +119,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 alloy-genesis = "1.0"
 rand = "0.9"
 serde_json = "1.0"
-
-op-alloy = { version = "0.18", features = ["network", "rpc-types"] }
 reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
   "test-utils",
 ] }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
-  "op",
-] }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+
+[dev-dependencies.op-alloy]
+version = "0.18"
+features = ["network", "rpc-types"]
 
 [lints.rust]
 type_alias_bounds = "allow"

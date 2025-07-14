@@ -1,7 +1,4 @@
-use {
-	crate::{steps::*, *},
-	core::time::Duration,
-};
+use crate::{steps::*, *};
 
 #[test]
 fn only_steps() {
@@ -15,6 +12,7 @@ fn only_steps() {
 }
 
 #[test]
+#[cfg(feature = "optimism")]
 fn only_steps_optimism_specific() {
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_epilogue(BuilderEpilogue)
@@ -54,6 +52,7 @@ fn nested_one_concise() {
 }
 
 #[test]
+#[cfg(feature = "optimism")]
 fn nested_many_concise() {
 	// synthesize dummy steps
 	make_step!(TestStep1);
@@ -79,7 +78,10 @@ fn nested_many_concise() {
 
 #[test]
 #[allow(dead_code)]
+#[cfg(feature = "optimism")]
 fn flashblocks_example_closure() {
+	use core::time::Duration;
+
 	#[derive(Debug, Clone)]
 	struct FlashblocksConfig {
 		count: usize,
@@ -130,7 +132,10 @@ fn flashblocks_example_closure() {
 
 #[test]
 #[allow(dead_code)]
+#[cfg(feature = "optimism")]
 fn flashblocks_example_concise() {
+	use core::time::Duration;
+
 	#[derive(Debug, Clone)]
 	struct FlashblocksConfig {
 		count: usize,

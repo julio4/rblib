@@ -182,7 +182,7 @@ mod tests {
 		}
 
 		let output = step.run().await;
-		let ControlFlow::Ok(payload) = output else {
+		let Ok(ControlFlow::Ok(payload)) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 

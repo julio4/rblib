@@ -3,7 +3,6 @@ use {
 		BlockContext,
 		Checkpoint,
 		ControlFlow,
-		Ethereum,
 		Limits,
 		LimitsFactory,
 		Pipeline,
@@ -35,7 +34,7 @@ use {
 /// payload as an input and returns the output of the step control flow result.
 ///
 /// The step is invoked with full node facilities and in realistic condition.
-pub struct OneStep<P: Platform + NetworkSelector = Ethereum> {
+pub struct OneStep<P: Platform + NetworkSelector> {
 	pipeline: Pipeline<P>,
 	pool_txs: Vec<BoxedTxBuilderFn<P>>,
 	input_txs: Vec<BoxedTxBuilderFn<P>>,
@@ -68,6 +67,7 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 		}
 	}
 
+	#[must_use]
 	pub fn with_limits(mut self, limits: Limits) -> Self {
 		struct FixedLimits(Limits);
 		impl<P: Platform> LimitsFactory<P> for FixedLimits {
@@ -85,6 +85,7 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 	/// mempool and directly into the payload of the step, which means that nonces
 	/// need to be set manually because they will not be reported by the mempool
 	/// "pending" transactions count
+	#[must_use]
 	pub fn with_payload_tx(
 		mut self,
 		builder: impl FnMut(
@@ -99,6 +100,7 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 	/// Adds a new transaction to the mempool and makes it available to the step.
 	/// Here we don't need to manage nonces, as the mempool will report the
 	/// pending transactions for the signer and nonces will be set automatically.
+	#[must_use]
 	pub fn with_pool_tx(
 		mut self,
 		builder: impl FnMut(
@@ -110,8 +112,10 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 		self
 	}
 
-	pub async fn run(mut self) -> ControlFlow<P> {
-		let local_node = P::create_test_node(self.pipeline).await.unwrap();
+	/// Runs a single invocation of the step with the prepared environment and
+	/// returns the control flow result of the step execution.
+	pub async fn run(mut self) -> eyre::Result<ControlFlow<P>> {
+		let local_node = P::create_test_node(self.pipeline).await?;
 		let input_txs = self
 			.input_txs
 			.into_iter()
@@ -126,12 +130,7 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 			.collect::<Vec<_>>();
 
 		for tx in input_txs {
-			self
-				.payload_tx
-				.send(tx.build_with_known_signer().expect(
-					"Transaction is not using one of the known prefunded signers",
-				))
-				.unwrap();
+			self.payload_tx.send(tx.build_with_known_signer()?)?;
 		}
 
 		let pool_txs = self
@@ -141,10 +140,7 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 			.collect::<Vec<_>>();
 
 		for tx in pool_txs {
-			let _ = local_node
-				.send_tx(tx)
-				.await
-				.expect("Failed to send transaction to the pool");
+			let _ = local_node.send_tx(tx).await?;
 		}
 
 		let _ = local_node.next_block().await;
@@ -154,18 +150,14 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 		let fail_res = self.fail_rx.try_recv();
 
 		if let Ok(ok) = ok_res {
-			return ControlFlow::Ok(ok);
+			return Ok(ControlFlow::Ok(ok));
 		}
 
 		if let Ok(fail_res) = fail_res {
-			return ControlFlow::Fail(fail_res);
+			return Ok(ControlFlow::Fail(fail_res));
 		}
 
-		let Ok(break_res) = break_res else {
-			unreachable!("did not receive ok, break or fail.")
-		};
-
-		ControlFlow::Break(break_res)
+		Ok(ControlFlow::Break(break_res?))
 	}
 }
 
@@ -278,57 +270,71 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 	}
 }
 
-struct AlwaysBreak;
-impl<P: Platform> Step<P> for AlwaysBreak {
-	async fn step(
-		self: Arc<Self>,
-		payload: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Break(payload)
-	}
-}
-
-struct AlwaysOk;
-impl<P: Platform> Step<P> for AlwaysOk {
-	async fn step(
-		self: Arc<Self>,
-		payload: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Ok(payload)
-	}
-}
-
-struct AlwaysFail;
-impl<P: Platform> Step<P> for AlwaysFail {
-	async fn step(
-		self: Arc<Self>,
-		_: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Fail(PayloadBuilderError::ChannelClosed)
-	}
-}
-
-#[tokio::test]
-async fn break_is_recorded() {
-	let step = OneStep::<Ethereum>::new(AlwaysBreak).run().await;
-	assert!(matches!(step, ControlFlow::Break(_)));
-}
-
-#[tokio::test]
-async fn ok_is_recorded() {
-	let step = OneStep::<Ethereum>::new(AlwaysOk).run().await;
-	assert!(matches!(step, ControlFlow::Ok(_)));
-}
-
-#[tokio::test]
-async fn fail_is_recorded() {
-	let step = OneStep::<Ethereum>::new(AlwaysFail).run().await;
-	assert!(matches!(step, ControlFlow::Fail(_)));
-}
-
 type BoxedTxBuilderFn<P> = Box<
 	dyn FnMut(select::TransactionRequest<P>) -> select::TransactionRequest<P>,
 >;
+
+#[cfg(all(test, feature = "ethereum"))]
+mod tests {
+	use super::*;
+
+	struct AlwaysBreak;
+	impl<P: Platform> Step<P> for AlwaysBreak {
+		async fn step(
+			self: Arc<Self>,
+			payload: Checkpoint<P>,
+			_: StepContext<P>,
+		) -> ControlFlow<P> {
+			ControlFlow::Break(payload)
+		}
+	}
+
+	struct AlwaysOk;
+	impl<P: Platform> Step<P> for AlwaysOk {
+		async fn step(
+			self: Arc<Self>,
+			payload: Checkpoint<P>,
+			_: StepContext<P>,
+		) -> ControlFlow<P> {
+			ControlFlow::Ok(payload)
+		}
+	}
+
+	struct AlwaysFail;
+	impl<P: Platform> Step<P> for AlwaysFail {
+		async fn step(
+			self: Arc<Self>,
+			_: Checkpoint<P>,
+			_: StepContext<P>,
+		) -> ControlFlow<P> {
+			ControlFlow::Fail(PayloadBuilderError::ChannelClosed)
+		}
+	}
+
+	#[tokio::test]
+	async fn break_is_recorded() {
+		let step = OneStep::<crate::Ethereum>::new(AlwaysBreak)
+			.run()
+			.await
+			.unwrap();
+		assert!(matches!(step, ControlFlow::Break(_)));
+	}
+
+	#[tokio::test]
+	async fn ok_is_recorded() {
+		let step = OneStep::<crate::Ethereum>::new(AlwaysOk)
+			.run()
+			.await
+			.unwrap();
+		assert!(matches!(step, ControlFlow::Ok(_)));
+	}
+
+	#[tokio::test]
+	async fn fail_is_recorded() {
+		let step = OneStep::<crate::Ethereum>::new(AlwaysFail)
+			.run()
+			.await
+			.unwrap();
+		assert!(matches!(step, ControlFlow::Fail(_)));
+	}
+}

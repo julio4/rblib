@@ -1,6 +1,11 @@
 use {
 	super::{NetworkSelector, select, utils::TransactionRequestExt},
-	crate::{Platform, pipelines::tests::FundedAccounts, types},
+	crate::{
+		Platform,
+		pipelines::tests::FundedAccounts,
+		tests::ConsensusDriver,
+		types,
+	},
 	alloy::{
 		consensus::{BlockHeader, SignableTransaction},
 		eips::{BlockNumberOrTag, Encodable2718},
@@ -22,45 +27,12 @@ use {
 	},
 	reth_ethereum::provider::db::{DatabaseEnv, test_utils::TempDatabase},
 	reth_node_builder::{rpc::RethRpcAddOns, *},
-	reth_payload_builder::PayloadId,
 	std::{
 		sync::Arc,
 		time::{SystemTime, UNIX_EPOCH},
 	},
 	tokio::sync::oneshot,
 };
-
-/// Types implementing this trait emulate a consensus node and are responsible
-/// for generating `ForkChoiceUpdate`, `GetPayload`, `SetPayload` and other
-/// Engine API calls to trigger payload building and canonical chain updates.
-pub trait ConsensusDriver<P: Platform + NetworkSelector>:
-	Sized + Unpin + Send + Sync + 'static
-{
-	type Params: Default;
-
-	/// Starts the process of building a new block on the node.
-	///
-	/// This should run the engine api CL <-> EL protocol up to the point of
-	/// scheduling the payload build process and receiving a payload ID.
-	async fn start_building(
-		&self,
-		node: &LocalNode<P, Self>,
-		target_timestamp: u64,
-		params: &Self::Params,
-	) -> eyre::Result<PayloadId>;
-
-	/// This is always called after a payload building process has successfully
-	/// started and a payload ID has been returned.
-	///
-	/// This should run the engine api CL <-> EL protocol to retreive the newly
-	/// built payload then set it as the canonical payload on the node.
-	async fn finish_building(
-		&self,
-		node: &LocalNode<P, Self>,
-		payload_id: PayloadId,
-		params: &Self::Params,
-	) -> eyre::Result<select::BlockResponse<P>>;
-}
 
 /// This is used to create local execution nodes for testing purposes that can
 /// be used to test payload building pipelines. This type contains everything to
@@ -142,7 +114,7 @@ where
 		let node_handle: Box<dyn Any + Send> = boxed_handle;
 
 		// Wait for the RPC server to be ready before returning
-		rpc_ready_rx.await.expect("Failed to receive ready signal");
+		rpc_ready_rx.await?;
 
 		let provider =
 			ProviderBuilder::<Identity, Identity, select::Network<P>>::default()
@@ -160,7 +132,9 @@ where
 		})
 	}
 
-	#[expect(dead_code)]
+	/// Sets the time interval payload builders are given to build a new payload.
+	/// This is the interval between forkchoiceupdate engine api call and
+	/// getpayload call from the CL node.
 	pub fn set_block_time(&mut self, block_time: Duration) {
 		self.block_time = block_time.max(Self::MIN_BLOCK_TIME);
 	}
@@ -183,7 +157,6 @@ where
 	/// Returns a reference to the node's consensus driver.
 	/// In most cases you will not want to use this method directly, but rather
 	/// use the `next_block` method to trigger the building of a new block.
-	#[expect(dead_code)]
 	pub const fn consensus(&self) -> &C {
 		&self.consensus
 	}
@@ -204,7 +177,7 @@ where
 			.provider()
 			.get_block_by_number(BlockNumberOrTag::Latest)
 			.await?
-			.expect("Latest block should exist");
+			.ok_or_else(|| eyre::eyre!("Failed to get latest block from the node"))?;
 
 		let latest_timestamp =
 			Duration::from_secs(latest_block.header().timestamp());
@@ -282,8 +255,7 @@ where
 					.provider
 					.get_transaction_count(signer.address())
 					.pending()
-					.await
-					.expect("Failed to get transaction count"),
+					.await?,
 			),
 		};
 

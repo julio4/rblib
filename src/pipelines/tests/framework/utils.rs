@@ -52,26 +52,32 @@ impl AsTxs for Vec<TxHash> {
 pub trait TransactionRequestExt<N: Network> {
 	/// Use a specific funded account that is defined in genesis of the test
 	/// local node.
+	#[must_use]
 	fn with_funded_signer(self, key: u32) -> Self;
 
 	/// Use a random funded account that is defined in genesis of the test
 	/// local node.
+	#[must_use]
 	fn with_random_funded_signer(self) -> Self;
 
 	/// Use a specific funded account that is defined in genesis of the test
 	/// local node at index 0.
+	#[must_use]
 	fn with_default_signer(self) -> Self;
 
 	/// Use a random non-zero priority fee for the transaction.
 	/// The priority fee is a random value between 1 and 100000.
+	#[must_use]
 	fn with_random_priority_fee(self) -> Self;
 
 	/// Creates a transaction that will always revert.
 	/// It will be a `CREATE` transaction with the input
 	/// `PUSH1 0x00 PUSH1 0x00 REVERT`.
+	#[must_use]
 	fn reverting(self) -> Self;
 
 	/// Creates a transaction that is a valid transfer of a small amount of ether.
+	#[must_use]
 	fn transfer(self) -> Self;
 
 	fn build_with_known_signer(self) -> eyre::Result<N::TxEnvelope>

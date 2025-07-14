@@ -129,7 +129,7 @@ mod tests {
 	#[tokio::test]
 	async fn empty_pool() {
 		let output = OneStep::<Ethereum>::new(GatherBestTransactions).run().await;
-		let ControlFlow::Ok(payload) = output else {
+		let Ok(ControlFlow::Ok(payload)) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 		assert_eq!(payload.history().transactions().count(), 0);
@@ -141,7 +141,7 @@ mod tests {
 			.with_pool_tx(|builder| builder.transfer())
 			.run()
 			.await;
-		let ControlFlow::Ok(payload) = output else {
+		let Ok(ControlFlow::Ok(payload)) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 		assert_eq!(payload.history().transactions().count(), 1);
@@ -157,7 +157,7 @@ mod tests {
 		}
 
 		let output = step.run().await;
-		let ControlFlow::Ok(payload) = output else {
+		let Ok(ControlFlow::Ok(payload)) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 
@@ -178,7 +178,7 @@ mod tests {
 		}
 
 		let output = output.run().await;
-		let ControlFlow::Ok(payload) = output else {
+		let Ok(ControlFlow::Ok(payload)) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 

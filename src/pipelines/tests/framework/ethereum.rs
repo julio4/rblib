@@ -3,12 +3,11 @@ use {
 		pipelines::tests::{
 			DEFAULT_BLOCK_GAS_LIMIT,
 			FundedAccounts,
+			NetworkSelector,
 			ONE_ETH,
-			framework::{
-				TestNodeFactory,
-				node::{ConsensusDriver, LocalNode},
-			},
+			framework::{TestNodeFactory, node::LocalNode},
 		},
+		tests::ConsensusDriver,
 		*,
 	},
 	alloy::{
@@ -36,6 +35,10 @@ use {
 	reth_rpc_api::EngineApiClient,
 	std::sync::Arc,
 };
+
+impl NetworkSelector for Ethereum {
+	type Network = alloy::network::Ethereum;
+}
 
 impl TestNodeFactory<Ethereum> for Ethereum {
 	type ConsensusDriver = EthConsensusDriver;

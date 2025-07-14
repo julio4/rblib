@@ -20,6 +20,11 @@ impl FundedAccounts {
 		"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff90",
 	];
 
+	/// Returns a signer for the given key index.
+	///
+	/// # Panics
+	/// If the key index is out of bounds and greater than the number of
+	/// predefined accounts.
 	pub fn signer(key: u32) -> PrivateKeySigner {
 		assert!(
 			(key as usize) < Self::FUNDED_PRIVATE_KEYS.len(),

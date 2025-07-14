@@ -18,8 +18,8 @@ mod service;
 mod step;
 pub mod steps;
 
-#[cfg(test)]
-mod tests;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests;
 
 // public API exports
 pub use {
@@ -309,5 +309,74 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 					as &dyn core::fmt::Debug,
 			)
 			.finish()
+	}
+}
+
+pub mod traits {
+	use {
+		crate::*,
+		reth::{
+			api::FullNodeTypes,
+			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
+		},
+		reth_evm::ConfigureEvm,
+		reth_transaction_pool::{PoolTransaction, TransactionPool},
+	};
+
+	pub trait NodeBounds<P: Platform>:
+		FullNodeTypes<Types = P::NodeTypes>
+	{
+	}
+
+	impl<T, P: Platform> NodeBounds<P> for T where
+		T: FullNodeTypes<Types = P::NodeTypes>
+	{
+	}
+
+	pub trait ProviderBounds<P: Platform>:
+		StateProviderFactory
+		+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
+		+ BlockReaderIdExt<Header = types::Header<P>>
+		+ Clone
+		+ Send
+		+ Sync
+		+ 'static
+	{
+	}
+
+	impl<T, P: Platform> ProviderBounds<P> for T where
+		T: StateProviderFactory
+			+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
+			+ BlockReaderIdExt<Header = types::Header<P>>
+			+ Clone
+			+ Send
+			+ Sync
+			+ 'static
+	{
+	}
+
+	pub trait PoolBounds<P: Platform>:
+		TransactionPool<Transaction = P::PooledTransaction> + Unpin + 'static
+	{
+	}
+
+	impl<T, P: Platform> PoolBounds<P> for T where
+		T: TransactionPool<Transaction = P::PooledTransaction> + Unpin + 'static
+	{
+	}
+
+	pub trait PooledTransactionBounds<P: Platform>:
+		PoolTransaction<Consensus = types::Transaction<P>> + Send + Sync + 'static
+	{
+	}
+
+	pub trait EvmConfigBounds<P: Platform>:
+		ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
+	{
+	}
+
+	impl<T, P: Platform> EvmConfigBounds<P> for T where
+		T: ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
+	{
 	}
 }

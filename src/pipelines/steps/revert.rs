@@ -62,7 +62,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn empty_payload() {
-		let output = OneStep::<Ethereum>::new(RevertProtection).run().await;
+		let output = OneStep::<Ethereum>::new(RevertProtection)
+			.run()
+			.await
+			.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
@@ -78,7 +81,8 @@ mod tests {
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(1))
 			.run()
-			.await;
+			.await
+			.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
@@ -94,7 +98,8 @@ mod tests {
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(1))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(2))
 			.run()
-			.await;
+			.await
+			.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
@@ -111,7 +116,8 @@ mod tests {
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(1))
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(2))
 			.run()
-			.await;
+			.await
+			.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");

@@ -51,6 +51,7 @@ pub trait Platform:
 		>;
 
 	/// Type that represents transactions that are inside the transaction pool.
+	#[cfg(feature = "pipelines")]
 	type PooledTransaction: reth_transaction_pool::EthPoolTransaction<
 			Consensus = types::Transaction<Self>,
 		> + Send
@@ -60,6 +61,7 @@ pub trait Platform:
 	/// Type that can provide limits for the payload building process.
 	/// If no limits are set on a pipeline, a default instance of this type
 	/// will be used.
+	#[cfg(feature = "pipelines")]
 	type DefaultLimits: LimitsFactory<Self> + Default + Send + Sync + 'static;
 
 	/// Instantiate the EVM configuration for the platform with a given chain
@@ -74,6 +76,7 @@ pub trait Platform:
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self>;
 
+	#[cfg(feature = "pipelines")]
 	fn construct_payload<Pool, Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<reth::primitives::Recovered<types::Transaction<Self>>>,
@@ -147,73 +150,4 @@ pub mod types {
 	/// Extracts the `ChainSpec` type from the platform definition.
 	pub type ChainSpec<P: Platform> =
 		<P::NodeTypes as reth::api::NodeTypes>::ChainSpec;
-}
-
-pub mod traits {
-	use {
-		crate::*,
-		reth::{
-			api::FullNodeTypes,
-			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
-		},
-		reth_evm::ConfigureEvm,
-		reth_transaction_pool::{PoolTransaction, TransactionPool},
-	};
-
-	pub trait NodeBounds<P: Platform>:
-		FullNodeTypes<Types = P::NodeTypes>
-	{
-	}
-
-	impl<T, P: Platform> NodeBounds<P> for T where
-		T: FullNodeTypes<Types = P::NodeTypes>
-	{
-	}
-
-	pub trait ProviderBounds<P: Platform>:
-		StateProviderFactory
-		+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
-		+ BlockReaderIdExt<Header = types::Header<P>>
-		+ Clone
-		+ Send
-		+ Sync
-		+ 'static
-	{
-	}
-
-	impl<T, P: Platform> ProviderBounds<P> for T where
-		T: StateProviderFactory
-			+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
-			+ BlockReaderIdExt<Header = types::Header<P>>
-			+ Clone
-			+ Send
-			+ Sync
-			+ 'static
-	{
-	}
-
-	pub trait PoolBounds<P: Platform>:
-		TransactionPool<Transaction = P::PooledTransaction> + Unpin + 'static
-	{
-	}
-
-	impl<T, P: Platform> PoolBounds<P> for T where
-		T: TransactionPool<Transaction = P::PooledTransaction> + Unpin + 'static
-	{
-	}
-
-	pub trait PooledTransactionBounds<P: Platform>:
-		PoolTransaction<Consensus = types::Transaction<P>> + Send + Sync + 'static
-	{
-	}
-
-	pub trait EvmConfigBounds<P: Platform>:
-		ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
-	{
-	}
-
-	impl<T, P: Platform> EvmConfigBounds<P> for T where
-		T: ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
-	{
-	}
 }

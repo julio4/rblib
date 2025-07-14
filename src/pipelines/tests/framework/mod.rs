@@ -4,14 +4,16 @@ mod node;
 mod step;
 mod utils;
 
-pub use {accounts::FundedAccounts, step::OneStep, utils::*};
 use {
+	crate::Platform,
 	alloy::{
 		consensus::{SignableTransaction, Signed},
 		signers::Signature,
 	},
 	reth_ethereum::primitives::SignedTransaction,
+	reth_payload_builder::PayloadId,
 };
+pub use {accounts::FundedAccounts, node::LocalNode, step::OneStep, utils::*};
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
@@ -31,24 +33,46 @@ mod ethereum;
 #[cfg(feature = "optimism")]
 mod optimism;
 
-#[cfg(feature = "ethereum")]
-impl NetworkSelector for crate::Ethereum {
-	type Network = alloy::network::Ethereum;
-}
+/// Types implementing this trait emulate a consensus node and are responsible
+/// for generating `ForkChoiceUpdate`, `GetPayload`, `SetPayload` and other
+/// Engine API calls to trigger payload building and canonical chain updates.
+pub trait ConsensusDriver<P: Platform + NetworkSelector>:
+	Sized + Unpin + Send + Sync + 'static
+{
+	type Params: Default;
 
-#[cfg(feature = "optimism")]
-impl NetworkSelector for crate::Optimism {
-	type Network = op_alloy::network::Optimism;
+	/// Starts the process of building a new block on the node.
+	///
+	/// This should run the engine api CL <-> EL protocol up to the point of
+	/// scheduling the payload build process and receiving a payload ID.
+	fn start_building(
+		&self,
+		node: &LocalNode<P, Self>,
+		target_timestamp: u64,
+		params: &Self::Params,
+	) -> impl Future<Output = eyre::Result<PayloadId>>;
+
+	/// This is always called after a payload building process has successfully
+	/// started and a payload ID has been returned.
+	///
+	/// This should run the engine api CL <-> EL protocol to retreive the newly
+	/// built payload then set it as the canonical payload on the node.
+	fn finish_building(
+		&self,
+		node: &LocalNode<P, Self>,
+		payload_id: PayloadId,
+		params: &Self::Params,
+	) -> impl Future<Output = eyre::Result<select::BlockResponse<P>>>;
 }
 
 /// This trait is used to automatically select the correct local test node type
 /// based on the platform that is being tested.
 pub trait TestNodeFactory<P: crate::Platform + NetworkSelector> {
-	type ConsensusDriver: node::ConsensusDriver<P>;
+	type ConsensusDriver: ConsensusDriver<P>;
 
-	async fn create_test_node(
+	fn create_test_node(
 		pipeline: crate::Pipeline<P>,
-	) -> eyre::Result<node::LocalNode<P, Self::ConsensusDriver>>;
+	) -> impl Future<Output = eyre::Result<node::LocalNode<P, Self::ConsensusDriver>>>;
 }
 
 mod select {

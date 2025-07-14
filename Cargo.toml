@@ -24,20 +24,42 @@ doctest = false
 default = ["optimism", "ethereum", "pipelines"]
 
 optimism = [
+  "op-alloy",
   "reth-optimism-node",
   "reth-optimism-chainspec",
   "reth-optimism-forks",
+  "reth-node-builder?/op",
 ]
 
 ethereum = [
-  "reth-ethereum",
   "reth-ethereum-payload-builder",
   "reth-basic-payload-builder",
+  "reth-ethereum/evm",
+  "reth-ethereum/node",
 ]
 
-pipelines = ["tokio", "futures", "reth-errors"]
+pipelines = [
+  "tokio",
+  "futures",
+  "reth-transaction-pool",
+  "reth-payload-builder",
+  "reth-ethereum/evm",
+  "reth-ethereum/node",
+]
 
-test-utils = []
+test-utils = [
+  "nanoid",
+  "tokio/full",
+  "alloy-genesis",
+  "rand",
+  "reth-ipc",
+  "reth-rpc-api",
+  "serde_json",
+  "reth-ethereum/test-utils",
+  "reth-node-builder",
+  "op-alloy?/network",
+  "op-alloy?/rpc-types",
+]
 
 [dependencies]
 # internal dependencies
@@ -60,32 +82,38 @@ tokio = { version = "1.46", optional = true }
 # Reth dependencies
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 
 # ethereum dependencies (optional)
 reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
-  "evm",
-  "node-api",
-  "node",
-], optional = true }
 
 # optimism dependencies (optional)
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+op-alloy = { version = "0.18", optional = true }
 
 # pipelines only
-reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+
+# test-utils
+reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+
+nanoid = { version = "0.4", optional = true }
+alloy-genesis = { version = "1.0", optional = true }
+serde_json = { version = "1.0", optional = true }
+rand = { version = "0.9", optional = true }
+
 
 [dev-dependencies]
 nanoid = "0.4"
 ctor = "0.4.2"
-secp256k1 = "0.31"
-sha3 = "0.10"
-tokio = { version = "1.45", features = ["full"] }
+tokio = { version = "1.46", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 alloy-genesis = "1.0"
 rand = "0.9"

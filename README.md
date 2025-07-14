@@ -1,23 +1,27 @@
 # Builder SDK
 
-SDK for building payload builders.
+[![Sanity Check](https://github.com/flashbots/rblib/actions/workflows/sanity.yaml/badge.svg)](https://github.com/flashbots/rblib/actions/workflows/sanity.yaml)
 
+SDK for building payload builders.
 
 ## Example
 
-Minimal library usage example that creates a fully functional block builder using a reth node for ethereum mainnet:
+Minimal library usage example that creates a fully functional block builder using a reth node for Ethereum mainnet:
 
 ```rust
 use rblib::*;
-use {reth::cli::Cli, reth_ethereum::node::{node::EthereumAddOns, EthereumNode}};
 
 fn main() {
- let pipeline = Pipeline::<EthereumMainnet>::default()
+ let pipeline = Pipeline::<Ethereum>::default()
   .with_epilogue(BuilderEpilogue)
-  .with_step(GatherBestTransactions)
-  .with_step(PriorityFeeOrdering)
-  .with_step(TotalProfitOrdering)
-  .with_step(RevertProtection);
+  .with_pipeline(Loop,
+    (
+      AppendOneTransactionFromPool::default(),
+      PriorityFeeOrdering,
+      TotalProfitOrdering,
+      RevertProtection,
+    ),
+  );
 
  Cli::parse_args()
   .run(|builder, _| async move {

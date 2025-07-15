@@ -72,6 +72,7 @@ impl Platform for Optimism {
 	{
 		use {
 			alloy::eips::Encodable2718,
+			op_alloy::consensus::OpPooledTransaction as AlloyPoolTx,
 			reth::revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
 			reth_basic_payload_builder::{BuildOutcomeKind, PayloadConfig},
 			reth_optimism_node::{
@@ -81,16 +82,15 @@ impl Platform for Optimism {
 			reth_payload_util::PayloadTransactionsFixed,
 		};
 
+		let transactions = skip_sequencer_transactions(transactions, block);
+
 		let op_builder = OpBuilder::new(|_| {
 			PayloadTransactionsFixed::new(
 				transactions
 					.into_iter()
 					.map(|recovered| {
 						let encoded_len = recovered.encode_2718_len();
-						OpPooledTransaction::<_, op_alloy::consensus::OpPooledTransaction>::new(
-							recovered,
-							encoded_len,
-						)
+						OpPooledTransaction::<_, AlloyPoolTx>::new(recovered, encoded_len)
 					})
 					.collect(),
 			)
@@ -181,4 +181,41 @@ impl LimitsFactory<Optimism> for OptimismDefaultLimits {
 
 		limits
 	}
+}
+
+/// The op builder will automatically inject all transactions that are in the
+/// payload attributes from the CL node. We will need to ensure that if those
+/// transactions are in the transactions list, they are not duplicated and
+/// removed from the transactions list provided as an argument.
+///
+/// Payload builders might want to explicitly add those transactions during
+/// the progressive payload building process to have visibility into the
+/// state changes they cause and to know the cumulative gas usage including
+/// those txs. This happens for example when a pipeline has a the
+/// `OptimismPrologue` step that applies the sequencer transactions to the
+/// payload before any other step.
+fn skip_sequencer_transactions(
+	transactions: Vec<Recovered<types::Transaction<Optimism>>>,
+	block: &BlockContext<Optimism>,
+) -> Vec<Recovered<types::Transaction<Optimism>>> {
+	let sequencer_txs = block
+		.attributes()
+		.transactions
+		.iter()
+		.map(|tx| tx.value().tx_hash());
+
+	let mut prefix_len = 0;
+	for (ix, sequencer_tx) in sequencer_txs.enumerate() {
+		if transactions
+			.get(ix)
+			.is_some_and(|tx| tx.tx_hash() == sequencer_tx)
+		{
+			prefix_len += 1;
+		}
+	}
+
+	transactions
+		.into_iter()
+		.skip(prefix_len)
+		.collect::<Vec<_>>()
 }

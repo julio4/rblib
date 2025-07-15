@@ -79,10 +79,12 @@ async fn all_transactions_included_ethereum() {
 
 #[tokio::test]
 async fn all_transactions_included_optimism() {
-	let pipeline = Pipeline::default().with_pipeline(
-		Loop,
-		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
-	);
+	let pipeline = Pipeline::default()
+		.with_prologue(OptimismPrologue)
+		.with_pipeline(
+			Loop,
+			(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
+		);
 
 	let node = Optimism::create_test_node(pipeline).await.unwrap();
 

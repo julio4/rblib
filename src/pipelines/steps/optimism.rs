@@ -17,7 +17,7 @@ impl Step<Optimism> for OptimismPrologue {
 				format!(
 					"Optimism sequencer transactions must be at the top of the block. \
 					 This payload already has {existing_transactions_count} \
-					 transactions.",
+					 transaction(s).",
 				)
 				.into(),
 			));
@@ -58,7 +58,11 @@ impl Step<Optimism> for OptimismPrologue {
 
 #[cfg(test)]
 mod tests {
-	use crate::{steps::OptimismPrologue, tests::OneStep, *};
+	use crate::{
+		steps::OptimismPrologue,
+		tests::{OneStep, TransactionRequestExt},
+		*,
+	};
 
 	#[tokio::test]
 	async fn optimism_sequencer_txs_are_included() {
@@ -70,5 +74,23 @@ mod tests {
 
 		assert_eq!(payload.history().transactions().count(), 1);
 		assert!(payload.transaction().unwrap().is_deposit());
+	}
+
+	#[tokio::test]
+	async fn fails_on_non_empty_payload() {
+		let output = OneStep::new(OptimismPrologue)
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
+			.run()
+			.await
+			.unwrap();
+
+		let ControlFlow::Fail(err) = output else {
+			panic!("Expected Fail, got: {output:?}");
+		};
+
+		assert!(err.to_string().contains(
+			"Optimism sequencer transactions must be at the top of the block. This \
+			 payload already has 1 transaction(s)."
+		));
 	}
 }

@@ -58,14 +58,15 @@ impl<P: Platform> Step<P> for RevertProtection {
 
 #[cfg(test)]
 mod tests {
-	use {super::*, crate::pipelines::tests::*};
+	use {
+		super::*,
+		crate::pipelines::tests::*,
+		alloy::network::TransactionBuilder,
+	};
 
-	#[tokio::test]
-	async fn empty_payload() {
-		let output = OneStep::<Ethereum>::new(RevertProtection)
-			.run()
-			.await
-			.unwrap();
+	#[rblib_test(Ethereum, Optimism)]
+	async fn empty_payload<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(RevertProtection).run().await.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
@@ -75,11 +76,11 @@ mod tests {
 		assert_eq!(payload.history().transactions().count(), 0);
 	}
 
-	#[tokio::test]
-	async fn one_revert_one_ok() {
-		let output = OneStep::<Ethereum>::new(RevertProtection)
-			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
-			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(1))
+	#[rblib_test(Ethereum, Optimism)]
+	async fn one_revert_one_ok<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(RevertProtection)
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(0))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.run()
 			.await
 			.unwrap();
@@ -91,12 +92,12 @@ mod tests {
 		assert_eq!(payload.history().transactions().count(), 1);
 	}
 
-	#[tokio::test]
-	async fn all_revert() {
-		let output = OneStep::<Ethereum>::new(RevertProtection)
-			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(0))
-			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(1))
-			.with_payload_tx(|tx| tx.reverting().with_default_signer().nonce(2))
+	#[rblib_test(Ethereum, Optimism)]
+	async fn all_revert<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(RevertProtection)
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(0))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(2))
 			.run()
 			.await
 			.unwrap();
@@ -109,12 +110,12 @@ mod tests {
 		assert_eq!(payload.history().transactions().count(), 0);
 	}
 
-	#[tokio::test]
-	async fn none_revert() {
-		let output = OneStep::<Ethereum>::new(RevertProtection)
-			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
-			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(1))
-			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(2))
+	#[rblib_test(Ethereum, Optimism)]
+	async fn none_revert<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(RevertProtection)
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(0))
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(1))
+			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(2))
 			.run()
 			.await
 			.unwrap();

@@ -58,14 +58,39 @@ impl Step<Optimism> for OptimismPrologue {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		steps::OptimismPrologue,
-		tests::{OneStep, TransactionRequestExt},
-		*,
+	use {
+		crate::{
+			steps::OptimismPrologue,
+			tests::{OneStep, TransactionRequestExt},
+			*,
+		},
+		std::sync::Arc,
 	};
 
+	struct NoOpStep;
+	impl Step<Optimism> for NoOpStep {
+		async fn step(
+			self: Arc<Self>,
+			payload: Checkpoint<Optimism>,
+			_: StepContext<Optimism>,
+		) -> ControlFlow<Optimism> {
+			ControlFlow::Ok(payload)
+		}
+	}
+
 	#[tokio::test]
-	async fn optimism_sequencer_txs_are_included() {
+	async fn sequencer_txs_not_included_without_step() {
+		let output = OneStep::new(NoOpStep).run().await.unwrap();
+
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		assert_eq!(payload.history().transactions().count(), 0);
+	}
+
+	#[tokio::test]
+	async fn sequencer_txs_are_included() {
 		let output = OneStep::new(OptimismPrologue).run().await.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {

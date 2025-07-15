@@ -17,10 +17,7 @@ use {
 		rpc::types::Block,
 	},
 	alloy_genesis::GenesisAccount,
-	nanoid::nanoid,
 	reth::{
-		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
-		builder::NodeConfig,
 		chainspec::{ChainSpec, DEV, MAINNET},
 		rpc::types::engine::ForkchoiceState,
 	},
@@ -33,7 +30,6 @@ use {
 	reth_ipc::client::IpcClientBuilder,
 	reth_payload_builder::PayloadId,
 	reth_rpc_api::EngineApiClient,
-	std::sync::Arc,
 };
 
 impl NetworkSelector for Ethereum {
@@ -46,7 +42,7 @@ impl TestNodeFactory<Ethereum> for Ethereum {
 	async fn create_test_node(
 		pipeline: Pipeline<Ethereum>,
 	) -> eyre::Result<LocalNode<Ethereum, Self::ConsensusDriver>> {
-		LocalNode::new(EthConsensusDriver, default_node_config(), move |builder| {
+		LocalNode::new(EthConsensusDriver, chainspec(), move |builder| {
 			builder
 				.with_types::<EthereumNode>()
 				.with_components(
@@ -185,35 +181,7 @@ impl ConsensusDriver<Ethereum> for EthConsensusDriver {
 	}
 }
 
-pub fn default_node_config() -> NodeConfig<ChainSpec> {
-	let tempdir = std::env::temp_dir();
-	let random_id = nanoid!();
-	let data_path = tempdir.join(format!("rblib.{random_id}.datadir"));
-
-	std::fs::create_dir_all(&data_path)
-		.expect("Failed to create temporary data directory");
-
-	let rpc_ipc_path = tempdir.join(format!("rblib.{random_id}.rpc-ipc"));
-	let auth_ipc_path = tempdir.join(format!("rblib.{random_id}.auth-ipc"));
-
-	let mut rpc = RpcServerArgs::default().with_auth_ipc();
-	rpc.ws = false;
-	rpc.http = false;
-	rpc.auth_port = 0;
-	rpc.ipcpath = rpc_ipc_path.to_string_lossy().into();
-	rpc.auth_ipc_path = auth_ipc_path.to_string_lossy().into();
-
-	let mut network = NetworkArgs::default().with_unused_ports();
-	network.discovery.disable_discovery = true;
-
-	let datadir = DatadirArgs {
-		datadir: data_path
-			.to_string_lossy()
-			.parse()
-			.expect("Failed to parse data dir path"),
-		static_files_path: None,
-	};
-
+fn chainspec() -> ChainSpec {
 	let funded_accounts = FundedAccounts::addresses().map(|address| {
 		let account =
 			GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH));
@@ -226,9 +194,5 @@ pub fn default_node_config() -> NodeConfig<ChainSpec> {
 		.extend_accounts(funded_accounts)
 		.with_gas_limit(DEFAULT_BLOCK_GAS_LIMIT);
 	chainspec.hardforks = MAINNET.hardforks.clone();
-
-	NodeConfig::new(Arc::new(chainspec))
-		.with_datadir_args(datadir)
-		.with_rpc(rpc)
-		.with_network(network)
+	chainspec
 }

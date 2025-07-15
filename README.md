@@ -39,3 +39,18 @@ fn main() {
   .unwrap();
 }
 ```
+
+
+## Testing and debugging
+
+Running all tests in the workspace:
+
+```terminal
+cargo test
+```
+
+Debugging a specific test with output logs:
+
+```terminal
+TEST_TRACE=on cargo test smoke::all_transactions_included_ethereum
+```

@@ -20,24 +20,18 @@ use {
 		providers::Provider,
 	},
 	alloy_genesis::{Genesis, GenesisAccount},
-	nanoid::nanoid,
 	op_alloy::{
 		consensus::{OpTxEnvelope, OpTypedTransaction, TxDeposit},
 		rpc_types::Transaction,
 	},
-	reth::{
-		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
-		rpc::types::{Block, engine::ForkchoiceState},
-	},
+	reth::rpc::types::{Block, engine::ForkchoiceState},
 	reth_ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
 	reth_ipc::client::IpcClientBuilder,
-	reth_node_builder::NodeConfig,
 	reth_optimism_chainspec::OpChainSpec,
 	reth_optimism_node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
 	reth_optimism_rpc::OpEngineApiClient,
 	reth_payload_builder::PayloadId,
 	serde_json::from_str,
-	std::sync::Arc,
 };
 
 impl NetworkSelector for Optimism {
@@ -50,20 +44,16 @@ impl TestNodeFactory<Optimism> for Optimism {
 	async fn create_test_node(
 		pipeline: Pipeline<Optimism>,
 	) -> eyre::Result<LocalNode<Optimism, Self::ConsensusDriver>> {
-		LocalNode::new(
-			OptimismConsensusDriver,
-			default_node_config(),
-			move |builder| {
-				builder
-					.with_types::<OpNode>()
-					.with_components(
-						OpNode::default()
-							.components()
-							.payload(pipeline.into_service()),
-					)
-					.with_add_ons(OpAddOns::default())
-			},
-		)
+		LocalNode::new(OptimismConsensusDriver, chainspec(), move |builder| {
+			builder
+				.with_types::<OpNode>()
+				.with_components(
+					OpNode::default()
+						.components()
+						.payload(pipeline.into_service()),
+				)
+				.with_add_ons(OpAddOns::default())
+		})
 		.await
 	}
 }
@@ -229,35 +219,7 @@ impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
 	}
 }
 
-pub fn default_node_config() -> NodeConfig<OpChainSpec> {
-	let tempdir = std::env::temp_dir();
-	let random_id = nanoid!();
-	let data_path = tempdir.join(format!("rblib.{random_id}.datadir"));
-
-	std::fs::create_dir_all(&data_path)
-		.expect("Failed to create temporary data directory");
-
-	let rpc_ipc_path = tempdir.join(format!("rblib.{random_id}.rpc-ipc"));
-	let auth_ipc_path = tempdir.join(format!("rblib.{random_id}.auth-ipc"));
-
-	let mut rpc = RpcServerArgs::default().with_auth_ipc();
-	rpc.ws = false;
-	rpc.http = false;
-	rpc.auth_port = 0;
-	rpc.ipcpath = rpc_ipc_path.to_string_lossy().into();
-	rpc.auth_ipc_path = auth_ipc_path.to_string_lossy().into();
-
-	let mut network = NetworkArgs::default().with_unused_ports();
-	network.discovery.disable_discovery = true;
-
-	let datadir = DatadirArgs {
-		datadir: data_path
-			.to_string_lossy()
-			.parse()
-			.expect("Failed to parse data dir path"),
-		static_files_path: None,
-	};
-
+fn chainspec() -> OpChainSpec {
 	let funded_accounts = FundedAccounts::addresses().map(|address| {
 		let account =
 			GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH));
@@ -267,12 +229,7 @@ pub fn default_node_config() -> NodeConfig<OpChainSpec> {
 	let genesis = include_str!("./artifacts/genesis.json.tmpl");
 	let genesis: Genesis = from_str(genesis).expect("invalid genesis JSON");
 	let genesis = genesis.extend_accounts(funded_accounts);
-	let chain_spec = OpChainSpec::from_genesis(genesis);
-
-	NodeConfig::new(Arc::new(chain_spec))
-		.with_datadir_args(datadir)
-		.with_rpc(rpc)
-		.with_network(network)
+	OpChainSpec::from_genesis(genesis)
 }
 
 // L1 block info for OP mainnet block 124665056 (stored in input of tx at index

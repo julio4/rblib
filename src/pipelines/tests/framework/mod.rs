@@ -8,7 +8,13 @@ use {
 	reth_payload_builder::PayloadId,
 };
 // public test utils exports
-pub use {accounts::FundedAccounts, node::LocalNode, step::OneStep, utils::*};
+pub use {
+	accounts::FundedAccounts,
+	node::LocalNode,
+	pipelines_tests_macros::rblib_test,
+	step::OneStep,
+	utils::*,
+};
 
 mod accounts;
 mod node;
@@ -17,15 +23,6 @@ mod utils;
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
-
-/// A type used in tests to bind alloy's network traits to a specific platform.
-pub trait NetworkSelector {
-	type Network: alloy::network::Network<
-			UnsignedTx: SignableTransaction<Signature>,
-			TxEnvelope: From<Signed<select::UnsignedTx<Self>, Signature>>
-			              + SignedTransaction,
-		>;
-}
 
 #[cfg(feature = "ethereum")]
 mod ethereum;
@@ -65,6 +62,15 @@ pub trait ConsensusDriver<P: Platform + NetworkSelector>:
 	) -> impl Future<Output = eyre::Result<select::BlockResponse<P>>>;
 }
 
+/// A type used in tests to bind alloy's network traits to a specific platform.
+pub trait NetworkSelector {
+	type Network: alloy::network::Network<
+			UnsignedTx: SignableTransaction<Signature>,
+			TxEnvelope: From<Signed<select::UnsignedTx<Self>, Signature>>
+			              + SignedTransaction,
+		>;
+}
+
 /// This trait is used to automatically select the correct local test node type
 /// based on the platform that is being tested.
 pub trait TestNodeFactory<P: crate::Platform + NetworkSelector> {
@@ -73,6 +79,25 @@ pub trait TestNodeFactory<P: crate::Platform + NetworkSelector> {
 	fn create_test_node(
 		pipeline: crate::Pipeline<P>,
 	) -> impl Future<Output = eyre::Result<node::LocalNode<P, Self::ConsensusDriver>>>;
+}
+
+/// A helper trait that is automatically implemented for all platform
+/// implementations that have a `TestNodeFactory` implementation and a
+/// `NetworkSelector` implementation.
+///
+/// This allows the `rblib_test` macro to automatically synthesize tests for
+/// many platforms without needing to create separate versions of the test for
+/// each platform.
+pub trait TestablePlatform:
+	Platform + NetworkSelector + TestNodeFactory<Self>
+{
+}
+
+/// Blanket implementation for all platforms that implement `Platform` and
+/// `NetworkSelector` and `TestNodeFactory`.
+impl<T> TestablePlatform for T where
+	T: Platform + NetworkSelector + TestNodeFactory<T>
+{
 }
 
 mod select {

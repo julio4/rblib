@@ -20,12 +20,20 @@ use {
 		time::Duration,
 	},
 	futures::FutureExt,
+	nanoid::nanoid,
 	reth::{
+		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
 		chainspec::EthChainSpec,
 		core::exit::NodeExitFuture,
-		tasks::TaskManager,
+		tasks::{TaskExecutor, TaskManager},
 	},
-	reth_ethereum::provider::db::{DatabaseEnv, test_utils::TempDatabase},
+	reth_ethereum::provider::db::{
+		ClientVersion,
+		DatabaseEnv,
+		init_db,
+		mdbx::{DatabaseArguments, KILOBYTE, MEGABYTE, MaxReadTransactionDuration},
+		test_utils::{ERROR_DB_CREATION, TempDatabase},
+	},
 	reth_node_builder::{rpc::RethRpcAddOns, *},
 	std::{
 		sync::Arc,
@@ -53,8 +61,8 @@ where
 	config: NodeConfig<types::ChainSpec<P>>,
 	/// The provider used to interact with the node.
 	provider: RootProvider<select::Network<P>>,
-	/// The task manager used to manage tasks in the node.
-	task_manager: Option<TaskManager>,
+	/// The task manager used to manage async tasks in the node.
+	tasks: Option<TaskManager>,
 	/// The block time used by the node.
 	block_time: Duration,
 	/// Keeps reth alive, this is used to ensure that the node does not exit
@@ -76,7 +84,7 @@ where
 	/// reth node configuration specific to the platform and network.
 	pub async fn new<NodeBuilderFn, T, CB, AO>(
 		consensus: C,
-		config: NodeConfig<types::ChainSpec<P>>,
+		chainspec: types::ChainSpec<P>,
 		build_node: NodeBuilderFn,
 	) -> eyre::Result<Self>
 	where
@@ -86,7 +94,7 @@ where
 					NodeBuilder<Arc<TempDatabase<DatabaseEnv>>, types::ChainSpec<P>>,
 				>,
 			) -> WithLaunchContext<NodeBuilderWithComponents<T, CB, AO>>,
-		T: FullNodeTypes,
+		T: FullNodeTypes<Types = P::NodeTypes>,
 		CB: NodeComponentsBuilder<T>,
 		AO: RethRpcAddOns<NodeAdapter<T, CB::Components>> + 'static,
 		EngineNodeLauncher: LaunchNode<
@@ -94,18 +102,15 @@ where
 				Node = NodeHandle<NodeAdapter<T, CB::Components>, AO>,
 			>,
 	{
-		let task_manager = TaskManager::new(tokio::runtime::Handle::current());
-		let task_executor = task_manager.executor();
 		let (rpc_ready_tx, rpc_ready_rx) = oneshot::channel::<()>();
-
-		let node_builder = build_node(
-			NodeBuilder::new(config.clone()).testing_node(task_executor.clone()),
-		)
-		.on_rpc_started(move |_, _| {
+		let tasks = TaskManager::new(tokio::runtime::Handle::current());
+		let node_builder = create_node_builder::<P>(tasks.executor(), chainspec);
+		let node_builder = build_node(node_builder).on_rpc_started(move |_, _| {
 			let _ = rpc_ready_tx.send(());
 			Ok(())
 		});
 
+		let config = node_builder.config().clone();
 		let node_handle = node_builder.launch();
 		let node_handle = Box::pin(node_handle).await?;
 
@@ -126,8 +131,8 @@ where
 			exit_future,
 			config,
 			provider,
+			tasks: Some(tasks),
 			block_time: Self::MIN_BLOCK_TIME,
-			task_manager: Some(task_manager),
 			_node_handle: node_handle,
 		})
 	}
@@ -309,9 +314,8 @@ where
 	C: ConsensusDriver<P>,
 {
 	fn drop(&mut self) {
-		if let Some(task_manager) = self.task_manager.take() {
-			task_manager.graceful_shutdown_with_timeout(Duration::from_secs(3));
-
+		if let Some(tasks) = self.tasks.take() {
+			tasks.graceful_shutdown_with_timeout(Duration::from_secs(3));
 			std::fs::remove_dir_all(self.config.datadir().to_string())
 				.unwrap_or_else(|e| {
 					panic!(
@@ -333,4 +337,68 @@ where
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 		self.get_mut().exit_future.poll_unpin(cx)
 	}
+}
+
+fn create_node_builder<P: Platform>(
+	executor: TaskExecutor,
+	chainspec: types::ChainSpec<P>,
+) -> WithLaunchContext<
+	NodeBuilder<Arc<TempDatabase<DatabaseEnv>>, types::ChainSpec<P>>,
+>
+where
+	types::ChainSpec<P>: EthChainSpec,
+{
+	let tempdir = std::env::temp_dir();
+	let random_id = nanoid!();
+	let data_path = tempdir.join(format!("rblib.{random_id}.datadir"));
+
+	std::fs::create_dir_all(&data_path)
+		.expect("Failed to create temporary data directory");
+
+	let rpc_ipc_path = tempdir.join(format!("rblib.{random_id}.rpc-ipc"));
+	let auth_ipc_path = tempdir.join(format!("rblib.{random_id}.auth-ipc"));
+
+	let mut rpc = RpcServerArgs::default().with_auth_ipc();
+	rpc.ws = false;
+	rpc.http = false;
+	rpc.auth_port = 0;
+	rpc.ipcpath = rpc_ipc_path.to_string_lossy().into();
+	rpc.auth_ipc_path = auth_ipc_path.to_string_lossy().into();
+
+	let mut network = NetworkArgs::default().with_unused_ports();
+	network.discovery.disable_discovery = true;
+
+	let datadir = DatadirArgs {
+		datadir: data_path
+			.to_string_lossy()
+			.parse()
+			.expect("Failed to parse data dir path"),
+		static_files_path: None,
+	};
+
+	let db_path = datadir
+		.datadir
+		.unwrap_or_chain_default(chainspec.chain(), datadir.clone())
+		.db();
+
+	let config = NodeConfig::new(Arc::new(chainspec))
+		.with_datadir_args(datadir)
+		.with_rpc(rpc)
+		.with_network(network);
+
+	NodeBuilder::new(config)
+		.with_database(Arc::new(TempDatabase::new(
+			init_db(
+				db_path.as_path(),
+				DatabaseArguments::new(ClientVersion::default())
+					.with_max_read_transaction_duration(Some(
+						MaxReadTransactionDuration::Unbounded,
+					))
+					.with_geometry_max_size(Some(4 * MEGABYTE))
+					.with_growth_step(Some(4 * KILOBYTE)),
+			)
+			.expect(ERROR_DB_CREATION),
+			db_path,
+		)))
+		.with_launch_context(executor)
 }

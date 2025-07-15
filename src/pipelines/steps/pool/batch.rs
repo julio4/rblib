@@ -123,21 +123,24 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 mod tests {
 	use {
 		super::*,
-		crate::pipelines::tests::{OneStep, TransactionRequestExt},
+		crate::{
+			pipelines::tests::{OneStep, TransactionRequestExt},
+			tests::{TestablePlatform, *},
+		},
 	};
 
-	#[tokio::test]
-	async fn empty_pool() {
-		let output = OneStep::<Ethereum>::new(GatherBestTransactions).run().await;
+	#[rblib_test(Ethereum, Optimism)]
+	async fn empty_pool<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(GatherBestTransactions).run().await;
 		let Ok(ControlFlow::Ok(payload)) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 		assert_eq!(payload.history().transactions().count(), 0);
 	}
 
-	#[tokio::test]
-	async fn one_transaction() {
-		let output = OneStep::<Ethereum>::new(GatherBestTransactions)
+	#[rblib_test(Ethereum, Optimism)]
+	async fn one_transaction<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(GatherBestTransactions)
 			.with_pool_tx(|builder| builder.transfer())
 			.run()
 			.await;
@@ -147,10 +150,10 @@ mod tests {
 		assert_eq!(payload.history().transactions().count(), 1);
 	}
 
-	#[tokio::test]
-	async fn many_transactions() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn many_transactions<P: TestablePlatform>() {
 		const COUNT: usize = 15;
-		let mut step = OneStep::<Ethereum>::new(GatherBestTransactions);
+		let mut step = OneStep::<P>::new(GatherBestTransactions);
 
 		for _ in 0..COUNT {
 			step = step.with_pool_tx(|builder| builder.transfer());
@@ -165,12 +168,12 @@ mod tests {
 		assert_eq!(payload.history().transactions().count(), COUNT);
 	}
 
-	#[tokio::test]
-	async fn too_many_transactions() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn too_many_transactions<P: TestablePlatform>() {
 		const COUNT: usize = 200;
 		const EXPECTED: usize = 100;
 
-		let mut output = OneStep::<Ethereum>::new(GatherBestTransactions)
+		let mut output = OneStep::<P>::new(GatherBestTransactions)
 			.with_limits(Limits::with_gas_limit(21000 * EXPECTED as u64));
 
 		for _ in 0..COUNT {

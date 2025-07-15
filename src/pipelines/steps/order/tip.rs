@@ -51,7 +51,7 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 			ordered_prefix = match ordered_prefix.apply(tx.clone()) {
 				Ok(checkpoint) => checkpoint,
 				Err(e) => {
-					return ControlFlow::Fail(PayloadBuilderError::other(Box::new(e)));
+					return ControlFlow::Fail(PayloadBuilderError::other(e));
 				}
 			}
 		}
@@ -162,22 +162,26 @@ impl<'a, P: Platform> TxsQueue<'a, P> {
 mod tests {
 	use {
 		super::*,
-		crate::pipelines::tests::{FundedAccounts, OneStep, TransactionRequestExt},
-		alloy::consensus::Transaction,
+		crate::{
+			pipelines::tests::{FundedAccounts, OneStep, TransactionRequestExt},
+			tests::TestablePlatform,
+		},
+		alloy::{consensus::Transaction, network::TransactionBuilder},
+		pipelines_tests_macros::rblib_test,
 	};
 
-	async fn test_ordering(
+	async fn test_ordering<P: TestablePlatform>(
 		payload: Vec<(u32, u64, u128)>, // signer_id, nonce, tip
 		expected: Vec<(u32, u64, u128)>,
 	) {
-		let mut step = OneStep::<Ethereum>::new(PriorityFeeOrdering);
+		let mut step = OneStep::<P>::new(PriorityFeeOrdering);
 
 		for (sender_id, nonce, tip) in payload {
 			step = step.with_payload_tx(move |b| {
 				b.transfer()
 					.with_funded_signer(sender_id)
-					.nonce(nonce)
-					.max_priority_fee_per_gas(tip)
+					.with_nonce(nonce)
+					.with_max_priority_fee_per_gas(tip)
 			});
 		}
 
@@ -199,13 +203,13 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn empty_payload() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn empty_payload<P: TestablePlatform>() {
 		let payload = vec![];
-		test_ordering(payload.clone(), payload).await;
+		test_ordering::<P>(payload.clone(), payload).await;
 	}
 
-	#[tokio::test]
+	#[rblib_test(Ethereum, Optimism)]
 	async fn correct_order_remains_unchanged_nonce_deps() {
 		let payload = vec![
 			(1, 0, 170),
@@ -218,11 +222,13 @@ mod tests {
 			(2, 3, 170),
 		];
 
-		test_ordering(payload.clone(), payload).await;
+		test_ordering::<P>(payload.clone(), payload).await;
 	}
 
-	#[tokio::test]
-	async fn correct_order_remains_unchanged_no_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn correct_order_remains_unchanged_no_nonce_deps<
+		P: TestablePlatform,
+	>() {
 		let payload = vec![
 			(1, 0, 170),
 			(2, 0, 160),
@@ -234,11 +240,11 @@ mod tests {
 			(8, 0, 110),
 		];
 
-		test_ordering(payload.clone(), payload).await;
+		test_ordering::<P>(payload.clone(), payload).await;
 	}
 
-	#[tokio::test]
-	async fn everything_unordered_no_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn everything_unordered_no_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(1, 0, 170),
 			(2, 0, 150),
@@ -261,11 +267,11 @@ mod tests {
 			(4, 0, 120),
 		];
 
-		test_ordering(payload, expected).await;
+		test_ordering::<P>(payload, expected).await;
 	}
 
-	#[tokio::test]
-	async fn everything_unordered_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn everything_unordered_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(1, 0, 170),
 			(2, 0, 150),
@@ -288,11 +294,11 @@ mod tests {
 			(1, 1, 120),
 		];
 
-		test_ordering(payload, expected).await;
+		test_ordering::<P>(payload, expected).await;
 	}
 
-	#[tokio::test]
-	async fn partially_unordered_no_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn partially_unordered_no_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(6, 0, 190),
 			(5, 0, 175),
@@ -314,11 +320,11 @@ mod tests {
 			(4, 0, 120),
 		];
 
-		test_ordering(payload, expected).await;
+		test_ordering::<P>(payload, expected).await;
 	}
 
-	#[tokio::test]
-	async fn partially_unordered_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn partially_unordered_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(6, 0, 190),
 			(5, 0, 175),
@@ -340,11 +346,11 @@ mod tests {
 			(4, 1, 155),
 		];
 
-		test_ordering(payload, expected).await;
+		test_ordering::<P>(payload, expected).await;
 	}
 
-	#[tokio::test]
-	async fn only_last_pair_unordered_no_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn only_last_pair_unordered_no_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(6, 0, 190),
 			(5, 0, 175),
@@ -366,11 +372,11 @@ mod tests {
 			(4, 0, 120),
 		];
 
-		test_ordering(payload, expected).await;
+		test_ordering::<P>(payload, expected).await;
 	}
 
-	#[tokio::test]
-	async fn only_last_pair_unordered_nonce_deps() {
+	#[rblib_test(Ethereum, Optimism)]
+	async fn only_last_pair_unordered_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(6, 0, 190),
 			(5, 0, 175),
@@ -392,6 +398,6 @@ mod tests {
 			(4, 1, 140),
 		];
 
-		test_ordering(payload, expected).await;
+		test_ordering::<P>(payload, expected).await;
 	}
 }

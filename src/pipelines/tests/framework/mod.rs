@@ -1,9 +1,3 @@
-mod accounts;
-mod driver;
-mod node;
-mod step;
-mod utils;
-
 use {
 	crate::Platform,
 	alloy::{
@@ -13,7 +7,13 @@ use {
 	reth_ethereum::primitives::SignedTransaction,
 	reth_payload_builder::PayloadId,
 };
+// public test utils exports
 pub use {accounts::FundedAccounts, node::LocalNode, step::OneStep, utils::*};
+
+mod accounts;
+mod node;
+mod step;
+mod utils;
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;

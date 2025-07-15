@@ -58,10 +58,10 @@ impl Platform for Optimism {
 
 	#[cfg(feature = "pipelines")]
 	fn construct_payload<Pool, Provider>(
-		_block: &BlockContext<Self>,
-		_transactions: Vec<Recovered<types::Transaction<Self>>>,
-		_transaction_pool: &Pool,
-		_provider: &Provider,
+		block: &BlockContext<Self>,
+		transactions: Vec<Recovered<types::Transaction<Self>>>,
+		_: &Pool,
+		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
 		reth_payload_builder::PayloadBuilderError,
@@ -70,7 +70,68 @@ impl Platform for Optimism {
 		Pool: traits::PoolBounds<Self>,
 		Provider: traits::ProviderBounds<Self>,
 	{
-		todo!("Optimism::into_built_payload not implemented yet")
+		use {
+			alloy::eips::Encodable2718,
+			reth::revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
+			reth_basic_payload_builder::{BuildOutcomeKind, PayloadConfig},
+			reth_optimism_node::{
+				OpDAConfig,
+				payload::builder::{OpBuilder, OpPayloadBuilderCtx},
+			},
+			reth_payload_util::PayloadTransactionsFixed,
+		};
+
+		let op_builder = OpBuilder::new(|_| {
+			PayloadTransactionsFixed::new(
+				transactions
+					.into_iter()
+					.map(|recovered| {
+						let encoded_len = recovered.encode_2718_len();
+						OpPooledTransaction::<_, op_alloy::consensus::OpPooledTransaction>::new(
+							recovered,
+							encoded_len,
+						)
+					})
+					.collect(),
+			)
+		});
+
+		let context = OpPayloadBuilderCtx {
+			evm_config: block.evm_config(),
+			da_config: OpDAConfig::default(),
+			chain_spec: block.chainspec().clone(),
+			config: PayloadConfig::<types::PayloadBuilderAttributes<Self>, _>::new(
+				block.parent().clone().into(),
+				(*block.attributes()).clone(),
+			),
+			cancel: CancelOnDrop::default(),
+			best_payload: None,
+		};
+
+		// Top of Block chain state.
+		let state_provider = provider.state_by_block_hash(block.parent().hash())?;
+
+		// Invoke the builder implementation from reth-optimism-node.
+		let build_outcome = op_builder.build(
+			StateProviderDatabase(&state_provider),
+			&state_provider,
+			context,
+		)?;
+
+		// extract the built payload from the build outcome.
+		let built_payload = match build_outcome {
+			BuildOutcomeKind::Better { payload }
+			| BuildOutcomeKind::Freeze(payload) => payload,
+			BuildOutcomeKind::Aborted { .. } => unreachable!(
+				"We are not providing the best_payload argument to the builder."
+			),
+			BuildOutcomeKind::Cancelled => {
+				unreachable!("CancelOnDrop is not dropped in this context.")
+			}
+		};
+
+		// Done!
+		Ok(built_payload)
 	}
 }
 
@@ -79,12 +140,45 @@ impl Platform for Optimism {
 pub struct OptimismDefaultLimits;
 
 #[cfg(feature = "pipelines")]
-impl<P: Platform> LimitsFactory<P> for OptimismDefaultLimits {
+impl LimitsFactory<Optimism> for OptimismDefaultLimits {
 	fn create(
 		&self,
-		_block: &BlockContext<P>,
-		_enclosing: Option<&Limits>,
+		block: &BlockContext<Optimism>,
+		enclosing: Option<&Limits>,
 	) -> Limits {
-		todo!("OptimismDefaultLimits::create not implemented yet")
+		use {
+			alloy::consensus::BlockHeader,
+			reth::chainspec::EthChainSpec,
+			std::time::Instant,
+		};
+		let mut limits = Limits::with_gas_limit(
+			block
+				.attributes()
+				.gas_limit
+				.unwrap_or_else(|| block.parent().header().gas_limit()),
+		)
+		.with_deadline(
+			Instant::now()
+				+ std::time::Duration::from_secs(
+					block.attributes().payload_attributes.timestamp
+						- std::time::SystemTime::now()
+							.duration_since(std::time::UNIX_EPOCH)
+							.unwrap_or_default()
+							.as_secs(),
+				),
+		);
+
+		if let Some(blob_params) = block
+			.chainspec()
+			.blob_params_at_timestamp(block.attributes().payload_attributes.timestamp)
+		{
+			limits = limits.with_blob_params(blob_params);
+		}
+
+		if let Some(enclosing) = enclosing {
+			limits = limits.clamp(enclosing);
+		}
+
+		limits
 	}
 }

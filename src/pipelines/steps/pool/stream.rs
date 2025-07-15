@@ -100,7 +100,7 @@ impl<P: Platform> Step<P> for AppendOneTransactionFromPool {
 		loop {
 			// check if we have reached the deadline
 			if let Some(deadline) = ctx.limits().deadline {
-				if deadline >= Instant::now() {
+				if deadline <= Instant::now() {
 					// stop the loop and return the current payload
 					return ControlFlow::Break(payload);
 				}

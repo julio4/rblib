@@ -160,7 +160,6 @@ where
 		&self,
 		attribs: <Self::Job as RethPayloadJobTrait>::PayloadAttributes,
 	) -> Result<Self::Job, PayloadBuilderError> {
-		debug!("PayloadJobGenerator::new_payload_job {attribs:#?}");
 		let header = if attribs.parent().is_zero() {
 			self.service.provider().latest_header()?.ok_or_else(|| {
 				PayloadBuilderError::MissingParentHeader(attribs.parent())

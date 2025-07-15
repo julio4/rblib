@@ -34,7 +34,7 @@ async fn pipeline_with_no_txs_builds_empty_payload() {
 }
 
 #[tokio::test]
-async fn all_transactions_included() {
+async fn all_transactions_included_ethereum() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
@@ -44,11 +44,7 @@ async fn all_transactions_included() {
 
 	let mut transfers = vec![];
 	for i in 0..10 {
-		let tx = node
-			.build_tx()
-			.transfer()
-			.with_value(U256::from(i))
-			.with_random_priority_fee();
+		let tx = node.build_tx().transfer().with_value(U256::from(i + 1));
 		transfers.push(*node.send_tx(tx).await.unwrap().tx_hash());
 	}
 
@@ -56,13 +52,7 @@ async fn all_transactions_included() {
 	for i in 0..4 {
 		reverts.push(
 			*node
-				.send_tx(
-					node
-						.build_tx()
-						.reverting()
-						.with_value(U256::from(3000 + i))
-						.with_random_priority_fee(),
-				)
+				.send_tx(node.build_tx().reverting().with_value(U256::from(3000 + i)))
 				.await
 				.unwrap()
 				.tx_hash(),
@@ -83,7 +73,50 @@ async fn all_transactions_included() {
 		"Block should not include any reverts"
 	);
 
+	assert_eq!(block.header.number, 1);
 	assert_eq!(block.transactions.len(), transfers.len() + reverts.len());
+}
+
+#[tokio::test]
+async fn all_transactions_included_optimism() {
+	let pipeline = Pipeline::default().with_pipeline(
+		Loop,
+		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
+	);
+
+	let node = Optimism::create_test_node(pipeline).await.unwrap();
+
+	let mut transfers = vec![];
+	for i in 0..10 {
+		let tx = node.build_tx().transfer().with_value(U256::from(i + 1));
+		transfers.push(*node.send_tx(tx).await.unwrap().tx_hash());
+	}
+
+	let mut reverts = vec![];
+	for i in 0..4 {
+		let tx = node.build_tx().reverting().with_value(U256::from(3000 + i));
+		reverts.push(*node.send_tx(tx).await.unwrap().tx_hash());
+	}
+
+	let block = node.next_block().await.unwrap();
+
+	info!("Block built: {block:#?}");
+
+	assert!(
+		block.includes(&transfers),
+		"Block should include all valid transfers"
+	);
+
+	assert!(
+		block.includes(&reverts),
+		"Block should not include any reverts"
+	);
+
+	assert_eq!(block.header.number, 1);
+	assert_eq!(
+		block.transactions.len(),
+		transfers.len() + reverts.len() + 1 // +1 for system deposit tx
+	);
 }
 
 #[tokio::test]

@@ -314,25 +314,81 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	}
 
 	/// Gets account code by its hash.
-	fn code_by_hash_ref(
-		&self,
-		_code_hash: B256,
-	) -> Result<Bytecode, Self::Error> {
-		todo!()
+	fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+		// we want to probe the history of checkpoints in reverse order,
+		// starting from the most recent one, to find the first checkpoint
+		// that has created the code with the given hash.
+		// TODO: This is highly inefficient, optimize this asap.
+
+		for checkpoint in self.history().into_iter().rev() {
+			for account in checkpoint.state().iter().flat_map(|state| state.values())
+			{
+				if account.info.code_hash == code_hash {
+					return Ok(
+						account
+							.info
+							.code
+							.as_ref()
+							.expect("Code should be present")
+							.clone(),
+					);
+				}
+			}
+		}
+
+		Ok(
+			self
+				.block()
+				.base_state()
+				.bytecode_by_hash(&code_hash)?
+				.unwrap_or_default()
+				.0,
+		)
 	}
 
 	/// Gets storage value of address at index.
 	fn storage_ref(
 		&self,
-		_address: Address,
-		_index: U256,
+		address: Address,
+		index: U256,
 	) -> Result<StorageValue, Self::Error> {
-		todo!()
+		// traverse checkpoints history looking for the first checkpoint that
+		// has touched the given address.
+		for checkpoint in self.history().into_iter().rev() {
+			if let Some(account) =
+				checkpoint.state().and_then(|state| state.get(&address))
+			{
+				return Ok(
+					account
+						.storage
+						.get(&index)
+						.map(|slot| slot.present_value)
+						.unwrap_or_default(),
+				);
+			}
+		}
+
+		// none of the checkpoints prior to this have touched this address,
+		// now we need to check if the account exists in the base state of the
+		// block context.
+		Ok(
+			self
+				.block()
+				.base_state()
+				.storage(address, index.into())?
+				.unwrap_or_default(),
+		)
 	}
 
 	/// Gets block hash by block number.
-	fn block_hash_ref(&self, _number: u64) -> Result<B256, Self::Error> {
-		todo!()
+	fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+		Ok(
+			self
+				.block()
+				.base_state()
+				.block_hash(number)?
+				.unwrap_or_default(),
+		)
 	}
 }
 

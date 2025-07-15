@@ -29,7 +29,7 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 		loop {
 			// check if we have reached the deadline
 			if let Some(deadline) = ctx.limits().deadline {
-				if deadline >= Instant::now() {
+				if deadline <= Instant::now() {
 					// We have reached the deadline, stop this step.
 					return ControlFlow::Ok(payload);
 				}

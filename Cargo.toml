@@ -29,6 +29,7 @@ optimism = [
   "reth-optimism-chainspec",
   "reth-optimism-forks",
   "reth-node-builder?/op",
+  "reth-payload-util",
 ]
 
 ethereum = [
@@ -91,10 +92,12 @@ reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", t
 reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 
 # optimism dependencies (optional)
+op-alloy = { version = "0.18", features = ["consensus"], optional = true }
 reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-op-alloy = { version = "0.18", optional = true }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-payload-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 
 # pipelines only
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
@@ -126,9 +129,15 @@ reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", f
 ] }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 
+
 [dev-dependencies.op-alloy]
 version = "0.18"
 features = ["network", "rpc-types"]
+
+[dev-dependencies.reth-optimism-rpc]
+git = "https://github.com/paradigmxyz/reth"
+tag = "v1.5.1"
+features = ["client"]
 
 [lints.rust]
 type_alias_bounds = "allow"

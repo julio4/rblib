@@ -3,9 +3,9 @@ use {
 	alloy::{
 		consensus::{SignableTransaction, Signed},
 		hex,
-		network::{Network, TransactionBuilder, TxSignerSync},
+		network::{Network, TransactionBuilder, TransactionResponse, TxSignerSync},
 		primitives::{Address, Bytes, TxHash, TxKind, U256},
-		rpc::types::{Block, BlockTransactionHashes, Transaction},
+		rpc::types::Block,
 		signers::Signature,
 	},
 };
@@ -14,22 +14,12 @@ pub trait BlockTransactionsExt {
 	fn includes(&self, txs: &impl AsTxs) -> bool;
 }
 
-impl BlockTransactionsExt for Block<Transaction> {
+impl<T: TransactionResponse> BlockTransactionsExt for Block<T> {
 	fn includes(&self, txs: &impl AsTxs) -> bool {
 		txs
 			.as_txs()
 			.into_iter()
 			.all(|tx| self.transactions.hashes().any(|included| included == tx))
-	}
-}
-
-impl BlockTransactionsExt for BlockTransactionHashes<'_, Transaction> {
-	fn includes(&self, txs: &impl AsTxs) -> bool {
-		let mut included_tx_iter = self.clone();
-		txs
-			.as_txs()
-			.iter()
-			.all(|tx| included_tx_iter.any(|included| included == *tx))
 	}
 }
 

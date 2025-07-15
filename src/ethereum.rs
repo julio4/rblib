@@ -132,35 +132,35 @@ impl<P: Platform> LimitsFactory<P> for EthereumDefaultLimits {
 		block: &BlockContext<P>,
 		enclosing: Option<&Limits>,
 	) -> Limits {
-		use alloy::consensus::BlockHeader;
+		use {alloy::consensus::BlockHeader, std::time::Instant};
 		let timestamp = block.attributes().timestamp();
 		let parent_gas_limit = block.parent().gas_limit();
-		let mut gas_limit = self.0.gas_limit(parent_gas_limit);
+		let gas_limit = self.0.gas_limit(parent_gas_limit);
+		let mut limits = Limits::with_gas_limit(gas_limit).with_deadline(
+			Instant::now()
+				+ std::time::Duration::from_secs(
+					block.attributes().timestamp()
+						- std::time::SystemTime::now()
+							.duration_since(std::time::UNIX_EPOCH)
+							.unwrap_or_default()
+							.as_secs(),
+				),
+		);
 
-		if let Some(enclosing) = enclosing {
-			gas_limit = gas_limit.min(enclosing.gas_limit);
-		}
-
-		let limits = Limits::with_gas_limit(gas_limit);
-
-		if let Some(mut blob_params) =
+		if let Some(blob_params) =
 			block.chainspec().blob_params_at_timestamp(timestamp)
 		{
-			if let Some(enclosing) = enclosing.and_then(|e| e.blob_params) {
-				blob_params.target_blob_count = enclosing
-					.target_blob_count
-					.min(blob_params.target_blob_count);
+			limits = limits.with_blob_params(blob_params);
+		}
 
-				blob_params.max_blob_count =
-					enclosing.max_blob_count.min(blob_params.max_blob_count);
-			}
-
-			return limits.with_blob_params(blob_params);
+		if let Some(enclosing) = enclosing {
+			limits = limits.clamp(enclosing);
 		}
 
 		limits
 	}
 }
+
 #[cfg(feature = "pipelines")]
 struct PreselectedBestTransactions<P: Platform> {
 	txs: Vec<Recovered<types::Transaction<P>>>,

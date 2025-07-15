@@ -44,19 +44,19 @@ where
 	C: ConsensusDriver<P>,
 {
 	/// The consensus driver used to build blocks and interact with the node.
-	pub consensus: C,
+	consensus: C,
 	/// The exit future that can be used to wait for the node to exit. In
 	/// practice this never completes, because the node is kept alive until the
 	/// test is done.
-	pub exit_future: NodeExitFuture,
+	exit_future: NodeExitFuture,
 	/// The configuration of the node.
-	pub config: NodeConfig<types::ChainSpec<P>>,
+	config: NodeConfig<types::ChainSpec<P>>,
 	/// The provider used to interact with the node.
-	pub provider: RootProvider<select::Network<P>>,
+	provider: RootProvider<select::Network<P>>,
 	/// The task manager used to manage tasks in the node.
-	pub task_manager: Option<TaskManager>,
+	task_manager: Option<TaskManager>,
 	/// The block time used by the node.
-	pub block_time: Duration,
+	block_time: Duration,
 	/// Keeps reth alive, this is used to ensure that the node does not exit
 	/// while we are still using it.
 	_node_handle: Box<dyn Any + Send>,
@@ -257,6 +257,13 @@ where
 					.pending()
 					.await?,
 			),
+		};
+
+		let request = if let Some(gas_price) = request.gas_price() {
+			request.with_gas_price(gas_price)
+		} else {
+			let gas_price = self.provider().get_gas_price().await?;
+			request.with_gas_price(gas_price)
 		};
 
 		let request = match (

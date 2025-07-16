@@ -8,7 +8,7 @@ on:
 
 jobs:
   fmt:
-    name: Run Rustfmt
+    name: Rustfmt
     runs-on: warp-ubuntu-latest-x64-32x
     steps:
       - uses: actions/checkout@v2
@@ -31,7 +31,7 @@ jobs:
         run: cargo +nightly fmt --all -- --check
 
   clippy:
-    name: Run Clippy
+    name: Clippy
     runs-on: warp-ubuntu-latest-x64-32x
     steps:
       - uses: actions/checkout@v2
@@ -54,7 +54,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
-    name: Run Tests
+    name: Tests
     runs-on: warp-ubuntu-latest-x64-32x
     steps:
       - uses: actions/checkout@v2

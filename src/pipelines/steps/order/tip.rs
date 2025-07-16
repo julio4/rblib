@@ -21,8 +21,8 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 		payload: Checkpoint<P>,
 		_ctx: StepContext<P>,
 	) -> ControlFlow<P> {
-		// create a span that contains all checkpoints in the payload.
-		let history = payload.history();
+		// create a span that contains all mutable checkpoints in the payload.
+		let history = payload.history_mut();
 
 		// Get the correct order of transactions in the payload
 		let ordered = TxsQueue::from(&history).ordered(payload.block().base_fee());
@@ -177,12 +177,18 @@ mod tests {
 		let mut step = OneStep::<P>::new(PriorityFeeOrdering);
 
 		for (sender_id, nonce, tip) in payload {
-			step = step.with_payload_tx(move |b| {
-				b.transfer()
-					.with_funded_signer(sender_id)
-					.with_nonce(nonce)
-					.with_max_priority_fee_per_gas(tip)
-			});
+			if sender_id == u32::MAX && nonce == u64::MAX && tip == u128::MAX {
+				// this is a barrier
+				step = step.with_payload_barrier();
+			} else {
+				// this is a transaction
+				step = step.with_payload_tx(move |b| {
+					b.transfer()
+						.with_funded_signer(sender_id)
+						.with_nonce(nonce)
+						.with_max_priority_fee_per_gas(tip)
+				});
+			}
 		}
 
 		let output = step.run().await;
@@ -193,14 +199,18 @@ mod tests {
 		let history = payload.history();
 		let txs = history.transactions().collect::<Vec<_>>();
 
-		assert_eq!(txs.len(), expected.len());
-		for (i, (expected_signer, expected_nonce, expected_tip)) in
-			expected.into_iter().enumerate()
-		{
-			assert_eq!(txs[i].signer(), FundedAccounts::address(expected_signer));
-			assert_eq!(txs[i].nonce(), expected_nonce);
-			assert_eq!(txs[i].max_priority_fee_per_gas(), Some(expected_tip));
-		}
+		let actual = txs
+			.into_iter()
+			.map(|tx| {
+				(
+					FundedAccounts::index(tx.signer()).unwrap(),
+					tx.nonce(),
+					tx.max_priority_fee_per_gas().unwrap_or_default(),
+				)
+			})
+			.collect::<Vec<_>>();
+
+		assert_eq!(actual, expected);
 	}
 
 	#[rblib_test(Ethereum, Optimism)]
@@ -271,6 +281,67 @@ mod tests {
 	}
 
 	#[rblib_test(Ethereum, Optimism)]
+	async fn everything_unordered_no_nonce_deps_with_barrier<
+		P: TestablePlatform,
+	>() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(u32::MAX, u64::MAX, u128::MAX), // barrier
+			(4, 0, 120),
+			(5, 0, 175),
+			(6, 0, 190),
+			(7, 0, 155),
+			(8, 0, 140),
+		];
+
+		let expected = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(6, 0, 190),
+			(5, 0, 175),
+			(7, 0, 155),
+			(8, 0, 140),
+			(4, 0, 120),
+		];
+
+		test_ordering::<P>(payload, expected).await;
+	}
+
+	#[rblib_test(Ethereum, Optimism)]
+	async fn everything_unordered_no_nonce_deps_with_two_barriers<
+		P: TestablePlatform,
+	>() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(u32::MAX, u64::MAX, u128::MAX), // barrier
+			(4, 0, 120),
+			(5, 0, 175),
+			(6, 0, 190),
+			(u32::MAX, u64::MAX, u128::MAX), // barrier
+			(8, 0, 140),
+			(7, 0, 155),
+		];
+
+		let expected = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(3, 0, 160),
+			(4, 0, 120),
+			(5, 0, 175),
+			(6, 0, 190),
+			(7, 0, 155),
+			(8, 0, 140),
+		];
+
+		test_ordering::<P>(payload, expected).await;
+	}
+
+	#[rblib_test(Ethereum, Optimism)]
 	async fn everything_unordered_nonce_deps<P: TestablePlatform>() {
 		let payload = vec![
 			(1, 0, 170),
@@ -290,6 +361,34 @@ mod tests {
 			(7, 0, 155),
 			(2, 0, 150),
 			(2, 1, 160),
+			(8, 0, 140),
+			(1, 1, 120),
+		];
+
+		test_ordering::<P>(payload, expected).await;
+	}
+
+	#[rblib_test(Ethereum, Optimism)]
+	async fn everything_unordered_nonce_deps_with_barrier<P: TestablePlatform>() {
+		let payload = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(u32::MAX, u64::MAX, u128::MAX), // barrier
+			(2, 1, 160),
+			(1, 1, 120),
+			(5, 0, 175),
+			(6, 0, 190),
+			(7, 0, 155),
+			(8, 0, 140),
+		];
+
+		let expected = vec![
+			(1, 0, 170),
+			(2, 0, 150),
+			(6, 0, 190),
+			(5, 0, 175),
+			(2, 1, 160),
+			(7, 0, 155),
 			(8, 0, 140),
 			(1, 1, 120),
 		];

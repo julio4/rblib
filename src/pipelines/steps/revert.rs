@@ -13,7 +13,9 @@ impl<P: Platform> Step<P> for RevertProtection {
 			return ControlFlow::Ok(payload);
 		}
 
-		let history = payload.history();
+		// we're working only with the mutable history of the payload,
+		// if a reverting transaction was already commited, we will not remove it.
+		let history = payload.history_mut();
 
 		// First identify a valid prefix of the payload history that does not
 		// contain any reverted transactions. This will be the baseline checkpoint
@@ -61,7 +63,7 @@ mod tests {
 	use {
 		super::*,
 		crate::pipelines::tests::*,
-		alloy::network::TransactionBuilder,
+		alloy::{consensus::Transaction, network::TransactionBuilder},
 	};
 
 	#[rblib_test(Ethereum, Optimism)]
@@ -108,6 +110,31 @@ mod tests {
 
 		assert_eq!(payload.history().len(), 1);
 		assert_eq!(payload.history().transactions().count(), 0);
+	}
+
+	#[rblib_test(Ethereum, Optimism)]
+	async fn all_revert_with_barrier<P: TestablePlatform>() {
+		let output = OneStep::<P>::new(RevertProtection)
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(0))
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
+			.with_payload_barrier()
+			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(2))
+			.run()
+			.await
+			.unwrap();
+
+		let ControlFlow::Ok(payload) = output else {
+			panic!("Expected Ok payload, got: {output:?}");
+		};
+
+		// all transactions prior to the barrier should not be modified.
+		assert_eq!(payload.history().len(), 4); // baseline + 2 tx + barrier
+		assert_eq!(payload.history().transactions().count(), 2);
+
+		let history = payload.history();
+		let txs = history.transactions().collect::<Vec<_>>();
+		assert_eq!(txs[0].nonce(), 0);
+		assert_eq!(txs[1].nonce(), 1);
 	}
 
 	#[rblib_test(Ethereum, Optimism)]

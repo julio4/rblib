@@ -1,5 +1,5 @@
 use {
-	crate::{Checkpoint, Platform, Span, SpanError},
+	crate::{Checkpoint, Platform, Span, SpanError, SpanExt},
 	alloy::consensus::Transaction,
 	reth::revm::context::result::ExecutionResult,
 };
@@ -40,6 +40,31 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// Returns a span that includes all checkpoints from the beginning of the
 	/// block payload we're building to the current checkpoint.
 	fn history(&self) -> Span<P>;
+
+	/// Returns a span that includes all mutable history of this checkpoint,
+	/// which is all checkpoints from the last barrier checkpoint to this
+	/// checkpoint, or the entire history if there is no barrier checkpoint.
+	fn history_mut(&self) -> Span<P> {
+		let history = self.history();
+		let immutable_prefix = history
+			.iter()
+			.rposition(Checkpoint::is_barrier)
+			.unwrap_or(0);
+		history.skip(immutable_prefix)
+	}
+
+	/// Returns a span that includes all checkpoints in the immutable history,
+	/// that is the history from the beginning of the block until the last
+	/// barrier included. If there are no barriers, the entire history is
+	/// returned.
+	fn history_const(&self) -> Span<P> {
+		let history = self.history();
+		let immutable_prefix = history
+			.iter()
+			.rposition(Checkpoint::is_barrier)
+			.unwrap_or(0);
+		history.take(immutable_prefix + 1)
+	}
 
 	/// Creates a new span that includes this checkpoints and all other
 	/// checkpoints that are between this checkpoint and the given checkpoint.

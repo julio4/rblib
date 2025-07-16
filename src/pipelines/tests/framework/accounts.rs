@@ -37,6 +37,25 @@ impl FundedAccounts {
 			.expect("invalid hardcoded builder private key")
 	}
 
+	/// Returns the signer index for the given address or None if the address is
+	/// not one of the predefined accounts.
+	///
+	/// # Panics
+	/// Should never panic as the keys are hardcoded and should always be valid
+	/// and parsing them should not fail.
+	pub fn index(address: Address) -> Option<u32> {
+		Self::FUNDED_PRIVATE_KEYS
+			.iter()
+			.position(|&secret| {
+				secret
+					.parse::<PrivateKeySigner>()
+					.expect("invalid hardcoded builder private key")
+					.address()
+					== address
+			})
+			.map(|i| i as u32)
+	}
+
 	pub fn address(key: u32) -> Address {
 		Self::signer(key).address()
 	}

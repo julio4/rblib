@@ -1,6 +1,6 @@
 use {
 	crate::*,
-	alloy::primitives::{Address, B256, KECCAK256_EMPTY, StorageValue, U256},
+	alloy::primitives::{Address, B256, KECCAK256_EMPTY, StorageValue},
 	alloy_evm::{Evm, block::BlockExecutorFactory, evm::EvmFactory},
 	core::fmt::{Debug, Display},
 	reth::{
@@ -10,6 +10,7 @@ use {
 		revm::{
 			DatabaseRef,
 			db::WrapDatabaseRef,
+			primitives::StorageKey,
 			state::{AccountInfo, Bytecode, EvmState},
 		},
 	},
@@ -120,7 +121,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// The transaction that created this checkpoint.
 	pub fn transaction(&self) -> Option<&Recovered<types::Transaction<P>>> {
 		match &self.inner.mutation {
-			Mutation::Baseline => None,
+			Mutation::Barrier => None,
 			Mutation::Transaction { transaction, .. } => Some(transaction),
 		}
 	}
@@ -128,7 +129,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// The execution result of the transaction that created this checkpoint.
 	pub fn result(&self) -> Option<&ExecutionResult<P>> {
 		match &self.inner.mutation {
-			Mutation::Baseline => None,
+			Mutation::Barrier => None,
 			Mutation::Transaction { result, .. } => Some(&result.result),
 		}
 	}
@@ -137,14 +138,22 @@ impl<P: Platform> Checkpoint<P> {
 	/// transaction that created this checkpoint.
 	pub fn state(&self) -> Option<&EvmState> {
 		match &self.inner.mutation {
-			Mutation::Baseline => None,
+			Mutation::Barrier => None,
 			Mutation::Transaction { result, .. } => Some(&result.state),
 		}
+	}
+
+	/// Returns true if this checkpoint is a barrier checkpoint.
+	pub fn is_barrier(&self) -> bool {
+		matches!(self.inner.mutation, Mutation::Barrier)
 	}
 }
 
 /// Public builder API
 impl<P: Platform> Checkpoint<P> {
+	/// Creates a new checkpoint on top of the current checkpoint by applying a
+	/// transaction. The transaction will be executed on top of the cumulative
+	/// state of all checkpoints in the history.
 	pub fn apply<S>(
 		&self,
 		transaction: impl IntoRecoveredTx<P, S>,
@@ -177,6 +186,21 @@ impl<P: Platform> Checkpoint<P> {
 			}),
 		})
 	}
+
+	/// Creates a new checkpoint on top of the current checkpoint that introduces
+	/// a barrier. This new checkpoint will be now considered the new beginning of
+	/// mutable history.
+	#[must_use]
+	pub fn barrier(&self) -> Self {
+		Self {
+			inner: Arc::new(CheckpointInner {
+				block: self.inner.block.clone(),
+				prev: Some(Arc::clone(&self.inner)),
+				depth: self.inner.depth + 1,
+				mutation: Mutation::Barrier,
+			}),
+		}
+	}
 }
 
 /// Internal API
@@ -190,7 +214,7 @@ impl<P: Platform> Checkpoint<P> {
 				block,
 				prev: None,
 				depth: 0,
-				mutation: Mutation::Baseline,
+				mutation: Mutation::Barrier,
 			}),
 		}
 	}
@@ -199,10 +223,20 @@ impl<P: Platform> Checkpoint<P> {
 /// Describes the type of state mutation that was applied to the
 /// previous checkpoint to create this checkpoint.
 enum Mutation<P: Platform> {
-	/// An initial checkpoint that was created for an empty payload on top of the
-	/// parent block state. This mutation type is only valid for checkpoints at
-	/// depth zero.
-	Baseline,
+	/// A checkpoint that indicates that any prior checkpoints are immutable and
+	/// should not be discarded or reordered. An example of this would be placing
+	/// a barrier after applying sequencer transactions, to ensure that they do
+	/// not get reordered by pipelines. Another example would be placing a barrier
+	/// after every commited flashblock, to ensure that any steps in the pipeline
+	/// do not modify the commited state of the payload in process.
+	///
+	/// If there are multiple barriers in the history, the last one is considered
+	/// as the beginning of the mutable history.
+	///
+	/// The very first checkpoint in the history is always a barrier, as it
+	/// represents the baseline checkpoint that has no transactions in its
+	/// history.
+	Barrier,
 
 	/// A regular checkpoint that was created by applying a transaction.
 	Transaction {
@@ -350,7 +384,7 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	fn storage_ref(
 		&self,
 		address: Address,
-		index: U256,
+		index: StorageKey,
 	) -> Result<StorageValue, Self::Error> {
 		// traverse checkpoints history looking for the first checkpoint that
 		// has touched the given address.

@@ -1,12 +1,16 @@
 use {
 	super::framework::*,
 	crate::{steps::*, *},
-	alloy::{network::TransactionBuilder, primitives::U256},
+	alloy::{
+		consensus::BlockHeader,
+		network::{BlockResponse, TransactionBuilder},
+		primitives::U256,
+	},
 	tracing::info,
 };
 
-#[tokio::test]
-async fn empty_payload_when_all_txs_revert_loop() {
+#[rblib_test(Ethereum, Optimism)]
+async fn empty_payload_when_all_txs_revert_loop<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
@@ -16,7 +20,7 @@ async fn empty_payload_when_all_txs_revert_loop() {
 		),
 	);
 
-	let node = Ethereum::create_test_node(pipeline).await.unwrap();
+	let node = P::create_test_node(pipeline).await.unwrap();
 
 	let mut reverts = vec![];
 	for i in 0..10 {
@@ -25,12 +29,22 @@ async fn empty_payload_when_all_txs_revert_loop() {
 	}
 
 	let block = node.next_block().await.unwrap();
-	assert_eq!(block.header.number, 1);
-	assert!(block.transactions.is_empty(), "Block should be empty");
+	assert_eq!(block.header().number(), 1);
+
+	if_platform!(Ethereum => {
+		// Ethereum should not include any transactions
+		assert!(block.is_empty(), "Block should be empty");
+	});
+
+	if_platform!(Optimism => {
+		// Optimism should only include a sequencer deposit transaction
+		assert_eq!(block.tx_count(), 1,
+			"Optimism block should have only one sequencer transaction");
+	});
 }
 
-#[tokio::test]
-async fn transfers_included_reverts_excluded_loop() {
+#[rblib_test(Ethereum, Optimism)]
+async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
@@ -40,7 +54,7 @@ async fn transfers_included_reverts_excluded_loop() {
 		),
 	);
 
-	let node = Ethereum::create_test_node(pipeline).await.unwrap();
+	let node = P::create_test_node(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
@@ -69,17 +83,26 @@ async fn transfers_included_reverts_excluded_loop() {
 	);
 
 	// non-reverting transactions
-	assert_eq!(block.transactions.len(), transfers.len());
+	if_platform!(Ethereum => {
+		assert_eq!(block.tx_count(), transfers.len(),
+			"Ethereum block should include all transfers and no reverts");
+	});
+
+	if_platform!(Optimism => {
+		assert_eq!(block.tx_count(), transfers.len() + 1,
+			"Optimism block should have only one sequencer transaction \
+			 and all transfers and no reverts");
+	});
 }
 
-#[tokio::test]
-async fn transfers_included_reverts_excluded_flat() {
+#[rblib_test(Ethereum, Optimism)]
+async fn transfers_included_reverts_excluded_flat<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
 		.with_step(GatherBestTransactions)
 		.with_step(PriorityFeeOrdering)
 		.with_step(RevertProtection);
 
-	let node = Ethereum::create_test_node(pipeline).await.unwrap();
+	let node = P::create_test_node(pipeline).await.unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
@@ -108,5 +131,14 @@ async fn transfers_included_reverts_excluded_flat() {
 	);
 
 	// non-reverting transactions
-	assert_eq!(block.transactions.len(), transfers.len());
+	if_platform!(Ethereum => {
+		assert_eq!(block.tx_count(), transfers.len(),
+			"Ethereum block should include all transfers and no reverts");
+	});
+
+	if_platform!(Optimism => {
+		assert_eq!(block.tx_count(), transfers.len() + 1,
+			"Optimism block should have only one sequencer transaction \
+			 and all transfers and no reverts");
+	});
 }

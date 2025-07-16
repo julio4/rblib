@@ -174,7 +174,7 @@ macro_rules! make_step {
 				_: Checkpoint<P>,
 				_: StepContext<P>,
 			) -> ControlFlow<P> {
-				todo!()
+				unimplemented!("Step `{}` is not implemented", stringify!($name))
 			}
 		}
 	};
@@ -189,7 +189,7 @@ macro_rules! make_step {
 				_: Checkpoint<P>,
 				_: StepContext<P>,
 			) -> ControlFlow<P> {
-				todo!()
+				unimplemented!("Step `{}` is not implemented", stringify!($name))
 			}
 		}
 	};

@@ -97,7 +97,7 @@ fn flashblocks_example_closure() {
 	struct FlashblockLimits(FlashblocksConfig);
 	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
 		fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
-			todo!()
+			unimplemented!()
 		}
 	}
 
@@ -151,7 +151,7 @@ fn flashblocks_example_concise() {
 	struct FlashblockLimits(FlashblocksConfig);
 	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
 		fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
-			todo!()
+			unimplemented!()
 		}
 	}
 

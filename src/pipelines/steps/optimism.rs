@@ -52,6 +52,13 @@ impl Step<Optimism> for OptimismPrologue {
 			}
 		}
 
+		// if there were sequencer transactions added to the payload, place a
+		// barrier after them, so they won't be reordered or modified by subsequent
+		// steps.
+		if payload.depth() > 0 {
+			payload = payload.barrier();
+		}
+
 		ControlFlow::Ok(payload)
 	}
 }
@@ -87,6 +94,9 @@ mod tests {
 		};
 
 		assert_eq!(payload.history().transactions().count(), 0);
+		assert_eq!(payload.history_const().len(), 1); // only baseline checkpoint
+		assert_eq!(payload.history_mut().len(), 1); // only last barrier
+		assert_eq!(payload.history_mut().transactions().count(), 0);
 	}
 
 	#[tokio::test]
@@ -97,8 +107,33 @@ mod tests {
 			panic!("Expected Ok payload, got: {output:?}");
 		};
 
-		assert_eq!(payload.history().transactions().count(), 1);
-		assert!(payload.transaction().unwrap().is_deposit());
+		assert_eq!(
+			payload.history().transactions().count(),
+			1,
+			"sequencer transaction should be included"
+		);
+
+		assert!(
+			payload.is_barrier(),
+			"a barrier is placed after sequencer txs"
+		);
+
+		assert_eq!(
+			payload.history_const().len(),
+			3,
+			"immutable history should have 3 checkpoints: baseline, sequencer tx \
+			 and last barrier"
+		);
+
+		assert_eq!(
+			payload.history_mut().len(),
+			1,
+			"mutable history should have 1 checkpoint: last barrier"
+		);
+
+		let const_history = payload.history_const();
+		let first_tx = const_history.transactions().next().unwrap();
+		assert!(first_tx.is_deposit(), "Sequencer tx should be a deposit");
 	}
 
 	#[tokio::test]

@@ -121,6 +121,7 @@ async fn all_transactions_included_ethereum<P: TestablePlatform>() {
 #[tokio::test]
 #[ignore = "This test never completes but we want to make sure that this \
             syntax compiles"]
+#[allow(clippy::large_futures)]
 async fn reth_minimal_integration_example() {
 	use {
 		reth::cli::Cli,
@@ -141,7 +142,6 @@ async fn reth_minimal_integration_example() {
 
 	Cli::parse_args()
 		.run(|builder, _| async move {
-			#[allow(clippy::large_futures)]
 			let handle = builder
 				.with_types::<EthereumNode>()
 				.with_components(

@@ -37,6 +37,18 @@ pub trait SpanExt<P: Platform>: super::sealed::Sealed {
 	/// will be returned as the first span and an empty span will be returned as
 	/// the second span.
 	fn split_at(&self, mid: usize) -> (Span<P>, Span<P>);
+
+	/// Returns a span that skips the first `n` checkpoints in the span.
+	fn skip(&self, n: usize) -> Span<P> {
+		let (_, right) = self.split_at(n);
+		right
+	}
+
+	/// Returns a span that takes the first `n` checkpoints in the span.
+	fn take(&self, n: usize) -> Span<P> {
+		let (left, _) = self.split_at(n);
+		left
+	}
 }
 
 impl<P: Platform> SpanExt<P> for Span<P> {

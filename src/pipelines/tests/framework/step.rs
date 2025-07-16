@@ -37,8 +37,8 @@ use {
 pub struct OneStep<P: Platform + NetworkSelector> {
 	pipeline: Pipeline<P>,
 	pool_txs: Vec<BoxedTxBuilderFn<P>>,
-	input_txs: Vec<BoxedTxBuilderFn<P>>,
-	payload_tx: UnboundedSender<select::TxEnvelope<P>>,
+	payload_input: Vec<BarrierOrTxFn<P>>,
+	payload_tx: UnboundedSender<BarrierOrTx<P>>,
 	ok_rx: UnboundedReceiver<Checkpoint<P>>,
 	fail_rx: UnboundedReceiver<PayloadBuilderError>,
 	break_rx: UnboundedReceiver<Checkpoint<P>>,
@@ -58,7 +58,7 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 
 		Self {
 			pipeline,
-			input_txs: Vec::new(),
+			payload_input: Vec::new(),
 			pool_txs: Vec::new(),
 			payload_tx,
 			ok_rx,
@@ -93,7 +93,16 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 		) -> select::TransactionRequest<P>
 		+ 'static,
 	) -> Self {
-		self.input_txs.push(Box::new(builder));
+		self
+			.payload_input
+			.push(BarrierOrTxFn::Tx(Box::new(builder)));
+		self
+	}
+
+	/// Adds a barrier to the input payload of the step at the current position.
+	#[must_use]
+	pub fn with_payload_barrier(mut self) -> Self {
+		self.payload_input.push(BarrierOrTxFn::Barrier);
 		self
 	}
 
@@ -117,20 +126,26 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 	pub async fn run(mut self) -> eyre::Result<ControlFlow<P>> {
 		let local_node = P::create_test_node(self.pipeline).await?;
 		let input_txs = self
-			.input_txs
+			.payload_input
 			.into_iter()
-			.map(|mut tx| {
-				tx(
-					local_node
-						.build_tx()
-						.with_max_fee_per_gas(2_000_000_001)
-						.with_max_priority_fee_per_gas(1),
-				)
+			.map(|input| -> eyre::Result<BarrierOrTx<P>> {
+				Ok(match input {
+					BarrierOrTxFn::Barrier => BarrierOrTx::Barrier,
+					BarrierOrTxFn::Tx(mut builder) => BarrierOrTx::Tx(
+						builder(
+							local_node
+								.build_tx()
+								.with_max_fee_per_gas(2_000_000_001)
+								.with_max_priority_fee_per_gas(1),
+						)
+						.build_with_known_signer()?,
+					),
+				})
 			})
-			.collect::<Vec<_>>();
+			.collect::<Result<Vec<_>, _>>()?;
 
 		for tx in input_txs {
-			self.payload_tx.send(tx.build_with_known_signer()?)?;
+			self.payload_tx.send(tx)?;
 		}
 
 		let pool_txs = self
@@ -162,11 +177,11 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 }
 
 struct PopulatePayload<P: Platform + NetworkSelector> {
-	receiver: Mutex<UnboundedReceiver<select::TxEnvelope<P>>>,
+	receiver: Mutex<UnboundedReceiver<BarrierOrTx<P>>>,
 }
 
 impl<P: Platform + NetworkSelector> PopulatePayload<P> {
-	pub fn new() -> (Self, UnboundedSender<select::TxEnvelope<P>>) {
+	pub fn new() -> (Self, UnboundedSender<BarrierOrTx<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(
 			Self {
@@ -186,14 +201,19 @@ impl<P: Platform + NetworkSelector> Step<P> for PopulatePayload<P> {
 		use alloy::eips::Decodable2718;
 
 		let mut payload = payload;
-		while let Ok(tx) = self.receiver.lock().await.try_recv() {
-			// unfortunatelly encoding and dcoding with 2718 is the only generic way
-			// to handle transaction types across different platforms and networks
-			// and SDKs that we are working with.
-			let encoded = tx.encoded_2718();
-			let decoded = types::Transaction::<P>::decode_2718(&mut &encoded[..])
-				.expect("Failed to decode transaction");
-			payload = payload.apply(decoded).expect("Failed to apply transaction");
+		while let Ok(input) = self.receiver.lock().await.try_recv() {
+			payload = match input {
+				BarrierOrTx::Barrier => payload.barrier(),
+				BarrierOrTx::Tx(tx) => {
+					// unfortunatelly encoding and dcoding with 2718 is the only generic
+					// way to handle transaction types across different platforms and
+					// networks and SDKs that we are working with.
+					let encoded = tx.encoded_2718();
+					let decoded = types::Transaction::<P>::decode_2718(&mut &encoded[..])
+						.expect("Failed to decode transaction");
+					payload.apply(decoded).expect("Failed to apply transaction")
+				}
+			};
 		}
 
 		ControlFlow::Ok(payload)
@@ -268,6 +288,16 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 		}
 		Ok(())
 	}
+}
+
+enum BarrierOrTxFn<P: Platform + NetworkSelector> {
+	Barrier,
+	Tx(BoxedTxBuilderFn<P>),
+}
+
+enum BarrierOrTx<P: Platform + NetworkSelector> {
+	Barrier,
+	Tx(select::TxEnvelope<P>),
 }
 
 type BoxedTxBuilderFn<P> = Box<

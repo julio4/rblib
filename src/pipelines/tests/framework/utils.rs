@@ -3,23 +3,51 @@ use {
 	alloy::{
 		consensus::{SignableTransaction, Signed},
 		hex,
-		network::{Network, TransactionBuilder, TransactionResponse, TxSignerSync},
+		network::{
+			BlockResponse,
+			Network,
+			TransactionBuilder,
+			TransactionResponse,
+			TxSignerSync,
+		},
 		primitives::{Address, Bytes, TxHash, TxKind, U256},
-		rpc::types::Block,
 		signers::Signature,
 	},
 };
 
-pub trait BlockTransactionsExt {
+pub trait BlockResponseExt<T: TransactionResponse> {
+	fn tx(&self, index: usize) -> Option<&T>;
 	fn includes(&self, txs: &impl AsTxs) -> bool;
+	fn tx_count(&self) -> usize;
+	fn is_empty(&self) -> bool {
+		self.tx_count() == 0
+	}
 }
 
-impl<T: TransactionResponse> BlockTransactionsExt for Block<T> {
+impl<T: TransactionResponse, B> BlockResponseExt<T> for B
+where
+	T: TransactionResponse,
+	B: BlockResponse<Transaction = T>,
+{
 	fn includes(&self, txs: &impl AsTxs) -> bool {
-		txs
-			.as_txs()
-			.into_iter()
-			.all(|tx| self.transactions.hashes().any(|included| included == tx))
+		txs.as_txs().into_iter().all(|txhash| {
+			self
+				.transactions()
+				.txns()
+				.any(|included| included.tx_hash() == txhash)
+		})
+	}
+
+	fn tx_count(&self) -> usize {
+		self.transactions().txns().count()
+	}
+
+	fn is_empty(&self) -> bool {
+		self.transactions().is_empty()
+	}
+
+	fn tx(&self, index: usize) -> Option<&T> {
+		self.transactions().txns().nth(index)
 	}
 }
 

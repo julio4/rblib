@@ -7,30 +7,70 @@ on:
   pull_request:
 
 jobs:
-  lint_and_test:
+  fmt:
+    name: Run Rustfmt
     runs-on: warp-ubuntu-latest-x64-32x
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Rust Stable
-        uses: actions-rs/toolchain@v1
+      - name: Cache Rust toolchain
+        uses: actions/cache@v3
         with:
-          toolchain: stable
-          override: true
-          components: clippy
-
-      - uses: actions/checkout@v2
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-nightly-${{ hashFiles('**/Cargo.lock') }}
       - name: Set up Rust Nightly
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: false
           components: rustfmt
-
       - name: Run Rustfmt with nightly
         run: cargo +nightly fmt --all -- --check
 
+  clippy:
+    name: Run Clippy
+    runs-on: warp-ubuntu-latest-x64-32x
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cache Rust toolchain
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-stable-${{ hashFiles('**/Cargo.lock') }}
+      - name: Set up Rust Stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: clippy
       - name: Run Clippy with stable
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Run Tests with stable
+  test:
+    name: Run Tests
+    runs-on: warp-ubuntu-latest-x64-32x
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cache Rust toolchain
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-stable-${{ hashFiles('**/Cargo.lock') }}
+      - name: Set up Rust Stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Run tests with stable
         run: cargo test --all-targets --all-features

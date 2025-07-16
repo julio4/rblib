@@ -1,9 +1,7 @@
 //! Utilities used in unit tests
 
-#[cfg(all(test, feature = "pipelines", not(feature = "ethereum")))]
-compile_error!(
-	"Pipelines test builds require the `ethereum` feature to be enabled."
-);
+#[cfg(all(test, not(feature = "ethereum")))]
+compile_error!("test builds require the `ethereum` feature to be enabled.");
 
 mod framework;
 

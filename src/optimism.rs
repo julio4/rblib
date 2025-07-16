@@ -1,14 +1,15 @@
 use {
 	super::{types, *},
 	alloy::primitives::Bytes,
-	reth_optimism_forks::OpHardforks,
-	reth_optimism_node::{OpEvmConfig, OpNextBlockEnvAttributes, OpNode},
-	std::sync::Arc,
-};
-#[cfg(feature = "pipelines")]
-use {
 	reth::primitives::Recovered,
-	reth_optimism_node::txpool::OpPooledTransaction,
+	reth_optimism_forks::OpHardforks,
+	reth_optimism_node::{
+		OpEvmConfig,
+		OpNextBlockEnvAttributes,
+		OpNode,
+		txpool::OpPooledTransaction,
+	},
+	std::sync::Arc,
 };
 
 /// Platform definition for Optimism Rollup chains.
@@ -16,11 +17,9 @@ use {
 pub struct Optimism;
 
 impl Platform for Optimism {
-	#[cfg(feature = "pipelines")]
 	type DefaultLimits = OptimismDefaultLimits;
 	type EvmConfig = OpEvmConfig;
 	type NodeTypes = OpNode;
-	#[cfg(feature = "pipelines")]
 	type PooledTransaction = OpPooledTransaction;
 
 	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
@@ -56,7 +55,6 @@ impl Platform for Optimism {
 		}
 	}
 
-	#[cfg(feature = "pipelines")]
 	fn construct_payload<Pool, Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<Recovered<types::Transaction<Self>>>,
@@ -135,11 +133,9 @@ impl Platform for Optimism {
 	}
 }
 
-#[cfg(feature = "pipelines")]
 #[derive(Debug, Clone, Default)]
 pub struct OptimismDefaultLimits;
 
-#[cfg(feature = "pipelines")]
 impl LimitsFactory<Optimism> for OptimismDefaultLimits {
 	fn create(
 		&self,
@@ -194,7 +190,6 @@ impl LimitsFactory<Optimism> for OptimismDefaultLimits {
 /// those txs. This happens for example when a pipeline has a the
 /// `OptimismPrologue` step that applies the sequencer transactions to the
 /// payload before any other step.
-#[cfg(feature = "pipelines")]
 fn skip_sequencer_transactions(
 	transactions: Vec<Recovered<types::Transaction<Optimism>>>,
 	block: &BlockContext<Optimism>,

@@ -2,10 +2,8 @@
 mod payload;
 pub use payload::*;
 
-#[cfg(feature = "pipelines")]
 mod pipelines;
 
-#[cfg(feature = "pipelines")]
 pub use pipelines::*;
 
 #[cfg(feature = "optimism")]
@@ -51,7 +49,6 @@ pub trait Platform:
 		>;
 
 	/// Type that represents transactions that are inside the transaction pool.
-	#[cfg(feature = "pipelines")]
 	type PooledTransaction: reth_transaction_pool::EthPoolTransaction<
 			Consensus = types::Transaction<Self>,
 		> + Send
@@ -61,7 +58,6 @@ pub trait Platform:
 	/// Type that can provide limits for the payload building process.
 	/// If no limits are set on a pipeline, a default instance of this type
 	/// will be used.
-	#[cfg(feature = "pipelines")]
 	type DefaultLimits: LimitsFactory<Self> + Default + Send + Sync + 'static;
 
 	/// Instantiate the EVM configuration for the platform with a given chain
@@ -76,7 +72,6 @@ pub trait Platform:
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self>;
 
-	#[cfg(feature = "pipelines")]
 	fn construct_payload<Pool, Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<reth::primitives::Recovered<types::Transaction<Self>>>,

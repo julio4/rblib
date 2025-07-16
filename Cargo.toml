@@ -5,23 +5,31 @@ members = [
 ]
 resolver = "2"
 
-
-[package]
-name = "rblib"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.86"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/flashbots/rblib"
 repository = "https://github.com/flashbots/rblib"
-description = "SDK for building ethereum compatible block builders"
 exclude = [".github/"]
+
+[package]
+name = "rblib"
+description = "SDK for building ethereum compatible block builders"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+exclude.workspace = true
 
 [lib]
 doctest = false
 
 [features]
-default = ["optimism", "ethereum", "pipelines"]
+default = ["optimism", "ethereum"]
 
 optimism = [
   "op-alloy",
@@ -35,16 +43,6 @@ optimism = [
 ethereum = [
   "reth-ethereum-payload-builder",
   "reth-basic-payload-builder",
-  "reth-ethereum/evm",
-  "reth-ethereum/node",
-]
-
-pipelines = [
-  "pipelines-macros",
-  "tokio",
-  "futures",
-  "reth-transaction-pool",
-  "reth-payload-builder",
   "reth-ethereum/evm",
   "reth-ethereum/node",
 ]
@@ -66,7 +64,7 @@ test-utils = [
 
 [dependencies]
 # internal dependencies
-pipelines-macros = { path = "src/pipelines/macros", optional = true }
+pipelines-macros = { path = "src/pipelines/macros" }
 
 # Common dependencies
 alloy = "1.0.18"
@@ -79,14 +77,20 @@ derive_more = { version = "2.0", features = ["deref", "from", "into"] }
 smallvec = "1.15"
 dashmap = "6.1"
 
-futures = { version = "0.3", optional = true }
-tokio = { version = "1.46", optional = true }
+futures = { version = "0.3" }
+tokio = { version = "1.46" }
+
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 
 # Reth dependencies
 reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
+  "node",
+  "evm",
+] }
 
 # ethereum dependencies (optional)
 reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
@@ -99,10 +103,6 @@ reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-payload-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-
-# pipelines only
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 
 # test-utils
 reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }

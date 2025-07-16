@@ -1,22 +1,20 @@
 use {
 	super::*,
-	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
-	reth_ethereum_payload_builder::EthereumBuilderConfig,
-	reth_evm::NextBlockEnvAttributes,
-	std::sync::Arc,
-};
-#[cfg(feature = "pipelines")]
-use {
 	crate::traits::{PoolBounds, ProviderBounds},
 	alloy::consensus::Transaction,
-	reth::payload::PayloadBuilderAttributes,
 	reth::{
 		chainspec::EthChainSpec,
+		payload::PayloadBuilderAttributes,
 		primitives::Recovered,
 		revm::{cached::CachedReads, cancelled::CancelOnDrop},
 	},
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
-	reth_ethereum_payload_builder::default_ethereum_payload,
+	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
+	reth_ethereum_payload_builder::{
+		EthereumBuilderConfig,
+		default_ethereum_payload,
+	},
+	reth_evm::NextBlockEnvAttributes,
 	reth_payload_builder::PayloadBuilderError,
 	reth_transaction_pool::{
 		BestTransactions,
@@ -27,7 +25,10 @@ use {
 		error::InvalidPoolTransactionError,
 		identifier::{SenderId, SenderIdentifiers, TransactionId},
 	},
-	std::collections::{HashMap, hash_map::Entry},
+	std::{
+		collections::{HashMap, hash_map::Entry},
+		sync::Arc,
+	},
 };
 
 /// Platform definition for ethereum mainnet.
@@ -35,11 +36,9 @@ use {
 pub struct Ethereum;
 
 impl Platform for Ethereum {
-	#[cfg(feature = "pipelines")]
 	type DefaultLimits = EthereumDefaultLimits;
 	type EvmConfig = EthEvmConfig;
 	type NodeTypes = EthereumNode;
-	#[cfg(feature = "pipelines")]
 	type PooledTransaction = EthPooledTransaction;
 
 	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
@@ -62,7 +61,6 @@ impl Platform for Ethereum {
 		}
 	}
 
-	#[cfg(feature = "pipelines")]
 	fn construct_payload<Pool, Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<Recovered<types::Transaction<Self>>>,
@@ -113,11 +111,9 @@ impl Platform for Ethereum {
 	}
 }
 
-#[cfg(feature = "pipelines")]
 #[derive(Debug, Clone, Default)]
 pub struct EthereumDefaultLimits(EthereumBuilderConfig);
 
-#[cfg(feature = "pipelines")]
 impl EthereumDefaultLimits {
 	pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
 		self.0 = self.0.with_gas_limit(gas_limit);
@@ -125,7 +121,6 @@ impl EthereumDefaultLimits {
 	}
 }
 
-#[cfg(feature = "pipelines")]
 impl<P: Platform> LimitsFactory<P> for EthereumDefaultLimits {
 	fn create(
 		&self,
@@ -161,14 +156,12 @@ impl<P: Platform> LimitsFactory<P> for EthereumDefaultLimits {
 	}
 }
 
-#[cfg(feature = "pipelines")]
 struct PreselectedBestTransactions<P: Platform> {
 	txs: Vec<Recovered<types::Transaction<P>>>,
 	senders: SenderIdentifiers,
 	invalid: HashMap<SenderId, TransactionId>,
 }
 
-#[cfg(feature = "pipelines")]
 impl<P: Platform> PreselectedBestTransactions<P> {
 	pub fn new(txs: Vec<Recovered<types::Transaction<P>>>) -> Self {
 		// reverse because we want to pop from the end
@@ -184,7 +177,6 @@ impl<P: Platform> PreselectedBestTransactions<P> {
 	}
 }
 
-#[cfg(feature = "pipelines")]
 impl<P: Platform> BestTransactions for PreselectedBestTransactions<P> {
 	fn no_updates(&mut self) {}
 
@@ -204,7 +196,6 @@ impl<P: Platform> BestTransactions for PreselectedBestTransactions<P> {
 	}
 }
 
-#[cfg(feature = "pipelines")]
 impl<P: Platform> Iterator for PreselectedBestTransactions<P> {
 	type Item = Arc<ValidPoolTransaction<P::PooledTransaction>>;
 

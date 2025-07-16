@@ -194,6 +194,7 @@ impl LimitsFactory<Optimism> for OptimismDefaultLimits {
 /// those txs. This happens for example when a pipeline has a the
 /// `OptimismPrologue` step that applies the sequencer transactions to the
 /// payload before any other step.
+#[cfg(feature = "pipelines")]
 fn skip_sequencer_transactions(
 	transactions: Vec<Recovered<types::Transaction<Optimism>>>,
 	block: &BlockContext<Optimism>,

@@ -1,13 +1,13 @@
 use {
 	crate::{
-		pipelines::tests::{
+		tests::{
+			ConsensusDriver,
 			DEFAULT_BLOCK_GAS_LIMIT,
 			FundedAccounts,
 			NetworkSelector,
 			ONE_ETH,
 			framework::{TestNodeFactory, node::LocalNode},
 		},
-		tests::ConsensusDriver,
 		*,
 	},
 	alloy::{

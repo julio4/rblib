@@ -1,8 +1,8 @@
 use {
+	super::NetworkSelector,
 	crate::{
 		Optimism,
 		Pipeline,
-		pipelines::tests::NetworkSelector,
 		tests::{
 			ConsensusDriver,
 			FundedAccounts,

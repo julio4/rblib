@@ -11,7 +11,7 @@ use {
 pub use {
 	accounts::FundedAccounts,
 	node::LocalNode,
-	pipelines_tests_macros::rblib_test,
+	pipelines_tests_macros::{if_platform, rblib_test},
 	step::OneStep,
 	utils::*,
 };

@@ -1,22 +1,39 @@
 use {
 	super::framework::*,
 	crate::{steps::*, *},
-	alloy::{network::TransactionBuilder, primitives::U256},
+	alloy::{
+		consensus::BlockHeader,
+		network::{BlockResponse, TransactionBuilder},
+		primitives::U256,
+	},
 	tracing::info,
 };
 
-#[tokio::test]
-async fn empty_pipeline_builds_empty_payload() {
+#[rblib_test(Ethereum, Optimism)]
+async fn empty_pipeline_builds_empty_payload<P: TestablePlatform>() {
 	let empty_pipeline = Pipeline::default();
-	let node = Ethereum::create_test_node(empty_pipeline).await.unwrap();
+	let node = P::create_test_node(empty_pipeline).await.unwrap();
 
 	for _ in 0..10 {
 		let _ = node.send_tx(node.build_tx().transfer()).await.unwrap();
 	}
-	let block = node.next_block().await.unwrap();
 
-	assert_eq!(block.header.number, 1);
-	assert!(block.transactions.is_empty(), "Block should be empty");
+	let block = node.next_block().await.unwrap();
+	let transactions = block.transactions().as_transactions().unwrap();
+
+	// ensure we've built the first block past genesis
+	assert_eq!(block.header().number(), 1);
+
+	if_platform!(Ethereum => {
+		// Ethereum should not include any transactions
+		assert!(transactions.is_empty(), "Block should be empty");
+	});
+
+	if_platform!(Optimism => {
+		// Optimism should only include a sequencer deposit transaction
+		assert_eq!(transactions.len(), 1,
+			"Block should have only one sequencer transaction");
+	});
 }
 
 #[tokio::test]

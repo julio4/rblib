@@ -2,9 +2,11 @@ use {
 	proc_macro::TokenStream,
 	quote::quote,
 	syn::{
+		Block,
 		Ident,
 		ItemFn,
 		Token,
+		Type,
 		parse::{Parse, ParseStream},
 		parse_macro_input,
 		punctuated::Punctuated,
@@ -60,4 +62,41 @@ pub fn rblib_test(args: TokenStream, input: TokenStream) -> TokenStream {
 	};
 
 	TokenStream::from(expanded)
+}
+
+#[proc_macro]
+pub fn if_platform(input: TokenStream) -> TokenStream {
+	let IfPlatformInput { platform, code, .. } =
+		parse_macro_input!(input as IfPlatformInput);
+
+	let expanded = quote! {
+			{
+				if std::any::TypeId::of::<P>() == std::any::TypeId::of::<#platform>() {
+					// Shadow P with the concrete platform type
+					type P = #platform;
+					#code
+				}
+			}
+	};
+
+	TokenStream::from(expanded)
+}
+
+struct IfPlatformInput {
+	platform: Type,
+	_arrow: Token![=>],
+	code: Block,
+}
+
+impl Parse for IfPlatformInput {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let platform = input.parse()?;
+		let _arrow = input.parse()?;
+		let code = input.parse()?;
+		Ok(IfPlatformInput {
+			platform,
+			_arrow,
+			code,
+		})
+	}
 }

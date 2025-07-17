@@ -7,6 +7,10 @@ edition = "2024"
 doctest = false
 proc-macro = true
 
+[features]
+default = []
+optimism = []
+
 [dependencies]
 syn = "2.0"
 quote = "1.0"

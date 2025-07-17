@@ -17,10 +17,10 @@ pub use {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum StateError {
 	#[error("Provider error: {0}")]
-	Provider(#[from] reth_errors::ProviderError),
+	Provider(#[from] crate::reth::errors::ProviderError),
 }
 
-impl reth::revm::db::DBErrorMarker for StateError {}
+impl crate::reth::revm::db::DBErrorMarker for StateError {}
 
 #[cfg(test)]
 mod tests;

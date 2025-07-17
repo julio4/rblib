@@ -1,7 +1,7 @@
 //! Utilities used in unit tests
 
-#[cfg(all(test, not(feature = "ethereum")))]
-compile_error!("test builds require the `ethereum` feature to be enabled.");
+#[cfg(all(test, not(feature = "optimism")))]
+compile_error!("test builds require the `optimism` feature to be enabled.");
 
 mod framework;
 

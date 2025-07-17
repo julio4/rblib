@@ -1,35 +1,22 @@
 use {
-	crate::{Platform, traits},
-	alloy::{
-		eips::{
-			eip4844::{BlobAndProofV1, BlobAndProofV2},
-			eip7594::BlobTransactionSidecarVariant,
+	crate::{
+		Platform,
+		alloy::{
+			eips::{
+				eip4844::{BlobAndProofV1, BlobAndProofV2},
+				eip7594::BlobTransactionSidecarVariant,
+			},
+			primitives::{Address, B256, TxHash},
 		},
-		primitives::{Address, B256, TxHash},
+		reth::{
+			network::types::HandleMempoolData,
+			primitives::Recovered,
+			transaction_pool::{TransactionPool as RethTransactionPoolTrait, *},
+		},
+		traits,
 	},
 	core::fmt::Debug,
 	futures::FutureExt,
-	reth::{network::types::HandleMempoolData, primitives::Recovered},
-	reth_transaction_pool::{
-		AllPoolTransactions,
-		AllTransactionsEvents,
-		BestTransactions,
-		BestTransactionsAttributes,
-		BlobStoreError,
-		BlockInfo,
-		GetPooledTransactionLimit,
-		NewBlobSidecar,
-		NewTransactionEvent,
-		PoolResult,
-		PoolSize,
-		PoolTransaction,
-		PropagatedTransactions,
-		TransactionEvents,
-		TransactionListenerKind,
-		TransactionOrigin,
-		TransactionPool as RethTransactionPoolTrait,
-		ValidPoolTransaction,
-	},
 	std::{collections::HashSet, future::Future, pin::Pin, sync::Arc},
 	tokio::sync::mpsc::Receiver,
 };

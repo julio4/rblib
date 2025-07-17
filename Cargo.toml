@@ -29,19 +29,18 @@ exclude.workspace = true
 doctest = false
 
 [features]
-default = ["optimism", "ethereum", "jemalloc"]
+default = ["optimism", "jemalloc"]
 
 jemalloc = [
   "dep:tikv-jemallocator",
-  "reth/jemalloc",
+  "reth-origin/jemalloc",
   "reth-optimism-cli?/jemalloc",
 ]
 
 jemalloc-prof = [
   "jemalloc",
   "tikv-jemallocator?/profiling",
-  "reth/jemalloc-prof",
-  #"reth-optimism-cli/jemalloc-prof",
+  "reth-origin/jemalloc-prof",
 ]
 
 optimism = [
@@ -52,13 +51,7 @@ optimism = [
   "reth-node-builder/op",
   "reth-payload-util",
   "reth-optimism-cli",
-]
-
-ethereum = [
-  "reth-ethereum-payload-builder",
-  "reth-basic-payload-builder",
-  "reth-ethereum/evm",
-  "reth-ethereum/node",
+  "pipelines-tests-macros?/optimism",
 ]
 
 test-utils = [
@@ -81,11 +74,11 @@ test-utils = [
 pipelines-macros = { path = "src/pipelines/macros" }
 
 # Common dependencies
-alloy = "1.0.18"
+alloy-origin = { version = "1.0.18", package = "alloy" }
 alloy-evm = "0.14"
 itertools = "0.14"
 eyre = "0.6"
-thiserror = { version = "2.0", default-features = false }
+thiserror = "2.0"
 tracing = "0.1"
 derive_more = { version = "2.0", features = ["deref", "from", "into"] }
 smallvec = "1.15"
@@ -99,18 +92,16 @@ reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 
 # Reth dependencies
-reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-origin = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", package = "reth" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
   "node",
   "evm",
 ] }
-
-# ethereum dependencies (optional)
-reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 
 # optimism dependencies (optional)
 op-alloy = { version = "0.18", features = ["consensus"], optional = true }

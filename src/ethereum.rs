@@ -6,7 +6,16 @@ use {
 			chainspec::EthChainSpec,
 			ethereum::{evm::EthEvmConfig, node::EthereumNode},
 			evm::NextBlockEnvAttributes,
-			payload::{PayloadBuilderAttributes, builder::PayloadBuilderError},
+			payload::{
+				PayloadBuilderAttributes,
+				builder::{
+					BuildArguments,
+					EthereumBuilderConfig,
+					PayloadBuilderError,
+					PayloadConfig,
+					default_ethereum_payload,
+				},
+			},
 			primitives::Recovered,
 			revm::{cached::CachedReads, cancelled::CancelOnDrop},
 			transaction_pool::{
@@ -20,11 +29,6 @@ use {
 			},
 		},
 		traits::{PoolBounds, ProviderBounds},
-	},
-	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
-	reth_ethereum_payload_builder::{
-		EthereumBuilderConfig,
-		default_ethereum_payload,
 	},
 	std::{
 		collections::{HashMap, hash_map::Entry},

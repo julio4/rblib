@@ -1,6 +1,5 @@
 use {
-	crate::{BlockContext, Platform},
-	alloy::eips::eip7840::BlobParams,
+	crate::{BlockContext, Platform, alloy::eips::eip7840::BlobParams},
 	std::time::Instant,
 };
 

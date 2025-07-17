@@ -22,6 +22,7 @@ use {
 				node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
 			},
 			payload::builder::PayloadId,
+			rpc::types::{Block, engine::ForkchoiceState},
 		},
 		tests::{
 			ConsensusDriver,
@@ -32,7 +33,6 @@ use {
 		},
 	},
 	alloy_genesis::{Genesis, GenesisAccount},
-	reth::rpc::types::{Block, engine::ForkchoiceState},
 	reth_ipc::client::IpcClientBuilder,
 	reth_optimism_rpc::OpEngineApiClient,
 	serde_json::from_str,

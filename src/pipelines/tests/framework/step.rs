@@ -9,6 +9,10 @@ use {
 		Platform,
 		Step,
 		StepContext,
+		alloy::{
+			eips::{Decodable2718, Encodable2718},
+			network::TransactionBuilder,
+		},
 		pipelines::{
 			exec::ClonablePayloadBuilderError,
 			tests::{
@@ -17,10 +21,9 @@ use {
 				framework::{TestNodeFactory, select},
 			},
 		},
+		reth::payload::builder::PayloadBuilderError,
 		types,
 	},
-	alloy::{eips::Encodable2718, network::TransactionBuilder},
-	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
 	tokio::sync::{
 		Mutex,
@@ -198,8 +201,6 @@ impl<P: Platform + NetworkSelector> Step<P> for PopulatePayload<P> {
 		payload: Checkpoint<P>,
 		_: StepContext<P>,
 	) -> ControlFlow<P> {
-		use alloy::eips::Decodable2718;
-
 		let mut payload = payload;
 		while let Ok(input) = self.receiver.lock().await.try_recv() {
 			payload = match input {
@@ -304,7 +305,7 @@ type BoxedTxBuilderFn<P> = Box<
 	dyn FnMut(select::TransactionRequest<P>) -> select::TransactionRequest<P>,
 >;
 
-#[cfg(all(test, feature = "ethereum"))]
+#[cfg(test)]
 mod tests {
 	use super::*;
 

@@ -1,5 +1,11 @@
 use {
-	crate::{Checkpoint, Platform, StepContext, types},
+	crate::{
+		Checkpoint,
+		Platform,
+		StepContext,
+		reth::payload::builder::PayloadBuilderError,
+		types,
+	},
 	core::{
 		any::{Any, type_name},
 		fmt::{self, Debug},
@@ -7,7 +13,6 @@ use {
 		pin::Pin,
 	},
 	futures::FutureExt,
-	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
 };
 

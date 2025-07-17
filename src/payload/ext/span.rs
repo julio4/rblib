@@ -1,8 +1,10 @@
-use {
-	crate::{CheckpointExt, Platform, Span, types},
+use crate::{
+	CheckpointExt,
+	Platform,
+	Span,
 	alloy::{consensus::Transaction, primitives::TxHash},
-	reth::primitives::Recovered,
-	reth_ethereum::primitives::SignedTransaction,
+	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
+	types,
 };
 
 /// Quality of Life extensions for the `Span` type.

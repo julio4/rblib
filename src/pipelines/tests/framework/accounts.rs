@@ -1,4 +1,4 @@
-use alloy::{primitives::Address, signers::local::PrivateKeySigner};
+use crate::alloy::{primitives::Address, signers::local::PrivateKeySigner};
 
 /// Those accounts are defined in the gensis block of the test local node,
 /// each prefunded with 100 ETH and nonces starting from 0.

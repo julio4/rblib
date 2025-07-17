@@ -1,5 +1,9 @@
-use {
-	crate::{Checkpoint, Platform, Span, SpanError, SpanExt},
+use crate::{
+	Checkpoint,
+	Platform,
+	Span,
+	SpanError,
+	SpanExt,
 	alloy::consensus::Transaction,
 	reth::revm::context::result::ExecutionResult,
 };

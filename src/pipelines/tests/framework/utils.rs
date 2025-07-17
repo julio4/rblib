@@ -1,5 +1,4 @@
-use {
-	crate::pipelines::tests::FundedAccounts,
+use crate::{
 	alloy::{
 		consensus::{SignableTransaction, Signed},
 		hex,
@@ -13,6 +12,7 @@ use {
 		primitives::{Address, Bytes, TxHash, TxKind, U256},
 		signers::Signature,
 	},
+	pipelines::tests::FundedAccounts,
 };
 
 pub trait BlockResponseExt<T: TransactionResponse> {

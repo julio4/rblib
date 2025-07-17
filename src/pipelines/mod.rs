@@ -316,20 +316,14 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 }
 
 pub mod traits {
-	use {
-		crate::{
-			reth::{
-				api::FullNodeTypes,
-				providers::{
-					BlockReaderIdExt,
-					ChainSpecProvider,
-					StateProviderFactory,
-				},
-			},
-			*,
+	use crate::{
+		reth::{
+			api::FullNodeTypes,
+			evm::ConfigureEvm,
+			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
+			transaction_pool::{PoolTransaction, TransactionPool},
 		},
-		reth_evm::ConfigureEvm,
-		reth_transaction_pool::{PoolTransaction, TransactionPool},
+		*,
 	};
 
 	pub trait NodeBounds<P: Platform>:

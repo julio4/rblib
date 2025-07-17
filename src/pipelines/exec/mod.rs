@@ -17,6 +17,7 @@ use {
 			service::ServiceContext,
 			step::WrappedStep,
 		},
+		reth::payload::builder::PayloadBuilderError,
 		*,
 	},
 	core::{
@@ -26,7 +27,6 @@ use {
 	},
 	futures::FutureExt,
 	navi::StepPath,
-	reth_payload_builder::PayloadBuilderError,
 	std::sync::Arc,
 	tracing::{debug, trace},
 };

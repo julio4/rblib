@@ -1,20 +1,15 @@
+mod ethereum;
 mod payload;
 mod pipelines;
 
 // Public APIs
-pub use {payload::*, pipelines::*};
+pub use {ethereum::Ethereum, payload::*, pipelines::*};
 
 #[cfg(feature = "optimism")]
 mod optimism;
 
 #[cfg(feature = "optimism")]
 pub use optimism::Optimism;
-
-#[cfg(feature = "ethereum")]
-mod ethereum;
-
-#[cfg(feature = "ethereum")]
-pub use ethereum::Ethereum;
 
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.
@@ -47,7 +42,7 @@ pub trait Platform:
 		>;
 
 	/// Type that represents transactions that are inside the transaction pool.
-	type PooledTransaction: reth_transaction_pool::EthPoolTransaction<
+	type PooledTransaction: reth::transaction_pool::EthPoolTransaction<
 			Consensus = types::Transaction<Self>,
 		> + Send
 		+ Sync
@@ -86,7 +81,7 @@ pub trait Platform:
 
 /// Helpers for extracting types from the platform definition.
 pub mod types {
-	use super::Platform;
+	use super::*;
 
 	/// Extracts node's engine API types used when interacting with CL.
 	pub type NodePayloadTypes<P: Platform> =
@@ -134,7 +129,7 @@ pub mod types {
 		<P::EvmConfig as reth::api::ConfigureEvm>::NextBlockEnvCtx;
 
 	/// Extracts the type that represents the EVM environment for this platform.
-	pub type EvmEnv<P: Platform> = reth_evm::EvmEnvFor<P::EvmConfig>;
+	pub type EvmEnv<P: Platform> = reth::evm::EvmEnvFor<P::EvmConfig>;
 
 	/// Extracts the error type used by the EVM configuration for this platform.
 	pub type EvmError<P: Platform> =
@@ -152,10 +147,10 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 // Reexport reth version that is used by rblib as a convenience for downstream
 // users. Those exports should be enough to get started with a simple node.
 pub mod reth {
-	pub use reth::*;
+	pub use reth_origin::*;
 
 	pub mod cli {
-		pub use {::reth::cli::*, reth_cli::*};
+		pub use {reth_cli::*, reth_origin::cli::*};
 	}
 
 	pub mod evm {
@@ -167,9 +162,13 @@ pub mod reth {
 	}
 
 	pub mod payload {
-		pub use ::reth::payload::*;
+		pub use ::reth_origin::payload::*;
 		pub mod builder {
-			pub use reth_payload_builder::*;
+			pub use {
+				reth_basic_payload_builder::*,
+				reth_ethereum_payload_builder::*,
+				reth_payload_builder::*,
+			};
 		}
 	}
 
@@ -205,7 +204,7 @@ pub mod reth {
 }
 
 pub mod alloy {
-	pub use alloy::*;
+	pub use alloy_origin::*;
 
 	pub mod evm {
 		pub use alloy_evm::*;

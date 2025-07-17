@@ -4,11 +4,11 @@ use {
 		Limits,
 		Platform,
 		pipelines::service::ServiceContext,
+		reth::{primitives::SealedHeader, providers::StateProvider},
 		traits,
 		types,
 	},
 	pool::TransactionPool,
-	reth::{primitives::SealedHeader, providers::StateProvider},
 };
 
 mod pool;

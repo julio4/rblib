@@ -1,12 +1,3 @@
-use {
-	crate::Platform,
-	alloy::{
-		consensus::{SignableTransaction, Signed},
-		signers::Signature,
-	},
-	reth_ethereum::primitives::SignedTransaction,
-	reth_payload_builder::PayloadId,
-};
 // public test utils exports
 pub use {
 	accounts::FundedAccounts,
@@ -16,16 +7,27 @@ pub use {
 	utils::*,
 };
 
+use crate::{
+	Platform,
+	alloy::{
+		consensus::{SignableTransaction, Signed},
+		network::Network as AlloyNetwork,
+		signers::Signature,
+	},
+	reth::{
+		ethereum::primitives::SignedTransaction,
+		payload::builder::PayloadId,
+	},
+};
+
 mod accounts;
+mod ethereum;
 mod node;
 mod step;
 mod utils;
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
-
-#[cfg(feature = "ethereum")]
-mod ethereum;
 
 #[cfg(feature = "optimism")]
 mod optimism;
@@ -64,7 +66,7 @@ pub trait ConsensusDriver<P: Platform + NetworkSelector>:
 
 /// A type used in tests to bind alloy's network traits to a specific platform.
 pub trait NetworkSelector {
-	type Network: alloy::network::Network<
+	type Network: AlloyNetwork<
 			UnsignedTx: SignableTransaction<Signature>,
 			TxEnvelope: From<Signed<select::UnsignedTx<Self>, Signature>>
 			              + SignedTransaction,
@@ -101,21 +103,21 @@ impl<T> TestablePlatform for T where
 }
 
 mod select {
-	use super::NetworkSelector;
+	use super::{AlloyNetwork, NetworkSelector};
 
 	pub type Network<P: NetworkSelector> = <P as NetworkSelector>::Network;
 
 	pub type BlockResponse<P: NetworkSelector> =
-		<Network<P> as alloy::network::Network>::BlockResponse;
+		<Network<P> as AlloyNetwork>::BlockResponse;
 
 	pub type TxEnvelope<P: NetworkSelector> =
-		<Network<P> as alloy::network::Network>::TxEnvelope;
+		<Network<P> as AlloyNetwork>::TxEnvelope;
 
 	pub type UnsignedTx<P: NetworkSelector> =
-		<Network<P> as alloy::network::Network>::UnsignedTx;
+		<Network<P> as AlloyNetwork>::UnsignedTx;
 
 	pub type TransactionRequest<P: NetworkSelector> =
-		<Network<P> as alloy::network::Network>::TransactionRequest;
+		<Network<P> as AlloyNetwork>::TransactionRequest;
 }
 
 /// This gets invoked before any tests, when the cargo test framework loads the

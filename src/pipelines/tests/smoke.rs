@@ -4,14 +4,16 @@ use {
 		alloy::{
 			consensus::BlockHeader,
 			network::{BlockResponse, TransactionBuilder, TransactionResponse},
+			optimism::consensus::DEPOSIT_TX_TYPE_ID,
 			primitives::U256,
 		},
-		reth::cli::Cli,
+		reth::{
+			cli::Cli,
+			ethereum::node::{EthereumNode, node::EthereumAddOns},
+		},
 		steps::*,
 		*,
 	},
-	op_alloy::consensus::DEPOSIT_TX_TYPE_ID,
-	reth_ethereum::node::{EthereumNode, node::EthereumAddOns},
 	tracing::info,
 };
 

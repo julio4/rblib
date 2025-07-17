@@ -1,16 +1,20 @@
 use {
-	crate::*,
-	alloy::{
-		consensus::BlockHeader,
-		primitives::{Address, B256},
+	crate::{
+		alloy::{
+			consensus::BlockHeader,
+			primitives::{Address, B256},
+		},
+		reth::{
+			errors::ProviderError,
+			revm::{
+				DatabaseRef,
+				primitives::{StorageKey, StorageValue},
+				state::{AccountInfo, Bytecode},
+			},
+		},
+		*,
 	},
 	core::fmt::Display,
-	reth::revm::{
-		DatabaseRef,
-		primitives::{StorageKey, StorageValue},
-		state::{AccountInfo, Bytecode},
-	},
-	reth_errors::ProviderError,
 	std::collections::{VecDeque, vec_deque::IntoIter},
 	thiserror::Error,
 };

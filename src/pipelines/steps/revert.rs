@@ -62,8 +62,10 @@ impl<P: Platform> Step<P> for RevertProtection {
 mod tests {
 	use {
 		super::*,
-		crate::pipelines::tests::*,
-		alloy::{consensus::Transaction, network::TransactionBuilder},
+		crate::{
+			alloy::{consensus::Transaction, network::TransactionBuilder},
+			pipelines::tests::*,
+		},
 	};
 
 	#[rblib_test(Ethereum, Optimism)]

@@ -1,15 +1,34 @@
 use {
-	super::{types, *},
-	alloy::primitives::Bytes,
-	reth::primitives::Recovered,
-	reth_optimism_forks::OpHardforks,
-	reth_optimism_node::{
-		OpEvmConfig,
-		OpNextBlockEnvAttributes,
-		OpNode,
-		txpool::OpPooledTransaction,
+	super::{
+		alloy::{
+			consensus::BlockHeader,
+			eips::Encodable2718,
+			optimism::consensus::OpPooledTransaction as AlloyPoolTx,
+			primitives::Bytes,
+		},
+		reth::{
+			chainspec::EthChainSpec,
+			optimism::{
+				forks::OpHardforks,
+				node::{
+					OpDAConfig,
+					OpEvmConfig,
+					OpNextBlockEnvAttributes,
+					OpNode,
+					payload::builder::{OpBuilder, OpPayloadBuilderCtx},
+					txpool::OpPooledTransaction,
+				},
+			},
+			payload::builder::PayloadBuilderError,
+			primitives::Recovered,
+			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
+		},
+		types,
+		*,
 	},
-	std::sync::Arc,
+	reth_basic_payload_builder::{BuildOutcomeKind, PayloadConfig},
+	reth_payload_util::PayloadTransactionsFixed,
+	std::{sync::Arc, time::Instant},
 };
 
 /// Platform definition for Optimism Rollup chains.
@@ -60,26 +79,11 @@ impl Platform for Optimism {
 		transactions: Vec<Recovered<types::Transaction<Self>>>,
 		_: &Pool,
 		provider: &Provider,
-	) -> Result<
-		types::BuiltPayload<Self>,
-		reth_payload_builder::PayloadBuilderError,
-	>
+	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
 		Pool: traits::PoolBounds<Self>,
 		Provider: traits::ProviderBounds<Self>,
 	{
-		use {
-			alloy::eips::Encodable2718,
-			op_alloy::consensus::OpPooledTransaction as AlloyPoolTx,
-			reth::revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
-			reth_basic_payload_builder::{BuildOutcomeKind, PayloadConfig},
-			reth_optimism_node::{
-				OpDAConfig,
-				payload::builder::{OpBuilder, OpPayloadBuilderCtx},
-			},
-			reth_payload_util::PayloadTransactionsFixed,
-		};
-
 		let transactions = skip_sequencer_transactions(transactions, block);
 
 		let op_builder = OpBuilder::new(|_| {
@@ -142,11 +146,6 @@ impl LimitsFactory<Optimism> for OptimismDefaultLimits {
 		block: &BlockContext<Optimism>,
 		enclosing: Option<&Limits>,
 	) -> Limits {
-		use {
-			alloy::consensus::BlockHeader,
-			reth::chainspec::EthChainSpec,
-			std::time::Instant,
-		};
 		let mut limits = Limits::with_gas_limit(
 			block
 				.attributes()

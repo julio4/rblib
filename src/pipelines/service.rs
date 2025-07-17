@@ -2,11 +2,18 @@
 //! definition and turns it into a Reth compatible payload builder.
 
 use {
-	crate::{pipelines::job::PayloadJob, *},
-	reth::{
-		api::{NodeTypes, PayloadBuilderAttributes},
-		builder::{BuilderContext, NodeConfig, components::PayloadServiceBuilder},
-		providers::CanonStateSubscriptions,
+	crate::{
+		pipelines::job::PayloadJob,
+		reth::{
+			api::{NodeTypes, PayloadBuilderAttributes},
+			builder::{
+				BuilderContext,
+				NodeConfig,
+				components::PayloadServiceBuilder,
+			},
+			providers::CanonStateSubscriptions,
+		},
+		*,
 	},
 	reth_payload_builder::{
 		PayloadBuilderHandle,

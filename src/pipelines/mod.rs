@@ -1,12 +1,15 @@
 //! Builder Pipelines API
 //!
-//! This API is used to construct payload builders.
+//! This API is used to construct payload builders workflows.
 
 use {
-	crate::{pipelines::step::WrappedStep, *},
+	crate::{
+		pipelines::step::WrappedStep,
+		reth::builder::components::PayloadServiceBuilder,
+		*,
+	},
 	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
-	reth::builder::components::PayloadServiceBuilder,
 	std::sync::Arc,
 };
 
@@ -314,10 +317,16 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 
 pub mod traits {
 	use {
-		crate::*,
-		reth::{
-			api::FullNodeTypes,
-			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
+		crate::{
+			reth::{
+				api::FullNodeTypes,
+				providers::{
+					BlockReaderIdExt,
+					ChainSpecProvider,
+					StateProviderFactory,
+				},
+			},
+			*,
 		},
 		reth_evm::ConfigureEvm,
 		reth_transaction_pool::{PoolTransaction, TransactionPool},

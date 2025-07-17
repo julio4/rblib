@@ -3,6 +3,26 @@ use {
 	crate::{
 		Optimism,
 		Pipeline,
+		alloy::{
+			consensus::SignableTransaction,
+			eips::{BlockNumberOrTag, Encodable2718, eip7685::Requests},
+			hex,
+			network::TxSignerSync,
+			optimism::{
+				consensus::{OpTxEnvelope, OpTypedTransaction, TxDeposit},
+				rpc_types::Transaction,
+			},
+			primitives::{B256, Bytes, TxKind, U256, address},
+			providers::Provider,
+		},
+		reth::{
+			ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
+			optimism::{
+				chainspec::OpChainSpec,
+				node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
+			},
+			payload::builder::PayloadId,
+		},
 		tests::{
 			ConsensusDriver,
 			FundedAccounts,
@@ -11,26 +31,10 @@ use {
 			TestNodeFactory,
 		},
 	},
-	alloy::{
-		consensus::SignableTransaction,
-		eips::{BlockNumberOrTag, Encodable2718, eip7685::Requests},
-		hex,
-		network::TxSignerSync,
-		primitives::{B256, Bytes, TxKind, U256, address},
-		providers::Provider,
-	},
 	alloy_genesis::{Genesis, GenesisAccount},
-	op_alloy::{
-		consensus::{OpTxEnvelope, OpTypedTransaction, TxDeposit},
-		rpc_types::Transaction,
-	},
 	reth::rpc::types::{Block, engine::ForkchoiceState},
-	reth_ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
 	reth_ipc::client::IpcClientBuilder,
-	reth_optimism_chainspec::OpChainSpec,
-	reth_optimism_node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
 	reth_optimism_rpc::OpEngineApiClient,
-	reth_payload_builder::PayloadId,
 	serde_json::from_str,
 };
 

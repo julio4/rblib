@@ -1,10 +1,13 @@
 use {
 	super::framework::*,
-	crate::{steps::*, *},
-	alloy::{
-		consensus::BlockHeader,
-		network::{BlockResponse, TransactionBuilder},
-		primitives::U256,
+	crate::{
+		alloy::{
+			consensus::BlockHeader,
+			network::{BlockResponse, TransactionBuilder},
+			primitives::U256,
+		},
+		steps::*,
+		*,
 	},
 	tracing::info,
 };

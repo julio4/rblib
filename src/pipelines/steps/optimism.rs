@@ -1,4 +1,7 @@
-use {crate::*, reth_node_builder::PayloadBuilderError, std::sync::Arc};
+use {
+	crate::{reth::payload::builder::PayloadBuilderError, *},
+	std::sync::Arc,
+};
 
 /// This step appends the sequencer transactions that are defined in the payload
 /// attributes parameter from the CL node into the payload under construction.

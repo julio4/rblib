@@ -7,6 +7,7 @@ impl<P: Platform> Step<P> for BuilderEpilogue {
 		payload: Checkpoint<P>,
 		_ctx: StepContext<P>,
 	) -> ControlFlow<P> {
+		tracing::error!("Builder epilogue step is not implemented yet");
 		ControlFlow::Ok(payload)
 	}
 }

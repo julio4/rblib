@@ -1,12 +1,17 @@
 use {
 	super::framework::*,
-	crate::{steps::*, *},
-	alloy::{
-		consensus::BlockHeader,
-		network::{BlockResponse, TransactionBuilder, TransactionResponse},
-		primitives::U256,
+	crate::{
+		alloy::{
+			consensus::BlockHeader,
+			network::{BlockResponse, TransactionBuilder, TransactionResponse},
+			primitives::U256,
+		},
+		reth::cli::Cli,
+		steps::*,
+		*,
 	},
 	op_alloy::consensus::DEPOSIT_TX_TYPE_ID,
+	reth_ethereum::node::{EthereumNode, node::EthereumAddOns},
 	tracing::info,
 };
 
@@ -119,15 +124,9 @@ async fn all_transactions_included_ethereum<P: TestablePlatform>() {
 }
 
 #[tokio::test]
-#[ignore = "This test never completes but we want to make sure that this \
-            syntax compiles"]
+#[ignore = "This test never completes but ensures that this syntax compiles"]
 #[allow(clippy::large_futures)]
 async fn reth_minimal_integration_example() {
-	use {
-		reth::cli::Cli,
-		reth_ethereum::node::{EthereumNode, node::EthereumAddOns},
-	};
-
 	let pipeline = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_pipeline(

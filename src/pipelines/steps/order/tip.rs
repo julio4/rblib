@@ -1,10 +1,14 @@
 use {
-	crate::*,
-	alloy::primitives::Address,
+	crate::{
+		alloy::{consensus::Transaction, primitives::Address},
+		reth::{
+			ethereum::primitives::SignedTransaction,
+			payload::PayloadBuilderError,
+			primitives::Recovered,
+		},
+		*,
+	},
 	itertools::Itertools,
-	reth::primitives::Recovered,
-	reth_ethereum::primitives::SignedTransaction,
-	reth_payload_builder::PayloadBuilderError,
 	std::{
 		collections::{BTreeMap, VecDeque, btree_map::Entry},
 		sync::Arc,
@@ -79,7 +83,6 @@ struct TxsQueue<'a, P: Platform>(
 
 impl<'a, P: Platform> From<&'a Span<P>> for TxsQueue<'a, P> {
 	fn from(span: &'a Span<P>) -> Self {
-		use alloy::consensus::transaction::Transaction;
 		Self(
 			span
 				.iter()
@@ -133,7 +136,6 @@ impl<'a, P: Platform> TxsQueue<'a, P> {
 		&mut self,
 		base_fee: u64,
 	) -> Option<&'a Recovered<types::Transaction<P>>> {
-		use alloy::consensus::transaction::Transaction;
 		let best_signer = self
 			.eligible()
 			.max_by_key(|tx| tx.effective_tip_per_gas(base_fee))
@@ -163,10 +165,10 @@ mod tests {
 	use {
 		super::*,
 		crate::{
+			alloy::network::TransactionBuilder,
 			pipelines::tests::{FundedAccounts, OneStep, TransactionRequestExt},
 			tests::TestablePlatform,
 		},
-		alloy::{consensus::Transaction, network::TransactionBuilder},
 		pipelines_tests_macros::rblib_test,
 	};
 

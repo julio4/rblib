@@ -1,10 +1,8 @@
-// Public API re-exports
 mod payload;
-pub use payload::*;
-
 mod pipelines;
 
-pub use pipelines::*;
+// Public APIs
+pub use {payload::*, pipelines::*};
 
 #[cfg(feature = "optimism")]
 mod optimism;
@@ -79,7 +77,7 @@ pub trait Platform:
 		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
-		reth_payload_builder::PayloadBuilderError,
+		reth::payload::builder::PayloadBuilderError,
 	>
 	where
 		Pool: traits::PoolBounds<Self>,
@@ -145,4 +143,76 @@ pub mod types {
 	/// Extracts the `ChainSpec` type from the platform definition.
 	pub type ChainSpec<P: Platform> =
 		<P::NodeTypes as reth::api::NodeTypes>::ChainSpec;
+}
+
+#[cfg(all(feature = "jemalloc", unix))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+// Reexport reth version that is used by rblib as a convenience for downstream
+// users. Those exports should be enough to get started with a simple node.
+pub mod reth {
+	pub use reth::*;
+
+	pub mod cli {
+		pub use {::reth::cli::*, reth_cli::*};
+	}
+
+	pub mod evm {
+		pub use reth_evm::*;
+	}
+
+	pub mod errors {
+		pub use reth_errors::*;
+	}
+
+	pub mod payload {
+		pub use ::reth::payload::*;
+		pub mod builder {
+			pub use reth_payload_builder::*;
+		}
+	}
+
+	pub mod node {
+		pub mod builder {
+			pub use reth_node_builder::*;
+		}
+
+		pub mod transaction_pool {
+			pub use reth_transaction_pool::*;
+		}
+	}
+
+	pub mod ethereum {
+		pub use reth_ethereum::*;
+	}
+
+	#[cfg(feature = "optimism")]
+	pub mod optimism {
+		pub mod chainspec {
+			pub use reth_optimism_chainspec::*;
+		}
+		pub mod node {
+			pub use reth_optimism_node::*;
+		}
+		pub mod forks {
+			pub use reth_optimism_forks::*;
+		}
+		pub mod cli {
+			pub use reth_optimism_cli::*;
+		}
+	}
+}
+
+pub mod alloy {
+	pub use alloy::*;
+
+	pub mod evm {
+		pub use alloy_evm::*;
+	}
+
+	#[cfg(feature = "optimism")]
+	pub mod optimism {
+		pub use op_alloy::*;
+	}
 }

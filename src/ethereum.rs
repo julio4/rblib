@@ -1,33 +1,35 @@
 use {
 	super::*,
-	crate::traits::{PoolBounds, ProviderBounds},
-	alloy::consensus::Transaction,
-	reth::{
-		chainspec::EthChainSpec,
-		payload::PayloadBuilderAttributes,
-		primitives::Recovered,
-		revm::{cached::CachedReads, cancelled::CancelOnDrop},
+	crate::{
+		alloy::consensus::{BlockHeader, Transaction},
+		reth::{
+			chainspec::EthChainSpec,
+			ethereum::{evm::EthEvmConfig, node::EthereumNode},
+			evm::NextBlockEnvAttributes,
+			payload::{PayloadBuilderAttributes, builder::PayloadBuilderError},
+			primitives::Recovered,
+			revm::{cached::CachedReads, cancelled::CancelOnDrop},
+			transaction_pool::{
+				BestTransactions,
+				EthPooledTransaction,
+				PoolTransaction,
+				TransactionOrigin,
+				ValidPoolTransaction,
+				error::InvalidPoolTransactionError,
+				identifier::{SenderId, SenderIdentifiers, TransactionId},
+			},
+		},
+		traits::{PoolBounds, ProviderBounds},
 	},
 	reth_basic_payload_builder::{BuildArguments, PayloadConfig},
-	reth_ethereum::{evm::EthEvmConfig, node::EthereumNode},
 	reth_ethereum_payload_builder::{
 		EthereumBuilderConfig,
 		default_ethereum_payload,
 	},
-	reth_evm::NextBlockEnvAttributes,
-	reth_payload_builder::PayloadBuilderError,
-	reth_transaction_pool::{
-		BestTransactions,
-		EthPooledTransaction,
-		PoolTransaction,
-		TransactionOrigin,
-		ValidPoolTransaction,
-		error::InvalidPoolTransactionError,
-		identifier::{SenderId, SenderIdentifiers, TransactionId},
-	},
 	std::{
 		collections::{HashMap, hash_map::Entry},
 		sync::Arc,
+		time::Instant,
 	},
 };
 
@@ -50,7 +52,6 @@ impl Platform for Ethereum {
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self> {
-		use alloy::consensus::BlockHeader;
 		NextBlockEnvAttributes {
 			timestamp: attributes.timestamp,
 			suggested_fee_recipient: attributes.suggested_fee_recipient,
@@ -66,10 +67,7 @@ impl Platform for Ethereum {
 		transactions: Vec<Recovered<types::Transaction<Self>>>,
 		transaction_pool: &Pool,
 		provider: &Provider,
-	) -> Result<
-		types::BuiltPayload<Self>,
-		reth_payload_builder::PayloadBuilderError,
-	>
+	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
 		Pool: PoolBounds<Self>,
 		Provider: ProviderBounds<Self>,
@@ -80,7 +78,10 @@ impl Platform for Ethereum {
 			attributes: block.attributes().clone(),
 		};
 
-		let build_args = BuildArguments::<_, types::BuiltPayload<Self>>::new(
+		let build_args = BuildArguments::<
+			types::PayloadBuilderAttributes<Self>,
+			types::BuiltPayload<Self>,
+		>::new(
 			CachedReads::default(),
 			payload_config,
 			CancelOnDrop::default(),
@@ -127,7 +128,6 @@ impl<P: Platform> LimitsFactory<P> for EthereumDefaultLimits {
 		block: &BlockContext<P>,
 		enclosing: Option<&Limits>,
 	) -> Limits {
-		use {alloy::consensus::BlockHeader, std::time::Instant};
 		let timestamp = block.attributes().timestamp();
 		let parent_gas_limit = block.parent().gas_limit();
 		let gas_limit = self.0.gas_limit(parent_gas_limit);

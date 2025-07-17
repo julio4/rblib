@@ -5,6 +5,10 @@ use {
 			exec::{ClonablePayloadBuilderError, PipelineExecutor},
 			service::ServiceContext,
 		},
+		reth::{
+			api::PayloadBuilderAttributes,
+			payload::builder::{PayloadJob as RethPayloadJobTrait, *},
+		},
 		*,
 	},
 	core::{
@@ -12,8 +16,6 @@ use {
 		task::{Context, Poll},
 	},
 	futures::{FutureExt, future::Shared},
-	reth::api::PayloadBuilderAttributes,
-	reth_payload_builder::{PayloadJob as RethPayloadJobTrait, *},
 	std::sync::Arc,
 	tracing::{debug, info},
 };

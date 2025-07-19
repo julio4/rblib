@@ -60,8 +60,9 @@ impl<P: Platform> SpanExt<P> for Span<P> {
 		let hash = txhash.into();
 		self.iter().any(|checkpoint| {
 			checkpoint
-				.transaction()
-				.is_some_and(|tx| hash == *tx.tx_hash())
+				.transactions()
+				.iter()
+				.any(|tx| *tx.tx_hash() == hash)
 		})
 	}
 
@@ -74,7 +75,8 @@ impl<P: Platform> SpanExt<P> for Span<P> {
 	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
 		self
 			.iter()
-			.filter_map(|checkpoint| checkpoint.transaction())
+			.map(|checkpoint| checkpoint.transactions())
+			.flatten()
 	}
 
 	/// Iterates over all blob transactions in the span.
@@ -93,9 +95,13 @@ impl<P: Platform> SpanExt<P> for Span<P> {
 	fn blob_gas_used(&self) -> u64 {
 		self
 			.iter()
-			.filter_map(|checkpoint| {
-				checkpoint.transaction().and_then(|tx| tx.blob_gas_used())
+			.map(|checkpoint| {
+				checkpoint
+					.transactions()
+					.iter()
+					.filter_map(|tx| tx.blob_gas_used())
 			})
+			.flatten()
 			.sum()
 	}
 

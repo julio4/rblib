@@ -31,30 +31,34 @@ impl<P: Platform> Step<P> for RevertProtection {
 		};
 
 		let (valid, mut remaining) = history.split_at(prefix_len);
-		let mut safe = valid.last().cloned().expect("at least baseline checkpoint");
+		let mut prefix =
+			valid.last().cloned().expect("at least baseline checkpoint");
 
-		while let Some(tx) = remaining.pop_first() {
-			let tx = tx
-				.transaction()
-				.cloned()
-				.expect("baseline checkpoint is always successful");
+		while let Some(checkpoint) = remaining.pop_first() {
+			// If the checkpoint is an individual transaction, then standard revert
+			// protection rules apply to it.
+			if let Some(tx) = checkpoint.as_transaction().cloned() {
+				let Ok(new_checkpoint) = prefix.apply(tx) else {
+					// if the transaction cannot be applied because of consensus rules, we
+					// skip it and move on to the next one.
+					continue;
+				};
 
-			let Ok(new_checkpoint) = safe.apply(tx) else {
-				// if the transaction cannot be applied because of consensus rules, we
-				// skip it and move on to the next one.
-				continue;
-			};
+				if new_checkpoint.is_success() {
+					// if the transaction was applied and did not revert or halt, we can
+					// use the new checkpoint as the base for the next transaction,
+					// otherwise we keep the same prefix and discard this checkpoint.
+					prefix = new_checkpoint;
+					continue;
+				}
+			}
 
-			if new_checkpoint.is_success() {
-				// if the transaction was applied and did not revert or halt, we can
-				// use the new checkpoint as the base for the next transaction,
-				// otherwise we keep the same base checkpoint and discard this
-				// checkpoint.
-				safe = new_checkpoint;
+			if let Some(_bundle) = checkpoint.as_bundle() {
+				todo!()
 			}
 		}
 
-		ControlFlow::Ok(safe)
+		ControlFlow::Ok(prefix)
 	}
 }
 

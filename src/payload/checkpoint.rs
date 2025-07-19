@@ -1,53 +1,35 @@
 use {
-	crate::{
-		alloy::{
-			evm::{Evm, EvmError, block::BlockExecutorFactory, evm::EvmFactory},
-			primitives::{Address, B256, KECCAK256_EMPTY, StorageValue},
-		},
-		reth::{
-			api::ConfigureEvm,
-			core::primitives::SignedTransaction,
-			primitives::Recovered,
-			revm::{
-				DatabaseRef,
-				db::WrapDatabaseRef,
-				primitives::StorageKey,
-				state::{AccountInfo, Bytecode, EvmState},
-			},
-		},
-		*,
+	super::exec::IntoExecutable,
+	crate::*,
+	alloy::{
+		consensus::crypto::RecoveryError,
+		evm::Evm,
+		primitives::{Address, B256, KECCAK256_EMPTY, StorageValue},
 	},
 	core::fmt::{Debug, Display},
+	reth::{
+		api::ConfigureEvm,
+		core::primitives::SignedTransaction,
+		errors::ProviderError,
+		primitives::Recovered,
+		revm::{
+			DatabaseRef,
+			db::WrapDatabaseRef,
+			primitives::StorageKey,
+			state::{AccountInfo, Bytecode, EvmState},
+		},
+	},
 	std::sync::Arc,
 	thiserror::Error,
 };
 
-pub type EvmFactoryError<P: Platform> =
-	<
-		<
-			<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
-		>::EvmFactory as EvmFactory
-	>::Error<StateError>;
-
-pub type InvalidTransactionError<P: Platform> =
-	<EvmFactoryError<P> as EvmError>::InvalidTransaction;
-
 #[derive(Debug, Error)]
 pub enum Error<P: Platform> {
-	#[error("state error: {0}")]
-	State(#[from] StateError),
-
-	#[error("transaction has invalid signature")]
-	InvalidSignature,
+	#[error("Failed to recover signature for transaction")]
+	SignatureRecovery(#[from] RecoveryError),
 
 	#[error("Evm execution error: {0}")]
-	Evm(types::EvmError<P>),
-
-	#[error("Evm factory error: {0}")]
-	EvmFactory(EvmFactoryError<P>),
-
-	#[error("Invalid transaction: {0}")]
-	InvalidTransaction(InvalidTransactionError<P>),
+	Evm(types::EvmError<P, ProviderError>),
 }
 
 /// Checkpoints represent an atomic incremental change in the payload building
@@ -121,28 +103,44 @@ impl<P: Platform> Checkpoint<P> {
 		&self.inner.block
 	}
 
-	/// The transaction that created this checkpoint.
-	pub fn transaction(&self) -> Option<&Recovered<types::Transaction<P>>> {
+	/// The transactions that created this checkpoint. This could be either an
+	/// empty iterator if this checkpoint is a barrier or other non-transaction
+	/// checkpoint, it can be one transaction if this checkpoint was created by
+	/// applying a single transaction, or it can be multiple if this checkpoint
+	/// represents a bundle.
+	pub fn transactions(&self) -> &[Recovered<types::Transaction<P>>] {
 		match &self.inner.mutation {
-			Mutation::Barrier => None,
-			Mutation::Transaction { transaction, .. } => Some(transaction),
+			Mutation::Barrier => &[],
+			Mutation::Transaction { transaction, .. } => {
+				std::slice::from_ref(transaction)
+			}
+			Mutation::Bundle { bundle, .. } => bundle.transactions(),
 		}
 	}
 
-	/// The execution result of the transaction that created this checkpoint.
-	pub fn result(&self) -> Option<&ExecutionResult<P>> {
+	/// The execution result(s) of the transaction(s) that created this
+	/// checkpoint.
+	pub fn result(&self) -> ExecutionResult<'_, P> {
 		match &self.inner.mutation {
-			Mutation::Barrier => None,
-			Mutation::Transaction { result, .. } => Some(&result.result),
+			Mutation::Barrier => ExecutionResult::Barrier,
+			Mutation::Bundle {
+				results,
+				bundle,
+				state,
+			} => ExecutionResult::Bundle(bundle, results, state),
+			Mutation::Transaction { result, .. } => {
+				ExecutionResult::Transaction(result)
+			}
 		}
 	}
 
 	/// The state changes that occured as a result of executing the
-	/// transaction that created this checkpoint.
+	/// transaction(s) that created this checkpoint.
 	pub fn state(&self) -> Option<&EvmState> {
-		match &self.inner.mutation {
+		match self.inner.mutation {
 			Mutation::Barrier => None,
-			Mutation::Transaction { result, .. } => Some(&result.state),
+			Mutation::Transaction { ref state, .. } => Some(state),
+			Mutation::Bundle { ref state, .. } => Some(state),
 		}
 	}
 
@@ -150,44 +148,41 @@ impl<P: Platform> Checkpoint<P> {
 	pub fn is_barrier(&self) -> bool {
 		matches!(self.inner.mutation, Mutation::Barrier)
 	}
+
+	/// If this checkpoint is a single transaction, returns a reference to the
+	/// transaction that created this checkpoint. otherwise returns `None`.
+	pub fn as_transaction(&self) -> Option<&Recovered<types::Transaction<P>>> {
+		if let Mutation::Transaction { transaction, .. } = &self.inner.mutation {
+			return Some(transaction);
+		}
+		None
+	}
+
+	/// If this checkpoint is a bundle, returns a reference to the bundle that
+	/// created this checkpoint. otherwise returns `None`.
+	pub fn as_bundle(&self) -> Option<&types::Bundle<P>> {
+		if let Mutation::Bundle { bundle, .. } = &self.inner.mutation {
+			return Some(bundle);
+		}
+		None
+	}
 }
 
 /// Public builder API
 impl<P: Platform> Checkpoint<P> {
 	/// Creates a new checkpoint on top of the current checkpoint by applying a
-	/// transaction. The transaction will be executed on top of the cumulative
-	/// state of all checkpoints in the history.
+	/// transaction or a bundle of transactions. The execution will use the
+	/// cumulative  state of all checkpoints in the history as its current state.
 	pub fn apply<S>(
 		&self,
-		transaction: impl IntoRecoveredTx<P, S>,
+		executable: impl IntoExecutable<P, S>,
 	) -> Result<Self, Error<P>> {
-		let transaction = transaction.try_into_recovered()?;
-
-		// Create a new EVM instance with its state rooted at the current checkpoint
-		// state and the environment configured for the block under construction.
-		let mut evm = self
-			.block()
-			.evm_config()
-			.evm_with_env(WrapDatabaseRef(self), self.block().evm_env().clone());
-
-		let result = evm.transact(&transaction).map_err(|err| {
-			match err.try_into_invalid_tx_err() {
-				Ok(invalid_tx) => Error::InvalidTransaction(invalid_tx),
-				Err(e) => Error::EvmFactory(e),
+		match executable.try_into_executable()? {
+			Executable::Transaction(recovered) => {
+				self.apply_transaction(recovered).map_err(Error::Evm)
 			}
-		})?;
-
-		Ok(Self {
-			inner: Arc::new(CheckpointInner {
-				block: self.inner.block.clone(),
-				prev: Some(Arc::clone(&self.inner)),
-				depth: self.inner.depth + 1,
-				mutation: Mutation::Transaction {
-					transaction,
-					result,
-				},
-			}),
-		})
+			Executable::Bundle(bundle) => self.apply_bundle(bundle),
+		}
 	}
 
 	/// Creates a new checkpoint on top of the current checkpoint that introduces
@@ -221,6 +216,45 @@ impl<P: Platform> Checkpoint<P> {
 			}),
 		}
 	}
+
+	/// Executes a single transactions and creates a new checkpoint on top of the
+	/// current checkpoint with the result of the transaction execution.
+	///
+	/// Transactions that cause evm errors cannot create checkpoints. This does
+	/// not mean that checkpoints cannot have reverted or halted transactions.
+	/// Only transactions that violate consensus rules are not allowed to create
+	/// checkpoints, this includes things like invalid nonces, or others from
+	/// [`reth_evm::revm::context::result::InvalidTransaction`].
+	fn apply_transaction(
+		&self,
+		transaction: Recovered<types::Transaction<P>>,
+	) -> Result<Self, types::EvmError<P, ProviderError>> {
+		// Create a new EVM instance with its state rooted at the current checkpoint
+		// state and the environment configured for the block under construction.
+		let mut evm = self
+			.block()
+			.evm_config()
+			.evm_with_env(WrapDatabaseRef(self), self.block().evm_env().clone());
+
+		let result = evm.transact(&transaction)?;
+
+		Ok(Self {
+			inner: Arc::new(CheckpointInner {
+				block: self.inner.block.clone(),
+				prev: Some(Arc::clone(&self.inner)),
+				depth: self.inner.depth + 1,
+				mutation: Mutation::Transaction {
+					transaction,
+					result: result.result,
+					state: result.state,
+				},
+			}),
+		})
+	}
+
+	fn apply_bundle(&self, _: types::Bundle<P>) -> Result<Self, Error<P>> {
+		todo!("apply_bundle not implemented yet");
+	}
 }
 
 /// Describes the type of state mutation that was applied to the
@@ -241,16 +275,33 @@ enum Mutation<P: Platform> {
 	/// history.
 	Barrier,
 
+	/// A checkpoint that was created by applying a bundle of transactions.
+	Bundle {
+		/// The bundle that was applied to create this checkpoint.
+		bundle: types::Bundle<P>,
+
+		/// The results of executing all transactions in the bundle.
+		results: Vec<types::TransactionExecutionResult<P>>,
+
+		/// The cumulative state changes that occurred as a result of executing the
+		/// transactions in the bundle.
+		state: EvmState,
+	},
+
 	/// A regular checkpoint that was created by applying a transaction.
 	Transaction {
 		/// The transaction that was applied on top of the previous checkpoint.
 		transaction: Recovered<types::Transaction<P>>,
-		/// The result of executing the transaction, including the state changes
-		result: ResultAndState<P>,
+
+		/// The result of executing the transaction
+		result: types::TransactionExecutionResult<P>,
+
+		/// The state changes that occured as a result of executing the
+		/// transaction.
+		state: EvmState,
 	},
 }
 
-/// This is
 struct CheckpointInner<P: Platform> {
 	/// The block context for which this checkpoint was created.
 	block: BlockContext<P>,
@@ -280,28 +331,106 @@ impl<P: Platform> From<Checkpoint<P>> for Vec<types::Transaction<P>> {
 	}
 }
 
-/// Convinience trait that allows various variants of transactions to be used
-/// as a parameter to the `Checkpoint::apply` method.
-pub trait IntoRecoveredTx<P: Platform, Marker = ()>: Send + Sync {
-	fn try_into_recovered(
-		self,
-	) -> Result<Recovered<types::Transaction<P>>, Error<P>>;
+struct Iter<'a, P, F, R>
+where
+	P: Platform,
+	F: Fn(&'a CheckpointInner<P>, usize) -> R + 'a,
+{
+	checkpoint: &'a CheckpointInner<P>,
+	pos: usize,
+	rpos: usize,
+	accessor: F,
 }
 
-impl<P: Platform> IntoRecoveredTx<P, ()> for types::Transaction<P> {
-	fn try_into_recovered(
-		self,
-	) -> Result<Recovered<types::Transaction<P>>, Error<P>> {
-		SignedTransaction::try_into_recovered(self)
-			.map_err(|_| Error::InvalidSignature)
+impl<'a, P, F, R> Iter<'a, P, F, R>
+where
+	P: Platform,
+	F: Fn(&'a CheckpointInner<P>, usize) -> R,
+{
+	pub fn new(checkpoint: &'a CheckpointInner<P>, accessor: F) -> Self {
+		Self {
+			checkpoint,
+			accessor,
+			pos: 0,
+			rpos: match &checkpoint.mutation {
+				Mutation::Barrier => 0,
+				Mutation::Transaction { .. } => 1,
+				Mutation::Bundle { bundle, .. } => bundle.transactions().len(),
+			},
+		}
 	}
 }
 
-impl<P: Platform> IntoRecoveredTx<P, u8> for Recovered<types::Transaction<P>> {
-	fn try_into_recovered(
-		self,
-	) -> Result<Recovered<types::Transaction<P>>, Error<P>> {
-		Ok(self)
+impl<'a, P, F, R> Iterator for Iter<'a, P, F, R>
+where
+	P: Platform,
+	F: Fn(&'a CheckpointInner<P>, usize) -> R + 'a,
+{
+	type Item = R;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match &self.checkpoint.mutation {
+			Mutation::Barrier => None,
+			Mutation::Transaction { .. } => {
+				if self.pos < self.rpos {
+					self.pos += 1;
+					Some((self.accessor)(self.checkpoint, self.pos))
+				} else {
+					None
+				}
+			}
+			Mutation::Bundle { .. } => {
+				if self.pos < self.rpos {
+					self.pos += 1;
+					Some((self.accessor)(self.checkpoint, self.pos))
+				} else {
+					None
+				}
+			}
+		}
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.rpos - self.pos;
+		(len, Some(len))
+	}
+}
+
+impl<'a, P, F, R> DoubleEndedIterator for Iter<'a, P, F, R>
+where
+	P: Platform,
+	F: Fn(&'a CheckpointInner<P>, usize) -> R + 'a,
+{
+	fn next_back(&mut self) -> Option<Self::Item> {
+		match &self.checkpoint.mutation {
+			Mutation::Barrier => None,
+			Mutation::Transaction { .. } => {
+				if self.rpos > 0 && self.pos < self.rpos {
+					self.rpos -= 1;
+					Some((self.accessor)(self.checkpoint, self.rpos))
+				} else {
+					None
+				}
+			}
+			Mutation::Bundle { .. } => {
+				if self.rpos > 0 && self.pos < self.rpos {
+					self.rpos -= 1;
+					Some((self.accessor)(self.checkpoint, self.rpos))
+				} else {
+					None
+				}
+			}
+		}
+	}
+}
+
+impl<'a, P, F, R> ExactSizeIterator for Iter<'a, P, F, R>
+where
+	P: Platform,
+	F: Fn(&'a CheckpointInner<P>, usize) -> R,
+{
+	fn len(&self) -> usize {
+		self.rpos - self.pos
 	}
 }
 
@@ -312,7 +441,7 @@ impl<P: Platform> IntoRecoveredTx<P, u8> for Recovered<types::Transaction<P>> {
 /// built.
 impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	/// The database error type.
-	type Error = StateError;
+	type Error = ProviderError;
 
 	/// Gets basic account information.
 	fn basic_ref(
@@ -358,18 +487,17 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		// TODO: This is highly inefficient, optimize this asap.
 
 		for checkpoint in self.history().into_iter().rev() {
-			for account in checkpoint.state().iter().flat_map(|state| state.values())
-			{
-				if account.info.code_hash == code_hash {
-					return Ok(
-						account
-							.info
-							.code
-							.as_ref()
-							.expect("Code should be present")
-							.clone(),
-					);
-				}
+			if let Some(account) = checkpoint.state().and_then(|state| {
+				state.values().find(|acc| acc.info.code_hash == code_hash)
+			}) {
+				return Ok(
+					account
+						.info
+						.code
+						.as_ref()
+						.expect("Code should be present")
+						.clone(),
+				);
 			}
 		}
 
@@ -395,6 +523,8 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 			if let Some(account) =
 				checkpoint.state().and_then(|state| state.get(&address))
 			{
+				// if the checkpoint has touched the address, return the storage
+				// value at the given index.
 				return Ok(
 					account
 						.storage
@@ -449,7 +579,14 @@ impl<P: Platform> Debug for Checkpoint<P> {
 		f.debug_struct("Checkpoint")
 			.field("depth", &self.depth() as &dyn Debug)
 			.field("block", &self.block() as &dyn Debug)
-			.field("tx", &self.transaction() as &dyn Debug)
+			.field(
+				"txs",
+				&self
+					.transactions()
+					.iter()
+					.map(|tx| tx.tx_hash())
+					.collect::<Vec<_>>() as &dyn Debug,
+			)
 			.field("result", &self.result() as &dyn Debug)
 			.field("state", &self.state() as &dyn Debug)
 			.finish()
@@ -458,38 +595,31 @@ impl<P: Platform> Debug for Checkpoint<P> {
 
 impl<P: Platform> Display for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		let (Some(tx), Some(result)) = (self.transaction(), self.result()) else {
-			return write!(f, "[{}] (initial)", self.depth());
-		};
-
-		write!(
-			f,
-			"[{}] {} ({}, {} gas)",
-			self.depth(),
-			tx.tx_hash(),
-			match result {
-				ExecutionResult::<P>::Success { .. } => "success",
-				ExecutionResult::<P>::Revert { .. } => "revert",
-				ExecutionResult::<P>::Halt { .. } => "halt",
-			},
-			self.gas_used(),
-		)
+		match &self.inner.mutation {
+			Mutation::Barrier => write!(f, "[{}] (barrier)", self.depth()),
+			Mutation::Transaction {
+				transaction,
+				result,
+				..
+			} => write!(
+				f,
+				"[{}] {} ({}, {} gas)",
+				self.depth(),
+				transaction.tx_hash(),
+				match result {
+					types::TransactionExecutionResult::<P>::Success { .. } => "success",
+					types::TransactionExecutionResult::<P>::Revert { .. } => "revert",
+					types::TransactionExecutionResult::<P>::Halt { .. } => "halt",
+				},
+				self.gas_used(),
+			),
+			Mutation::Bundle { bundle, .. } => write!(
+				f,
+				"[{}] (bundle {} txs, {} gas)",
+				self.depth(),
+				bundle.transactions().len(),
+				self.gas_used(),
+			),
+		}
 	}
 }
-
-type ResultAndState<P: Platform> = reth::revm::context::result::ResultAndState<
-	<
-		<
-			<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
-		>::EvmFactory as EvmFactory
-	>::HaltReason
->;
-
-type ExecutionResult<P: Platform> = reth::revm::context::result::ExecutionResult
-	<
-		<
-			<
-				<P::EvmConfig as ConfigureEvm>::BlockExecutorFactory as BlockExecutorFactory
-			>::EvmFactory as EvmFactory
-		>::HaltReason
-	>;

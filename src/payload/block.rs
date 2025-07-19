@@ -18,8 +18,8 @@ use {
 
 #[derive(Debug, Error)]
 pub enum Error<P: Platform> {
-	#[error("Evm execution error: {0}")]
-	Evm(types::EvmError<P>),
+	#[error("Evm configuration error: {0}")]
+	Env(types::EvmEnvError<P>),
 
 	#[error("State error: {0}")]
 	PayloadBuilder(#[from] PayloadBuilderError),
@@ -65,7 +65,7 @@ impl<P: Platform> BlockContext<P> {
 
 		let evm_env = evm_config //
 			.next_evm_env(&parent, &block_env)
-			.map_err(Error::Evm)?;
+			.map_err(Error::Env)?;
 
 		let mut base_state = State::builder()
 			.with_database(StateProviderDatabase(base_state))
@@ -75,7 +75,7 @@ impl<P: Platform> BlockContext<P> {
 		// prepare the base state for the next block
 		evm_config
 			.builder_for_next_block(&mut base_state, &parent, block_env.clone())
-			.map_err(Error::Evm)?
+			.map_err(Error::Env)?
 			.apply_pre_execution_changes()?;
 
 		Ok(Self {

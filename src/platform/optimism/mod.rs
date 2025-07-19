@@ -1,7 +1,6 @@
 use {
 	super::{
 		alloy::{
-			consensus::BlockHeader,
 			eips::Encodable2718,
 			optimism::consensus::OpPooledTransaction as AlloyPoolTx,
 			primitives::Bytes,
@@ -10,35 +9,30 @@ use {
 			chainspec::EthChainSpec,
 			optimism::{
 				forks::OpHardforks,
-				node::{
-					OpDAConfig,
-					OpEvmConfig,
-					OpNextBlockEnvAttributes,
-					OpNode,
-					payload::builder::{OpBuilder, OpPayloadBuilderCtx},
-					txpool::OpPooledTransaction,
-				},
+				node::{payload::builder::*, txpool::OpPooledTransaction, *},
 			},
-			payload::builder::{
-				BuildOutcomeKind,
-				PayloadBuilderError,
-				PayloadConfig,
-			},
+			payload::builder::*,
 			primitives::Recovered,
 			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
 		},
 		types,
 		*,
 	},
+	bundle::OpBundle,
+	limits::OptimismDefaultLimits,
 	reth_payload_util::PayloadTransactionsFixed,
-	std::{sync::Arc, time::Instant},
+	std::sync::Arc,
 };
+
+mod bundle;
+mod limits;
 
 /// Platform definition for Optimism Rollup chains.
 #[derive(Debug, Clone, Default)]
 pub struct Optimism;
 
 impl Platform for Optimism {
+	type Bundle = OpBundle;
 	type DefaultLimits = OptimismDefaultLimits;
 	type EvmConfig = OpEvmConfig;
 	type NodeTypes = OpNode;
@@ -137,47 +131,6 @@ impl Platform for Optimism {
 
 		// Done!
 		Ok(built_payload)
-	}
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct OptimismDefaultLimits;
-
-impl LimitsFactory<Optimism> for OptimismDefaultLimits {
-	fn create(
-		&self,
-		block: &BlockContext<Optimism>,
-		enclosing: Option<&Limits>,
-	) -> Limits {
-		let mut limits = Limits::with_gas_limit(
-			block
-				.attributes()
-				.gas_limit
-				.unwrap_or_else(|| block.parent().header().gas_limit()),
-		)
-		.with_deadline(
-			Instant::now()
-				+ std::time::Duration::from_secs(
-					block.attributes().payload_attributes.timestamp
-						- std::time::SystemTime::now()
-							.duration_since(std::time::UNIX_EPOCH)
-							.unwrap_or_default()
-							.as_secs(),
-				),
-		);
-
-		if let Some(blob_params) = block
-			.chainspec()
-			.blob_params_at_timestamp(block.attributes().payload_attributes.timestamp)
-		{
-			limits = limits.with_blob_params(blob_params);
-		}
-
-		if let Some(enclosing) = enclosing {
-			limits = limits.clamp(enclosing);
-		}
-
-		limits
 	}
 }
 

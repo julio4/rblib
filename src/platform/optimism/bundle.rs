@@ -1,0 +1,29 @@
+use crate::{alloy::primitives::TxHash, reth::primitives::Recovered, *};
+
+#[derive(Debug, Clone)]
+pub struct OpBundle;
+impl Bundle<Optimism> for OpBundle {
+	fn transactions(&self) -> &[Recovered<types::Transaction<Optimism>>] {
+		&[]
+	}
+
+	fn without_transaction(_: TxHash) -> Self {
+		todo!()
+	}
+
+	fn is_eligible(&self, _block: &BlockContext<Optimism>) -> Eligibility {
+		todo!()
+	}
+
+	fn is_allowed_to_fail(&self, _tx: TxHash) -> bool {
+		todo!()
+	}
+
+	fn is_optional(&self, _tx: TxHash) -> bool {
+		todo!()
+	}
+
+	fn uuid(&self) -> Uuid {
+		todo!()
+	}
+}

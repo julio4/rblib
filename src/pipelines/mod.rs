@@ -16,7 +16,6 @@ use {
 mod context;
 mod exec;
 mod job;
-mod limits;
 mod service;
 mod step;
 pub mod steps;
@@ -28,7 +27,6 @@ pub mod tests;
 pub use {
 	Behavior::{Loop, Once},
 	context::StepContext,
-	limits::{Limits, LimitsFactory},
 	step::{ControlFlow, Step},
 };
 

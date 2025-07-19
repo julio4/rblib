@@ -206,7 +206,7 @@ impl<P: Platform> Display for Span<P> {
 /// because it won't have access to any of the contract code or state
 /// that was not created or modified by the checkpoints in the span.
 impl<P: Platform> DatabaseRef for Span<P> {
-	type Error = StateError;
+	type Error = ProviderError;
 
 	/// Gets basic account information.
 	fn basic_ref(

@@ -5,7 +5,6 @@ use crate::{
 	SpanError,
 	SpanExt,
 	alloy::consensus::Transaction,
-	reth::revm::context::result::ExecutionResult,
 };
 
 /// Quality of Life extensions for the `Checkpoint` type.
@@ -32,10 +31,6 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// Returns `true` if the transaction that created this checkpoint was
 	/// successful, `false` otherwise.
 	fn is_success(&self) -> bool;
-
-	/// Returns `true` if this checkpoint was created by applying a
-	/// transaction, `false` otherwise.
-	fn is_transaction(&self) -> bool;
 
 	/// Returns `true` if this checkpoint was created by applying EIP-4844 blob
 	/// transaction, `false` otherwise.
@@ -99,33 +94,32 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 
 	/// Gas used by this checkpoint.
 	fn gas_used(&self) -> u64 {
-		self.result().map_or(0, ExecutionResult::gas_used)
+		self.result().gas_used()
 	}
 
 	/// Returns the effective tip for this transaction.
 	fn effective_tip_per_gas(&self) -> u128 {
 		self
-			.transaction()
-			.and_then(|tx| tx.effective_tip_per_gas(self.block().base_fee()))
-			.unwrap_or(0)
+			.transactions()
+			.iter()
+			.filter_map(|tx| tx.effective_tip_per_gas(self.block().base_fee()))
+			.sum()
 	}
 
 	/// If this checkpoint was created by applying an EIP-4844 blob transaction,
 	/// returns the blob gas used, `None` otherwise.
 	fn blob_gas_used(&self) -> Option<u64> {
-		self.transaction().and_then(|tx| tx.blob_gas_used())
+		self
+			.transactions()
+			.iter()
+			.map(|tx| tx.blob_gas_used())
+			.sum()
 	}
 
 	/// Returns `true` if the transaction that created this checkpoint was
 	/// successful, `false` otherwise.
 	fn is_success(&self) -> bool {
-		self.result().is_none_or(ExecutionResult::is_success)
-	}
-
-	/// Returns `true` if this checkpoint was created by applying a
-	/// transaction, `false` otherwise.
-	fn is_transaction(&self) -> bool {
-		self.transaction().is_some()
+		self.result().is_success()
 	}
 
 	/// Returns `true` if this checkpoint was created by applying an EIP-4844 blob

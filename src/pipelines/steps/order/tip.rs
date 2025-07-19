@@ -86,7 +86,7 @@ impl<'a, P: Platform> From<&'a Span<P>> for TxsQueue<'a, P> {
 		Self(
 			span
 				.iter()
-				.filter_map(|checkpoint| checkpoint.transaction())
+				.flat_map(|checkpoint| checkpoint.transactions())
 				.map(|tx| (tx.signer(), tx))
 				.into_group_map()
 				.into_iter()

@@ -94,7 +94,7 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 
 	/// Gas used by this checkpoint.
 	fn gas_used(&self) -> u64 {
-		self.result().gas_used()
+		self.result().map_or(0, |result| result.gas_used())
 	}
 
 	/// Returns the effective tip for this transaction.
@@ -119,7 +119,7 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// Returns `true` if the transaction that created this checkpoint was
 	/// successful, `false` otherwise.
 	fn is_success(&self) -> bool {
-		self.result().is_success()
+		self.result().is_none_or(|result| result.is_success())
 	}
 
 	/// Returns `true` if this checkpoint was created by applying an EIP-4844 blob

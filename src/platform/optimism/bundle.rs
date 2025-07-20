@@ -7,7 +7,7 @@ impl Bundle<Optimism> for OpBundle {
 		&[]
 	}
 
-	fn without_transaction(_: TxHash) -> Self {
+	fn without_transaction(self, _: TxHash) -> Self {
 		todo!()
 	}
 

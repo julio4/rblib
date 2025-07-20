@@ -23,7 +23,9 @@ mod pool;
 
 /// Platform definition for ethereum mainnet.
 #[derive(Debug, Clone, Default)]
-pub struct Ethereum;
+pub struct Ethereum {
+	_private: (),
+}
 
 impl Platform for Ethereum {
 	type Bundle = EthereumBundle;

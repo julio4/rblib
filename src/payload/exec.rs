@@ -7,10 +7,15 @@ use {
 		evm::{
 			ConfigureEvm,
 			Evm,
-			revm::{DatabaseRef, state::EvmState},
+			revm::{
+				DatabaseCommit,
+				DatabaseRef,
+				context::result::ExecResultAndState,
+				state::EvmState,
+			},
 		},
 		primitives::Recovered,
-		revm::db::WrapDatabaseRef,
+		revm::db::{CacheDB, WrapDatabaseRef},
 	},
 	std::fmt::Debug,
 };
@@ -21,64 +26,184 @@ use {
 pub enum Executable<P: Platform> {
 	// Individual transaction
 	Transaction(Recovered<types::Transaction<P>>),
-	// A bundle of transactions with its metadata
+
+	// A bundle of transactions with metadata and behaviors.
 	Bundle(types::Bundle<P>),
 }
 
 impl<P: Platform> Executable<P> {
-	pub fn execute<'a, DB>(
+	pub fn execute<DB>(
 		self,
-		block: &'a BlockContext<P>,
-		db: &'a DB,
+		block: &BlockContext<P>,
+		db: &DB,
 	) -> Result<ExecutionResult<P>, types::EvmError<P, ProviderError>>
 	where
-		DB: DatabaseRef<Error = ProviderError> + Debug + Send + Sync + 'static,
+		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
 		match self {
-			Self::Transaction(tx) => Self::execute_tx(tx, block, db),
 			Self::Bundle(bundle) => Self::execute_bundle(bundle, block, db),
+			Self::Transaction(tx) => Self::execute_transaction(tx, block, db),
 		}
 	}
 
-	/// Executes a single transactions and creates a new checkpoint on top of the
-	/// current checkpoint with the result of the transaction execution.
+	/// Executes a single transactions and returns the ourcome of the transaction
+	/// execution along with all state changes. This output is used to create a
+	/// state checkpoint.
 	///
-	/// Transactions that cause evm errors cannot create checkpoints. This does
-	/// not mean that checkpoints cannot have reverted or halted transactions.
-	/// Only transactions that violate consensus rules are not allowed to create
-	/// checkpoints, this includes things like invalid nonces, or others from
-	/// [`reth_evm::revm::context::result::InvalidTransaction`].
-	fn execute_tx<'a, DB>(
+	/// Notes:
+	/// - Transactions that are invalid and cause EVM failures will not produce an
+	///   execution result.
+	///
+	/// - Transactions that fail gracefully (revert or halt) will produce an
+	///   execution result and state changes. It is up to higher levels of the
+	///   system to decide what to do with such transactions, e.g. whether to
+	///   remove them from the payload or not (see [`RevertProtection`]).
+	fn execute_transaction<DB>(
 		tx: Recovered<types::Transaction<P>>,
-		block: &'a BlockContext<P>,
-		db: &'a DB,
+		block: &BlockContext<P>,
+		db: &DB,
 	) -> Result<ExecutionResult<P>, types::EvmError<P, ProviderError>>
 	where
-		DB: DatabaseRef<Error = ProviderError> + Debug + Send + Sync + 'static,
+		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
-		// Create a new EVM instance with its state rooted at the current checkpoint
-		// state and the environment configured for the block under construction.
-		let result = block
+		let ExecResultAndState { result, state } = block
 			.evm_config()
 			.evm_with_env(WrapDatabaseRef(db), block.evm_env().clone())
 			.transact(&tx)?;
 
 		Ok(ExecutionResult {
 			source: Executable::Transaction(tx),
-			results: vec![result.result],
-			state: result.state,
+			results: vec![result],
+			state,
 		})
 	}
 
-	fn execute_bundle<'a, DB>(
-		_bundle: types::Bundle<P>,
-		_block: &BlockContext<P>,
-		_db: &'a DB,
+	/// Executes a bundle of transactions and returns the outcome of the execution
+	/// of all transactions in the bundle along with the aggregate of all state
+	/// changes.
+	///
+	/// Notes:
+	/// - All transactions in the bundle are executed in the order in which they
+	///   were defined in the bundle.
+	///
+	/// - Each transaction is executed on the state that was produced by the
+	///   previous transaction in the bundle.
+	///
+	/// - First transaction in the bundle is executed on the state of the
+	///   checkpoint that we are building on.
+	///
+	/// - Transactions that cause EVM errors will invalidate the whole bundle and
+	///   no execution result will be produced (similar behavior to invalid loose
+	///   txs),
+	///     - Unless the transaction that is failing is optional
+	///       [`Bundle::is_optional`]. In that case a new version of the bundle
+	///       will be created by removing the invalid failing transaction through
+	///       [`Bundle::without_transaction`].
+	///     - If removing the invalid optional transaction results in an empty
+	///       bundle, the bundle will be considered invalid and no execution
+	///       result will be produced.
+	///
+	/// - If a transaction in the bundle fails gracefully (revert or halt):
+	///     - If the bundle allows this tx to fail [`Bundle::is_allowed_to_fail`],
+	///       the bundle will be considered valid and the execution result will be
+	///       produced including this tx. State changes from the failed
+	///       transaction will be included in the aggregate state, e.g gas used,
+	///       nonces incremented, etc. Cleaning up transactions that are allowed
+	///       to fail and are optional from a bundle is beyond the scope of this
+	///       method. This is implemented by higher levels of the system, such as
+	///       the [`RevertProtection`] step in the pipelines API.
+	///     - If the bundle does not allow this tx to fail, but the transaction is
+	///       optional, then it will be removed from the bundle.
+	///     - If the bundle does not allow this tx to fail and the transaction is
+	///       not optional, then the bundle will be considered invalid and no
+	///       execution result will be produced.
+	///
+	/// - At the end of the bundle execution, the bundle implementation will have
+	///   a chance to validate any other platform-specific post-execution
+	///   requirements. For example, the bundle may require that the state after
+	///   the execution has a certain balance in some account, etc. If this check
+	///   fails, the bundle will be considered invalid and no execution result
+	///   will be produced.
+	fn execute_bundle<DB>(
+		bundle: types::Bundle<P>,
+		block: &BlockContext<P>,
+		db: &DB,
 	) -> Result<ExecutionResult<P>, types::EvmError<P, ProviderError>>
 	where
-		DB: DatabaseRef<Error = ProviderError> + Debug + Send + Sync + 'static,
+		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
-		todo!("executing bundles is not yet implemented");
+		let evm_env = block.evm_env();
+		let evm_config = block.evm_config();
+		let mut db = CacheDB::new(db);
+		let mut discarded = Vec::new();
+		let mut results = Vec::with_capacity(bundle.transactions().len());
+
+		for transaction in bundle.transactions() {
+			let result = evm_config
+				.evm_with_env(&mut db, evm_env.clone())
+				.transact(transaction);
+
+			match result {
+				// valid transaction
+				Ok(ExecResultAndState { result, state }) => {
+					if !result.is_success() {
+						match (
+							bundle.is_allowed_to_fail(*transaction.tx_hash()),
+							bundle.is_optional(*transaction.tx_hash()),
+						) {
+							// transaction is not allowed to fail, but it is optional,
+							// we can remove it from the bundle and continue executing the
+							// bundle.
+							(false, true) => {
+								discarded.push(*transaction.tx_hash());
+								continue;
+							}
+
+							// transaction is not allowed to fail and is not optional,
+							// this invalidates the whole bundle we cannot produce an
+							// execution result.
+							(false, false) => {
+								todo!("fail");
+							}
+							// transaction is allowed to fail, include it
+							_ => {}
+						}
+					}
+
+					// transaction will be included
+					results.push(result);
+					db.commit(state);
+				}
+				// Invalid transaction
+				Err(err) => {
+					if bundle.is_optional(*transaction.tx_hash()) {
+						// If the transaction is optional, we can skip it
+						// and continue with the next transaction.
+						discarded.push(*transaction.tx_hash());
+						continue;
+					}
+
+					todo!("fail")
+				}
+			}
+		}
+
+		// produce a new bundle without the discarded transactions
+		let mut bundle = bundle;
+		for tx in discarded {
+			bundle = bundle.without_transaction(tx);
+		}
+
+		Ok(ExecutionResult {
+			source: Executable::Bundle(bundle),
+			results,
+			state: db
+				.cache
+				.accounts
+				.into_iter()
+				.map(|(address, account)| (address, account))
+				.collect(),
+		})
 	}
 }
 

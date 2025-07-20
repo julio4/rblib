@@ -29,7 +29,9 @@ mod limits;
 
 /// Platform definition for Optimism Rollup chains.
 #[derive(Debug, Clone, Default)]
-pub struct Optimism;
+pub struct Optimism {
+	_private: (),
+}
 
 impl Platform for Optimism {
 	type Bundle = OpBundle;

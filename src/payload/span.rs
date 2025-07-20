@@ -283,7 +283,7 @@ impl<P: Platform> DatabaseRef for Span<P> {
 		if first_checkpoint.block().parent().number() != number {
 			// if the request is not for the parent block,
 			// we don't have the block hash in the span.
-			return Err(ProviderError::StateAtBlockPruned(number).into());
+			return Err(ProviderError::StateAtBlockPruned(number));
 		}
 
 		Ok(first_checkpoint.block().parent().hash())

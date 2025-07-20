@@ -23,7 +23,7 @@ pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
 	/// The system guarantees that this function will not be called for a
 	/// transaction that is not in the bundle, or a transaction that is not
 	/// optional or the last remaining transaction in the bundle.
-	fn without_transaction(tx: TxHash) -> Self;
+	fn without_transaction(self, tx: TxHash) -> Self;
 
 	/// Statically checks if the bundle is eligible for inclusion in the block
 	/// before executing any of its transactions.
@@ -96,4 +96,17 @@ pub enum Eligibility {
 	/// Bundles in this state should be removed from the pool and not attempted
 	/// to be included in any future blocks.
 	PermanentlyIneligible,
+}
+
+/// This is a quality of life helper that allows users of this api to say:
+/// `if bundle.is_eligible(block) { .. }`, without going into the details of
+/// the ineligibility.
+impl PartialEq<bool> for Eligibility {
+	fn eq(&self, other: &bool) -> bool {
+		match self {
+			Eligibility::Eligible => *other,
+			Eligibility::TemporarilyIneligible
+			| Eligibility::PermanentlyIneligible => !(*other),
+		}
+	}
 }

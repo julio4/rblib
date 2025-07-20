@@ -13,7 +13,7 @@ impl Bundle<Ethereum> for EthereumBundle {
 		&[]
 	}
 
-	fn without_transaction(_tx: TxHash) -> Self {
+	fn without_transaction(self, _tx: TxHash) -> Self {
 		todo!()
 	}
 

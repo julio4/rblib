@@ -16,5 +16,5 @@ pub use {
 	span::{Error as SpanError, Span},
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests;

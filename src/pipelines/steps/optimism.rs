@@ -1,7 +1,4 @@
-use {
-	crate::{reth::payload::builder::PayloadBuilderError, *},
-	std::sync::Arc,
-};
+use {crate::*, std::sync::Arc};
 
 /// This step appends the sequencer transactions that are defined in the payload
 /// attributes parameter from the CL node into the payload under construction.
@@ -72,11 +69,7 @@ impl Step<Optimism> for OptimismPrologue {
 #[cfg(test)]
 mod tests {
 	use {
-		crate::{
-			steps::OptimismPrologue,
-			tests::{OneStep, TransactionRequestExt},
-			*,
-		},
+		crate::{steps::OptimismPrologue, test_utils::*, *},
 		std::sync::Arc,
 	};
 

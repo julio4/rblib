@@ -1,36 +1,12 @@
 use {
-	super::{NetworkSelector, select, utils::TransactionRequestExt},
-	crate::{
-		Platform,
-		alloy::{
-			consensus::{BlockHeader, SignableTransaction},
-			eips::{BlockNumberOrTag, Encodable2718},
-			network::{BlockResponse, TransactionBuilder, TxSignerSync},
-			providers::*,
-			signers::Signature,
-		},
-		pipelines::tests::FundedAccounts,
-		reth::{
-			args::{DatadirArgs, NetworkArgs, RpcServerArgs},
-			chainspec::EthChainSpec,
-			core::exit::NodeExitFuture,
-			ethereum::provider::db::{
-				ClientVersion,
-				DatabaseEnv,
-				init_db,
-				mdbx::{
-					DatabaseArguments,
-					KILOBYTE,
-					MEGABYTE,
-					MaxReadTransactionDuration,
-				},
-				test_utils::{ERROR_DB_CREATION, TempDatabase},
-			},
-			node::builder::{rpc::RethRpcAddOns, *},
-			tasks::{TaskExecutor, TaskManager},
-		},
-		tests::ConsensusDriver,
-		types,
+	super::{platform::select, *},
+	crate::*,
+	alloy::{
+		consensus::{BlockHeader, SignableTransaction},
+		eips::{BlockNumberOrTag, Encodable2718},
+		network::{BlockResponse, TransactionBuilder, TxSignerSync},
+		providers::*,
+		signers::Signature,
 	},
 	core::{
 		any::Any,
@@ -40,12 +16,65 @@ use {
 	},
 	futures::FutureExt,
 	nanoid::nanoid,
+	reth::{
+		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
+		chainspec::EthChainSpec,
+		core::exit::NodeExitFuture,
+		ethereum::provider::db::{
+			ClientVersion,
+			DatabaseEnv,
+			init_db,
+			mdbx::{
+				DatabaseArguments,
+				KILOBYTE,
+				MEGABYTE,
+				MaxReadTransactionDuration,
+			},
+			test_utils::{ERROR_DB_CREATION, TempDatabase},
+		},
+		node::builder::{rpc::RethRpcAddOns, *},
+		payload::builder::PayloadId,
+		tasks::{TaskExecutor, TaskManager},
+	},
 	std::{
 		sync::Arc,
 		time::{SystemTime, UNIX_EPOCH},
 	},
 	tokio::sync::oneshot,
 };
+
+/// Types implementing this trait emulate a consensus node and are responsible
+/// for generating `ForkChoiceUpdate`, `GetPayload`, `SetPayload` and other
+/// Engine API calls to trigger payload building and canonical chain updates on
+/// test [`LocalNode`].
+pub trait ConsensusDriver<P: Platform + NetworkSelector>:
+	Sized + Unpin + Send + Sync + 'static
+{
+	type Params: Default;
+
+	/// Starts the process of building a new block on the node.
+	///
+	/// This should run the engine api CL <-> EL protocol up to the point of
+	/// scheduling the payload build process and receiving a payload ID.
+	fn start_building(
+		&self,
+		node: &LocalNode<P, Self>,
+		target_timestamp: u64,
+		params: &Self::Params,
+	) -> impl Future<Output = eyre::Result<PayloadId>>;
+
+	/// This is always called after a payload building process has successfully
+	/// started and a payload ID has been returned.
+	///
+	/// This should run the engine api CL <-> EL protocol to retreive the newly
+	/// built payload then set it as the canonical payload on the node.
+	fn finish_building(
+		&self,
+		node: &LocalNode<P, Self>,
+		payload_id: PayloadId,
+		params: &Self::Params,
+	) -> impl Future<Output = eyre::Result<select::BlockResponse<P>>>;
+}
 
 /// This is used to create local execution nodes for testing purposes that can
 /// be used to test payload building pipelines. This type contains everything to

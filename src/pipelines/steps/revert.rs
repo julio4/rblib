@@ -75,7 +75,7 @@ mod tests {
 		super::*,
 		crate::{
 			alloy::{consensus::Transaction, network::TransactionBuilder},
-			pipelines::tests::*,
+			test_utils::*,
 		},
 	};
 

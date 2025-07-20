@@ -422,52 +422,29 @@ pub(super) struct ClonablePayloadBuilderError(PayloadBuilderError);
 
 impl Clone for ClonablePayloadBuilderError {
 	fn clone(&self) -> Self {
-		match &self.0 {
-			PayloadBuilderError::MissingParentHeader(fixed_bytes) => {
-				Self(PayloadBuilderError::MissingParentHeader(*fixed_bytes))
-			}
-			PayloadBuilderError::MissingParentBlock(fixed_bytes) => {
-				Self(PayloadBuilderError::MissingParentBlock(*fixed_bytes))
-			}
-			PayloadBuilderError::ChannelClosed => {
-				Self(PayloadBuilderError::ChannelClosed)
-			}
-			PayloadBuilderError::MissingPayload => {
-				Self(PayloadBuilderError::MissingPayload)
-			}
-			PayloadBuilderError::Internal(reth_error) => Self(
-				PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string())),
-			),
-			PayloadBuilderError::EvmExecutionError(error)
-			| PayloadBuilderError::Other(error) => Self(PayloadBuilderError::other(
-				WrappedErrorMessage(error.to_string()),
-			)),
-		}
+		Self(clone_payload_error(&self.0))
 	}
 }
 
-impl From<&PayloadBuilderError> for ClonablePayloadBuilderError {
-	fn from(error: &PayloadBuilderError) -> Self {
-		match error {
-			PayloadBuilderError::MissingParentHeader(fixed_bytes) => {
-				Self(PayloadBuilderError::MissingParentHeader(*fixed_bytes))
-			}
-			PayloadBuilderError::MissingParentBlock(fixed_bytes) => {
-				Self(PayloadBuilderError::MissingParentBlock(*fixed_bytes))
-			}
-			PayloadBuilderError::ChannelClosed => {
-				Self(PayloadBuilderError::ChannelClosed)
-			}
-			PayloadBuilderError::MissingPayload => {
-				Self(PayloadBuilderError::MissingPayload)
-			}
-			PayloadBuilderError::Internal(reth_error) => Self(
-				PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string())),
-			),
-			PayloadBuilderError::EvmExecutionError(error)
-			| PayloadBuilderError::Other(error) => Self(PayloadBuilderError::other(
-				WrappedErrorMessage(error.to_string()),
-			)),
+pub(crate) fn clone_payload_error(
+	error: &PayloadBuilderError,
+) -> PayloadBuilderError {
+	match error {
+		PayloadBuilderError::MissingParentHeader(fixed_bytes) => {
+			PayloadBuilderError::MissingParentHeader(*fixed_bytes)
+		}
+		PayloadBuilderError::MissingParentBlock(fixed_bytes) => {
+			PayloadBuilderError::MissingParentBlock(*fixed_bytes)
+		}
+		PayloadBuilderError::ChannelClosed => PayloadBuilderError::ChannelClosed,
+		PayloadBuilderError::MissingPayload => PayloadBuilderError::MissingPayload,
+		PayloadBuilderError::Internal(reth_error) => {
+			PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string()))
+		}
+
+		PayloadBuilderError::EvmExecutionError(error)
+		| PayloadBuilderError::Other(error) => {
+			PayloadBuilderError::other(WrappedErrorMessage(error.to_string()))
 		}
 	}
 }

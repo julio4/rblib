@@ -51,7 +51,7 @@ optimism = [
   "reth-node-builder/op",
   "reth-payload-util",
   "reth-optimism-cli",
-  "pipelines-tests-macros?/optimism",
+  "rblib-tests-macros?/optimism",
 ]
 
 test-utils = [
@@ -66,7 +66,7 @@ test-utils = [
   "reth-optimism-rpc/client",
   "op-alloy?/network",
   "op-alloy?/rpc-types",
-  "pipelines-tests-macros",
+  "rblib-tests-macros",
 ]
 
 [dependencies]
@@ -115,7 +115,7 @@ reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1
 # test-utils
 reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-pipelines-tests-macros = { path = "src/pipelines/tests/framework/macros", optional = true }
+rblib-tests-macros = { path = "src/test_utils/macros", optional = true }
 
 nanoid = { version = "0.4", optional = true }
 alloy-genesis = { version = "1.0", optional = true }
@@ -140,7 +140,7 @@ reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", f
 ] }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-pipelines-tests-macros = { path = "src/pipelines/tests/framework/macros" }
+rblib-tests-macros = { path = "src/test_utils/macros" }
 
 [dev-dependencies.op-alloy]
 version = "0.18"

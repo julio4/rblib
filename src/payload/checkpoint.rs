@@ -165,7 +165,8 @@ impl<P: Platform> Checkpoint<P> {
 impl<P: Platform> Checkpoint<P> {
 	/// Creates a new checkpoint on top of the current checkpoint by applying a
 	/// transaction or a bundle of transactions. The execution will use the
-	/// cumulative state of all checkpoints in the history as its current state.
+	/// cumulative state of all checkpoints in the current checkpoint history as
+	/// its state.
 	pub fn apply<S>(
 		&self,
 		executable: impl IntoExecutable<P, S>,

@@ -2,8 +2,12 @@ mod payload;
 mod pipelines;
 mod platform;
 
-// Public APIs
+// Public API exports
 pub use {payload::*, pipelines::*, platform::*};
+
+// Exported test utilities for use in tests in this and other crates.
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils;
 
 #[cfg(all(feature = "jemalloc", unix))]
 #[global_allocator]

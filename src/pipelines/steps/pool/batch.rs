@@ -100,13 +100,7 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 
 #[cfg(test)]
 mod tests {
-	use {
-		super::*,
-		crate::{
-			pipelines::tests::{OneStep, TransactionRequestExt},
-			tests::{TestablePlatform, *},
-		},
-	};
+	use {super::*, crate::test_utils::*};
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn empty_pool<P: TestablePlatform>() {

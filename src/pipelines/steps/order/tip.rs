@@ -158,12 +158,7 @@ impl<'a, P: Platform> TxsQueue<'a, P> {
 mod tests {
 	use {
 		super::*,
-		crate::{
-			alloy::network::TransactionBuilder,
-			pipelines::tests::{FundedAccounts, OneStep, TransactionRequestExt},
-			tests::TestablePlatform,
-		},
-		pipelines_tests_macros::rblib_test,
+		crate::{alloy::network::TransactionBuilder, test_utils::*},
 	};
 
 	async fn test_ordering<P: TestablePlatform>(

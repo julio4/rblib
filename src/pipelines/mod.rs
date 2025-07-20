@@ -20,14 +20,14 @@ mod service;
 mod step;
 pub mod steps;
 
-#[cfg(any(test, feature = "test-utils"))]
-pub mod tests;
+#[cfg(test)]
+mod tests;
 
 // public API exports
 pub use {
 	Behavior::{Loop, Once},
 	context::StepContext,
-	step::{ControlFlow, Step},
+	step::{ControlFlow, PayloadBuilderError, Step},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -381,3 +381,6 @@ pub mod traits {
 	{
 	}
 }
+
+// internal utilities
+pub(crate) use exec::clone_payload_error;

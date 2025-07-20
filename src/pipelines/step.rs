@@ -1,11 +1,5 @@
 use {
-	crate::{
-		Checkpoint,
-		Platform,
-		StepContext,
-		reth::payload::builder::PayloadBuilderError,
-		types,
-	},
+	crate::{Checkpoint, Platform, StepContext, types},
 	core::{
 		any::{Any, type_name},
 		fmt::{self, Debug},
@@ -15,6 +9,8 @@ use {
 	futures::FutureExt,
 	std::sync::Arc,
 };
+
+pub use crate::reth::payload::builder::PayloadBuilderError;
 
 /// This trait defines a step in a pipeline.
 ///

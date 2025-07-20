@@ -1,38 +1,28 @@
 use {
-	super::NetworkSelector,
-	crate::{
-		Optimism,
-		Pipeline,
-		alloy::{
-			consensus::SignableTransaction,
-			eips::{BlockNumberOrTag, Encodable2718, eip7685::Requests},
-			hex,
-			network::TxSignerSync,
-			optimism::{
-				consensus::{OpTxEnvelope, OpTypedTransaction, TxDeposit},
-				rpc_types::Transaction,
-			},
-			primitives::{B256, Bytes, TxKind, U256, address},
-			providers::Provider,
+	super::*,
+	crate::*,
+	alloy::{
+		consensus::SignableTransaction,
+		eips::{BlockNumberOrTag, Encodable2718, eip7685::Requests},
+		hex,
+		network::TxSignerSync,
+		optimism::{
+			consensus::{OpTxEnvelope, OpTypedTransaction, TxDeposit},
+			rpc_types::Transaction,
 		},
-		reth::{
-			ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
-			optimism::{
-				chainspec::OpChainSpec,
-				node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
-			},
-			payload::builder::PayloadId,
-			rpc::types::{Block, engine::ForkchoiceState},
-		},
-		tests::{
-			ConsensusDriver,
-			FundedAccounts,
-			LocalNode,
-			ONE_ETH,
-			TestNodeFactory,
-		},
+		primitives::{B256, Bytes, TxKind, U256, address},
+		providers::Provider,
 	},
 	alloy_genesis::{Genesis, GenesisAccount},
+	reth::{
+		ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
+		optimism::{
+			chainspec::OpChainSpec,
+			node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
+		},
+		payload::builder::PayloadId,
+		rpc::types::{Block, engine::ForkchoiceState},
+	},
 	reth_ipc::client::IpcClientBuilder,
 	reth_optimism_rpc::OpEngineApiClient,
 	serde_json::from_str,
@@ -230,7 +220,7 @@ fn chainspec() -> OpChainSpec {
 		(address, account)
 	});
 
-	let genesis = include_str!("./artifacts/genesis.json.tmpl");
+	let genesis = include_str!("./artifacts/op-genesis.json");
 	let genesis: Genesis = from_str(genesis).expect("invalid genesis JSON");
 	let genesis = genesis.extend_accounts(funded_accounts);
 	OpChainSpec::from_genesis(genesis)

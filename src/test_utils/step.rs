@@ -1,29 +1,11 @@
 use {
-	crate::{
-		BlockContext,
-		Checkpoint,
-		ControlFlow,
-		Limits,
-		LimitsFactory,
-		Pipeline,
-		Platform,
-		Step,
-		StepContext,
-		alloy::{
-			eips::{Decodable2718, Encodable2718},
-			network::TransactionBuilder,
-		},
-		pipelines::{
-			exec::ClonablePayloadBuilderError,
-			tests::{
-				NetworkSelector,
-				TransactionRequestExt,
-				framework::{TestNodeFactory, select},
-			},
-		},
-		reth::payload::builder::PayloadBuilderError,
-		types,
+	super::*,
+	crate::*,
+	alloy::{
+		eips::{Decodable2718, Encodable2718},
+		network::TransactionBuilder,
 	},
+	reth::payload::builder::PayloadBuilderError,
 	std::sync::Arc,
 	tokio::sync::{
 		Mutex,
@@ -282,10 +264,7 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		if let Err(e) = result.as_ref() {
-			self
-				.fail_sender
-				.send(ClonablePayloadBuilderError::from(e).into())
-				.unwrap();
+			self.fail_sender.send(clone_payload_error(e)).unwrap();
 		}
 		Ok(())
 	}

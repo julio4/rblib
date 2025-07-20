@@ -54,6 +54,12 @@ pub enum Executable<P: Platform> {
 }
 
 impl<P: Platform> Executable<P> {
+	/// Executes this executable as a single unit of state transition and returns
+	/// the outcome of the execution along with all state changes. If the
+	/// executable is invalid, no execution result will be produced.
+	///
+	/// For details on what makes an executable invalid see the
+	/// [`execute_transaction`] and [`execute_bundle`] methods.
 	pub fn execute<DB>(
 		self,
 		block: &BlockContext<P>,

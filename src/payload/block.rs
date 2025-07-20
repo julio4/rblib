@@ -2,7 +2,7 @@ use {
 	crate::{
 		alloy::consensus::BlockHeader,
 		reth::{
-			api::{ConfigureEvm, PayloadBuilderAttributes, PayloadBuilderError},
+			api::{ConfigureEvm, PayloadBuilderAttributes},
 			chainspec::EthChainSpec,
 			evm::{block::BlockExecutionError, execute::BlockBuilder},
 			payload::PayloadId,
@@ -19,10 +19,7 @@ use {
 #[derive(Debug, Error)]
 pub enum Error<P: Platform> {
 	#[error("Evm configuration error: {0}")]
-	Env(types::EvmEnvError<P>),
-
-	#[error("State error: {0}")]
-	PayloadBuilder(#[from] PayloadBuilderError),
+	EvmEnv(types::EvmEnvError<P>),
 
 	#[error("Block execution error: {0}")]
 	BlockExecution(#[from] BlockExecutionError),
@@ -65,7 +62,7 @@ impl<P: Platform> BlockContext<P> {
 
 		let evm_env = evm_config //
 			.next_evm_env(&parent, &block_env)
-			.map_err(Error::Env)?;
+			.map_err(Error::EvmEnv)?;
 
 		let mut base_state = State::builder()
 			.with_database(StateProviderDatabase(base_state))
@@ -75,7 +72,7 @@ impl<P: Platform> BlockContext<P> {
 		// prepare the base state for the next block
 		evm_config
 			.builder_for_next_block(&mut base_state, &parent, block_env.clone())
-			.map_err(Error::Env)?
+			.map_err(Error::EvmEnv)?
 			.apply_pre_execution_changes()?;
 
 		Ok(Self {

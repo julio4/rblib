@@ -3,7 +3,7 @@ use {
 	crate::*,
 	alloy::{
 		consensus::crypto::RecoveryError,
-		primitives::{Address, B256, KECCAK256_EMPTY, StorageValue},
+		primitives::{Address, B256, StorageValue},
 	},
 	core::fmt::{Debug, Display},
 	reth::{
@@ -13,9 +13,10 @@ use {
 		revm::{
 			DatabaseRef,
 			primitives::StorageKey,
-			state::{AccountInfo, Bytecode, EvmState},
+			state::{AccountInfo, Bytecode},
 		},
 	},
+	reth_origin::revm::db::BundleState,
 	std::sync::Arc,
 	thiserror::Error,
 };
@@ -123,7 +124,7 @@ impl<P: Platform> Checkpoint<P> {
 
 	/// The state changes that occured as a result of executing the
 	/// transaction(s) that created this checkpoint.
-	pub fn state(&self) -> Option<&EvmState> {
+	pub fn state(&self) -> Option<&BundleState> {
 		match self.inner.mutation {
 			Mutation::Barrier => None,
 			Mutation::Executable(ref result) => Some(result.state()),
@@ -168,7 +169,7 @@ impl<P: Platform> Checkpoint<P> {
 	pub fn apply<S>(
 		&self,
 		executable: impl IntoExecutable<P, S>,
-	) -> Result<Self, Error<P>> {
+	) -> Result<Self, ExecutionError<P>> {
 		Ok(Self {
 			inner: Arc::new(CheckpointInner {
 				block: self.inner.block.clone(),
@@ -177,8 +178,7 @@ impl<P: Platform> Checkpoint<P> {
 				mutation: Mutation::Executable(
 					executable
 						.try_into_executable()?
-						.execute(self.block(), self)
-						.map_err(Error::Evm)?,
+						.execute(self.block(), self)?,
 				),
 			}),
 		})
@@ -287,28 +287,27 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		// we want to probe the history of checkpoints in reverse order,
 		// starting from the most recent one, to find the first checkpoint
 		// that has touched the given address.
-		for checkpoint in self.history().into_iter().rev() {
-			if let Some(account) =
-				checkpoint.state().and_then(|state| state.get(&address))
-			{
-				return Ok(Some(account.info.clone()));
+
+		let mut current = &self.inner;
+		while let Some(prev) = current.prev.as_ref() {
+			if let Mutation::Executable(result) = &current.mutation {
+				if let Some(account) = result
+					.state()
+					.account(&address)
+					.and_then(|account| account.info.as_ref())
+				{
+					return Ok(Some(account.clone()));
+				}
 			}
+
+			current = prev;
 		}
 
 		// none of the checkpoints priori to this have touched this address,
 		// now we need to check if the account exists in the base state of the
 		// block context.
 		if let Some(acc) = self.block().base_state().basic_account(&address)? {
-			return Ok(Some(AccountInfo {
-				balance: acc.balance,
-				nonce: acc.nonce,
-				code_hash: acc.bytecode_hash.unwrap_or(KECCAK256_EMPTY),
-				code: self
-					.block()
-					.base_state()
-					.account_code(&address)?
-					.map(|code| code.0),
-			}));
+			return Ok(Some(acc.into()));
 		}
 
 		// account does not exist
@@ -320,21 +319,16 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		// we want to probe the history of checkpoints in reverse order,
 		// starting from the most recent one, to find the first checkpoint
 		// that has created the code with the given hash.
-		// TODO: This is highly inefficient, optimize this asap.
 
-		for checkpoint in self.history().into_iter().rev() {
-			if let Some(account) = checkpoint.state().and_then(|state| {
-				state.values().find(|acc| acc.info.code_hash == code_hash)
-			}) {
-				return Ok(
-					account
-						.info
-						.code
-						.as_ref()
-						.expect("Code should be present")
-						.clone(),
-				);
+		let mut current = &self.inner;
+		while let Some(prev) = current.prev.as_ref() {
+			if let Mutation::Executable(result) = &current.mutation {
+				if let Some(code) = result.state().bytecode(&code_hash) {
+					return Ok(code);
+				}
 			}
+
+			current = prev;
 		}
 
 		Ok(
@@ -355,20 +349,20 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 	) -> Result<StorageValue, Self::Error> {
 		// traverse checkpoints history looking for the first checkpoint that
 		// has touched the given address.
-		for checkpoint in self.history().into_iter().rev() {
-			if let Some(account) =
-				checkpoint.state().and_then(|state| state.get(&address))
-			{
-				// if the checkpoint has touched the address, return the storage
-				// value at the given index.
-				return Ok(
-					account
-						.storage
-						.get(&index)
-						.map(|slot| slot.present_value)
-						.unwrap_or_default(),
-				);
+
+		let mut current = &self.inner;
+		while let Some(prev) = current.prev.as_ref() {
+			if let Mutation::Executable(result) = &current.mutation {
+				if let Some(slot) = result
+					.state()
+					.account(&address)
+					.and_then(|account| account.storage.get(&index))
+				{
+					return Ok(slot.present_value);
+				}
 			}
+
+			current = prev;
 		}
 
 		// none of the checkpoints prior to this have touched this address,

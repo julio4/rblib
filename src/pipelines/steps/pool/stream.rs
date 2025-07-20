@@ -5,7 +5,6 @@ use {
 			ethereum::primitives::SignedTransaction,
 			payload::builder::PayloadBuilderError,
 			transaction_pool::{
-				PoolTransaction,
 				TransactionPool,
 				error::{
 					Eip4844PoolTransactionError,
@@ -134,8 +133,7 @@ impl<P: Platform> Step<P> for AppendOneTransactionFromPool {
 				continue;
 			}
 
-			let transaction =
-				candidate.transaction.clone_into_consensus().into_inner();
+			let transaction = candidate.transaction.clone();
 
 			// if this is a blob transaction, and we have blob limits,
 			// check if we can fit it into the payload.
@@ -157,19 +155,22 @@ impl<P: Platform> Step<P> for AppendOneTransactionFromPool {
 							},
 						),
 					);
+
+					// skip this transaction in future iterations of the step for this
+					// payload.
+					self.previously_added.insert(*candidate.hash());
 					continue;
 				}
 			}
 
 			// we could potentially fit this transaction into the payload
-
 			// create a new state checkpoint with the new transaction candidate
 			// applied to it and check if we still fit within the gas limit.
-			let new_payload = match payload
-				.apply(candidate.transaction.clone_into_consensus().into_inner())
-			{
-				Ok(payload) => payload,
-				Err(err) => return err.into(),
+			let Ok(new_payload) = payload.apply(transaction) else {
+				// skip this transaction in future iterations of the step for this
+				// payload.
+				self.previously_added.insert(*candidate.hash());
+				continue;
 			};
 
 			// check the cumulative gas used with the new transaction applied

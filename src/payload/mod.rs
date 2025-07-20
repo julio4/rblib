@@ -11,7 +11,7 @@ mod span;
 pub use {
 	block::{BlockContext, Error as BlockError},
 	checkpoint::{Checkpoint, Error as CheckpointError},
-	exec::{Executable, ExecutionResult, IntoExecutable},
+	exec::{Executable, ExecutionError, ExecutionResult, IntoExecutable},
 	ext::{CheckpointExt, SpanExt},
 	span::{Error as SpanError, Span},
 };

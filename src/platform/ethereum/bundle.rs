@@ -1,14 +1,19 @@
-use crate::{
-	Ethereum,
-	alloy::primitives::TxHash,
-	reth::primitives::Recovered,
-	uuid::Uuid,
-	*,
+use {
+	crate::{
+		Ethereum,
+		alloy::primitives::TxHash,
+		reth::primitives::Recovered,
+		uuid::Uuid,
+		*,
+	},
+	core::convert::Infallible,
 };
 
 #[derive(Debug, Clone)]
 pub struct EthereumBundle;
 impl Bundle<Ethereum> for EthereumBundle {
+	type PostExecutionError = Infallible;
+
 	fn transactions(&self) -> &[Recovered<types::Transaction<Ethereum>>] {
 		&[]
 	}

@@ -1,6 +1,6 @@
 use {
 	crate::*,
-	alloy::consensus::crypto::RecoveryError,
+	alloy::{consensus::crypto::RecoveryError, primitives::TxHash},
 	reth::{
 		errors::ProviderError,
 		ethereum::primitives::SignedTransaction,
@@ -11,14 +11,35 @@ use {
 				DatabaseCommit,
 				DatabaseRef,
 				context::result::ExecResultAndState,
-				state::EvmState,
 			},
 		},
 		primitives::Recovered,
-		revm::db::{CacheDB, WrapDatabaseRef},
+		revm::{
+			State,
+			db::{BundleState, WrapDatabaseRef},
+		},
 	},
+	reth_transaction_pool::PoolTransaction,
 	std::fmt::Debug,
 };
+
+#[derive(Debug, thiserror::Error)]
+pub enum ExecutionError<P: Platform> {
+	#[error("Invalid transaction: {0}")]
+	InvalidSignature(#[from] RecoveryError),
+
+	#[error("Invalid transaction: {0}")]
+	InvalidTransaction(types::EvmError<P, ProviderError>),
+
+	#[error("Invalid transaction {0} cannot be dropped from bundle: {1}")]
+	InvalidBundleTransaction(TxHash, types::EvmError<P, ProviderError>),
+
+	#[error("Transaction {0} in the bundle is not allowed to revert.")]
+	BundleTransactionReverted(TxHash),
+
+	#[error("Invalid bundle post-execution state: {0}")]
+	InvalidBundlePostExecutionState(types::BundlePostExecutionError<P>),
+}
 
 /// Describes an atomic unit of execution that can be used to create a state
 /// transition checkpoint.
@@ -36,13 +57,14 @@ impl<P: Platform> Executable<P> {
 		self,
 		block: &BlockContext<P>,
 		db: &DB,
-	) -> Result<ExecutionResult<P>, types::EvmError<P, ProviderError>>
+	) -> Result<ExecutionResult<P>, ExecutionError<P>>
 	where
 		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
 		match self {
 			Self::Bundle(bundle) => Self::execute_bundle(bundle, block, db),
-			Self::Transaction(tx) => Self::execute_transaction(tx, block, db),
+			Self::Transaction(tx) => Self::execute_transaction(tx, block, db)
+				.map_err(ExecutionError::InvalidTransaction),
 		}
 	}
 
@@ -66,15 +88,20 @@ impl<P: Platform> Executable<P> {
 	where
 		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
-		let ExecResultAndState { result, state } = block
+		let mut state = State::builder()
+			.with_database(WrapDatabaseRef(db))
+			.with_bundle_update()
+			.build();
+
+		let result = block
 			.evm_config()
-			.evm_with_env(WrapDatabaseRef(db), block.evm_env().clone())
-			.transact(&tx)?;
+			.evm_with_env(&mut state, block.evm_env().clone())
+			.transact_commit(&tx)?;
 
 		Ok(ExecutionResult {
 			source: Executable::Transaction(tx),
 			results: vec![result],
-			state,
+			state: state.take_bundle(),
 		})
 	}
 
@@ -128,13 +155,17 @@ impl<P: Platform> Executable<P> {
 		bundle: types::Bundle<P>,
 		block: &BlockContext<P>,
 		db: &DB,
-	) -> Result<ExecutionResult<P>, types::EvmError<P, ProviderError>>
+	) -> Result<ExecutionResult<P>, ExecutionError<P>>
 	where
 		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
 		let evm_env = block.evm_env();
 		let evm_config = block.evm_config();
-		let mut db = CacheDB::new(db);
+		let mut db = State::builder()
+			.with_database(WrapDatabaseRef(db))
+			.with_bundle_update()
+			.build();
+
 		let mut discarded = Vec::new();
 		let mut results = Vec::with_capacity(bundle.transactions().len());
 
@@ -160,10 +191,12 @@ impl<P: Platform> Executable<P> {
 							}
 
 							// transaction is not allowed to fail and is not optional,
-							// this invalidates the whole bundle we cannot produce an
+							// this invalidates the whole bundle and we cannot produce an
 							// execution result.
 							(false, false) => {
-								todo!("fail");
+								return Err(ExecutionError::BundleTransactionReverted(
+									*transaction.tx_hash(),
+								));
 							}
 							// transaction is allowed to fail, include it
 							_ => {}
@@ -183,7 +216,10 @@ impl<P: Platform> Executable<P> {
 						continue;
 					}
 
-					todo!("fail")
+					return Err(ExecutionError::InvalidBundleTransaction(
+						*transaction.tx_hash(),
+						err,
+					));
 				}
 			}
 		}
@@ -194,15 +230,19 @@ impl<P: Platform> Executable<P> {
 			bundle = bundle.without_transaction(tx);
 		}
 
+		// extract all the state changes that were made by executing
+		// transactions in this bundle.
+		let state = db.take_bundle();
+
+		// run the optional post-execution validation of the bundle.
+		bundle
+			.validate_post_execution(&state)
+			.map_err(ExecutionError::InvalidBundlePostExecutionState)?;
+
 		Ok(ExecutionResult {
 			source: Executable::Bundle(bundle),
 			results,
-			state: db
-				.cache
-				.accounts
-				.into_iter()
-				.map(|(address, account)| (address, account))
-				.collect(),
+			state,
 		})
 	}
 }
@@ -230,6 +270,15 @@ impl<P: Platform> IntoExecutable<P, ()> for types::Transaction<P> {
 		SignedTransaction::try_into_recovered(self)
 			.map(Executable::Transaction)
 			.map_err(|_| RecoveryError::new())
+	}
+}
+
+/// Transactions from the transaction pool can be converted infalliably into
+/// an executable because the transaction pool discards transactions
+/// that have invalid signatures.
+impl<P: Platform> IntoExecutable<P, u32> for types::PooledTransaction<P> {
+	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
+		Ok(Executable::Transaction(self.into_consensus()))
 	}
 }
 
@@ -264,7 +313,7 @@ pub struct ExecutionResult<P: Platform> {
 	results: Vec<types::TransactionExecutionResult<P>>,
 
 	/// The aggregated state executing all transactions from the source.
-	state: EvmState,
+	state: BundleState,
 }
 
 impl<P: Platform> ExecutionResult<P> {
@@ -275,7 +324,7 @@ impl<P: Platform> ExecutionResult<P> {
 
 	/// Returns the aggregate state changes that were made by executing
 	/// the transactions in this execution unit.
-	pub const fn state(&self) -> &EvmState {
+	pub const fn state(&self) -> &BundleState {
 		&self.state
 	}
 
@@ -293,28 +342,6 @@ impl<P: Platform> ExecutionResult<P> {
 	/// execution unit.
 	pub fn transactions(&self) -> &[Recovered<types::Transaction<P>>] {
 		self.source().transactions()
-	}
-
-	/// Indicates whether the execution was successful.
-	///
-	/// For a transaction this means that it was not reverted or halted.
-	/// For a bundle this means that bundle requirements around individual
-	/// execution results were met.
-	pub fn is_success(&self) -> bool {
-		match self.source {
-			Executable::Transaction(_) => self.results[0].is_success(),
-			Executable::Bundle(ref bundle) => {
-				// a bundle is successful if all failed transactions are allowed to fail
-				for (result, tx) in self.results.iter().zip(bundle.transactions()) {
-					if !result.is_success() && !bundle.is_allowed_to_fail(*tx.tx_hash()) {
-						return false;
-					}
-				}
-
-				// if the bundle has a state validity check, run it
-				bundle.is_new_state_valid(&self.state)
-			}
-		}
 	}
 
 	/// Returns the cumulative gas used by the execution of this transaction or

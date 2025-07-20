@@ -28,10 +28,6 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// returns the blob gas used by the blob transaction, `None` otherwise.
 	fn blob_gas_used(&self) -> Option<u64>;
 
-	/// Returns `true` if the transaction that created this checkpoint was
-	/// successful, `false` otherwise.
-	fn is_success(&self) -> bool;
-
 	/// Returns `true` if this checkpoint was created by applying EIP-4844 blob
 	/// transaction, `false` otherwise.
 	fn is_blob(&self) -> bool;
@@ -114,12 +110,6 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 			.iter()
 			.map(|tx| tx.blob_gas_used())
 			.sum()
-	}
-
-	/// Returns `true` if the transaction that created this checkpoint was
-	/// successful, `false` otherwise.
-	fn is_success(&self) -> bool {
-		self.result().is_none_or(|result| result.is_success())
 	}
 
 	/// Returns `true` if this checkpoint was created by applying an EIP-4844 blob

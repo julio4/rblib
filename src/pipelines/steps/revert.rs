@@ -22,10 +22,12 @@ impl<P: Platform> Step<P> for RevertProtection {
 		// that we will use to apply the remaining transactions. Nothing in this
 		// prefix needs to be re-executed.
 
-		let Some(prefix_len) = history
-			.iter()
-			.position(|checkpoint| !checkpoint.is_success())
-		else {
+		let Some(prefix_len) = history.iter().position(|checkpoint| {
+			!checkpoint
+				.result()
+				.and_then(|r| r.results().first().map(|t| t.is_success()))
+				.unwrap_or(true)
+		}) else {
 			// none of the transactions have reverted, return the payload as is
 			return ControlFlow::Ok(payload);
 		};
@@ -44,7 +46,12 @@ impl<P: Platform> Step<P> for RevertProtection {
 					continue;
 				};
 
-				if new_checkpoint.is_success() {
+				let is_success = new_checkpoint
+					.result()
+					.and_then(|result| result.results().first())
+					.is_none_or(|result| result.is_success());
+
+				if is_success {
 					// if the transaction was applied and did not revert or halt, we can
 					// use the new checkpoint as the base for the next transaction,
 					// otherwise we keep the same prefix and discard this checkpoint.

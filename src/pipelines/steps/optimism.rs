@@ -34,9 +34,11 @@ impl Step<Optimism> for OptimismPrologue {
 			payload = match payload.apply(tx.clone().into_value()) {
 				Ok(payload) => payload,
 				Err(e) => {
-					return ControlFlow::Fail(PayloadBuilderError::Other(
-						format!("Failed to apply sequencer transaction {tx:?}: {e}").into(),
-					));
+					return PayloadBuilderError::Other(
+						format!("Failed to apply sequencer transaction {tx:?}: {e:?}")
+							.into(),
+					)
+					.into();
 				}
 			};
 
@@ -45,13 +47,14 @@ impl Step<Optimism> for OptimismPrologue {
 			// to build a valid payload that fits the gas limit.
 			gas_used += payload.gas_used();
 			if gas_used > ctx.limits().gas_limit {
-				return ControlFlow::Fail(PayloadBuilderError::Other(
+				return PayloadBuilderError::Other(
 					format!(
 						"Sequencer transactions exceed block gas limit: {gas_used} > {}",
 						ctx.limits().gas_limit
 					)
 					.into(),
-				));
+				)
+				.into();
 			}
 		}
 

@@ -1,8 +1,13 @@
-use crate::{alloy::primitives::TxHash, reth::primitives::Recovered, *};
+use {
+	crate::{alloy::primitives::TxHash, reth::primitives::Recovered, *},
+	core::convert::Infallible,
+};
 
 #[derive(Debug, Clone)]
 pub struct OpBundle;
 impl Bundle<Optimism> for OpBundle {
+	type PostExecutionError = Infallible;
+
 	fn transactions(&self) -> &[Recovered<types::Transaction<Optimism>>] {
 		&[]
 	}

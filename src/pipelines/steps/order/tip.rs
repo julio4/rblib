@@ -1,11 +1,7 @@
 use {
 	crate::{
 		alloy::{consensus::Transaction, primitives::Address},
-		reth::{
-			ethereum::primitives::SignedTransaction,
-			payload::PayloadBuilderError,
-			primitives::Recovered,
-		},
+		reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
 		*,
 	},
 	itertools::Itertools,
@@ -54,9 +50,7 @@ impl<P: Platform> Step<P> for PriorityFeeOrdering {
 		for tx in ordered.skip(first_misordered) {
 			ordered_prefix = match ordered_prefix.apply(tx.clone()) {
 				Ok(checkpoint) => checkpoint,
-				Err(e) => {
-					return ControlFlow::Fail(PayloadBuilderError::other(e));
-				}
+				Err(e) => return e.into(),
 			}
 		}
 

@@ -1,11 +1,7 @@
 use {
 	crate::{
 		alloy::consensus::Transaction,
-		reth::transaction_pool::{
-			PoolTransaction,
-			TransactionPool,
-			error::{Eip4844PoolTransactionError, InvalidPoolTransactionError},
-		},
+		reth::transaction_pool::TransactionPool,
 		*,
 	},
 	std::{sync::Arc, time::Instant},
@@ -60,8 +56,7 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 				return ControlFlow::Ok(payload);
 			};
 
-			let transaction =
-				candidate.transaction.clone_into_consensus().into_inner();
+			let transaction = candidate.transaction.clone();
 
 			// if this is a blob transaction, and we have blob limits,
 			// check if we can fit it into the payload.
@@ -74,28 +69,17 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 				{
 					// we can't fit this transaction into the payload, because we are at
 					// capacity for blobs in this payload.
-					txs.mark_invalid(
-						&candidate,
-						InvalidPoolTransactionError::Eip4844(
-							Eip4844PoolTransactionError::TooManyEip4844Blobs {
-								have: history.blobs().count() as u64,
-								permitted: blob_limits.max_blob_count,
-							},
-						),
-					);
 					continue;
 				}
 			}
 
-			// we could potentially fit this transaction into the payload
-
+			// we could potentially fit this transaction into the payload,
 			// create a new state checkpoint with the new transaction candidate
 			// applied to it and check if we still fit within the gas limit.
-			let new_payload = match payload
-				.apply(candidate.transaction.clone_into_consensus().into_inner())
-			{
-				Ok(payload) => payload,
-				Err(err) => return err.into(),
+			let Ok(new_payload) = payload.apply(transaction) else {
+				// if the transaction cannot be applied because of evm consensus rules,
+				// we skip it and move on to the next one.
+				continue;
 			};
 
 			// check the cumulative gas used with the new transaction applied
@@ -106,13 +90,6 @@ impl<P: Platform> Step<P> for GatherBestTransactions {
 			// transactions, then try the next transaction in the pool that might
 			// fit in the remaining gas limit.
 			if new_gas_used > ctx.limits().gas_limit {
-				txs.mark_invalid(
-					&candidate,
-					InvalidPoolTransactionError::ExceedsGasLimit(
-						candidate.gas_limit(),
-						ctx.limits().gas_limit,
-					),
-				);
 				continue;
 			}
 

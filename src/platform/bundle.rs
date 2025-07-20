@@ -3,8 +3,11 @@ use {
 	super::*,
 	alloy::primitives::{B256, Keccak256, TxHash},
 	core::fmt::Debug,
-	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
-	reth_evm::revm::state::EvmState,
+	reth::{
+		ethereum::primitives::SignedTransaction,
+		primitives::Recovered,
+		revm::db::BundleState,
+	},
 };
 
 /// This trait defines a set of transactions that are bundled together and
@@ -13,6 +16,8 @@ use {
 /// Examples of bundles are objects sent through the `eth_sendBundle` RPC
 /// method.
 pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
+	type PostExecutionError: core::error::Error + Send + Sync + 'static;
+
 	/// Returns an iterator over the transactions in the bundle.
 	fn transactions(&self) -> &[Recovered<types::Transaction<P>>];
 
@@ -23,6 +28,7 @@ pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
 	/// The system guarantees that this function will not be called for a
 	/// transaction that is not in the bundle, or a transaction that is not
 	/// optional or the last remaining transaction in the bundle.
+	#[must_use]
 	fn without_transaction(self, tx: TxHash) -> Self;
 
 	/// Statically checks if the bundle is eligible for inclusion in the block
@@ -46,8 +52,11 @@ pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
 	/// after the bundle is executed. The state that is passed in this method
 	/// contains only entries that were modified or created by executing
 	/// transactions from this bundle.
-	fn is_new_state_valid(&self, _: &EvmState) -> bool {
-		true
+	fn validate_post_execution(
+		&self,
+		_: &BundleState,
+	) -> Result<(), Self::PostExecutionError> {
+		Ok(())
 	}
 
 	/// Calculates the hash of the bundle based on its transactions.

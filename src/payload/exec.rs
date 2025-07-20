@@ -19,13 +19,14 @@ use {
 			db::{BundleState, WrapDatabaseRef},
 		},
 	},
+	reth_origin::revm::db::states::bundle_state::BundleRetention,
 	reth_transaction_pool::PoolTransaction,
 	std::fmt::Debug,
 };
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutionError<P: Platform> {
-	#[error("Invalid transaction: {0}")]
+	#[error("Invalid signature: {0}")]
 	InvalidSignature(#[from] RecoveryError),
 
 	#[error("Invalid transaction: {0}")]
@@ -97,6 +98,8 @@ impl<P: Platform> Executable<P> {
 			.evm_config()
 			.evm_with_env(&mut state, block.evm_env().clone())
 			.transact_commit(&tx)?;
+
+		state.merge_transitions(BundleRetention::Reverts);
 
 		Ok(ExecutionResult {
 			source: Executable::Transaction(tx),
@@ -232,6 +235,7 @@ impl<P: Platform> Executable<P> {
 
 		// extract all the state changes that were made by executing
 		// transactions in this bundle.
+		db.merge_transitions(BundleRetention::Reverts);
 		let state = db.take_bundle();
 
 		// run the optional post-execution validation of the bundle.

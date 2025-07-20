@@ -288,9 +288,9 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		// starting from the most recent one, to find the first checkpoint
 		// that has touched the given address.
 
-		let mut current = &self.inner;
-		while let Some(prev) = current.prev.as_ref() {
-			if let Mutation::Executable(result) = &current.mutation {
+		let mut current = Some(&self.inner);
+		while let Some(checkpoint) = current {
+			if let Mutation::Executable(result) = &checkpoint.mutation {
 				if let Some(account) = result
 					.state()
 					.account(&address)
@@ -300,7 +300,7 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 				}
 			}
 
-			current = prev;
+			current = checkpoint.prev.as_ref();
 		}
 
 		// none of the checkpoints priori to this have touched this address,
@@ -320,15 +320,15 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		// starting from the most recent one, to find the first checkpoint
 		// that has created the code with the given hash.
 
-		let mut current = &self.inner;
-		while let Some(prev) = current.prev.as_ref() {
-			if let Mutation::Executable(result) = &current.mutation {
+		let mut current = Some(&self.inner);
+		while let Some(checkpoint) = current {
+			if let Mutation::Executable(result) = &checkpoint.mutation {
 				if let Some(code) = result.state().bytecode(&code_hash) {
 					return Ok(code);
 				}
 			}
 
-			current = prev;
+			current = checkpoint.prev.as_ref();
 		}
 
 		Ok(
@@ -350,9 +350,9 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		// traverse checkpoints history looking for the first checkpoint that
 		// has touched the given address.
 
-		let mut current = &self.inner;
-		while let Some(prev) = current.prev.as_ref() {
-			if let Mutation::Executable(result) = &current.mutation {
+		let mut current = Some(&self.inner);
+		while let Some(checkpoint) = current {
+			if let Mutation::Executable(result) = &checkpoint.mutation {
 				if let Some(slot) = result
 					.state()
 					.account(&address)
@@ -362,7 +362,7 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 				}
 			}
 
-			current = prev;
+			current = checkpoint.prev.as_ref();
 		}
 
 		// none of the checkpoints prior to this have touched this address,

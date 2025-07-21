@@ -188,7 +188,7 @@ impl<P: Platform + NetworkSelector> Step<P> for PopulatePayload<P> {
 			payload = match input {
 				BarrierOrTx::Barrier => payload.barrier(),
 				BarrierOrTx::Tx(tx) => {
-					// unfortunatelly encoding and dcoding with 2718 is the only generic
+					// unfortunatelly encoding and decoding with 2718 is the only generic
 					// way to handle transaction types across different platforms and
 					// networks and SDKs that we are working with.
 					let encoded = tx.encoded_2718();

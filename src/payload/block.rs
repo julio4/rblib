@@ -25,12 +25,15 @@ pub enum Error<P: Platform> {
 	BlockExecution(#[from] BlockExecutionError),
 }
 
-/// This is a factory type that can create different parallel streams of
-/// incrementally built payloads, all rooted at the same parent block.
+/// This type represents the beginning of the payload building process. It
+/// captures all the state and configuration required to create subsequent
+/// payload state transition checkpoints.
 ///
-/// Usually instances of this type are created as a response to CL client
+/// Usually instances of this type are created once as a response to CL client
 /// `ForkchoiceUpdated` requests with `PayloadAttributes` that signals the need
-/// to start constructing a new payload on top of a given block.
+/// to start constructing a new payload on top of a given block, then different
+/// versions of payload checkpoints are created on top of this instance using
+/// the [`BlockContext::start`] method.
 ///
 /// This type is cheap to clone.
 pub struct BlockContext<P: Platform> {
@@ -51,16 +54,16 @@ impl<P: Platform> BlockContext<P> {
 		parent: SealedHeader<types::Header<P>>,
 		attribs: types::PayloadBuilderAttributes<P>,
 		base_state: StateProviderBox,
-		evm_config: P::EvmConfig,
 		chainspec: Arc<types::ChainSpec<P>>,
 	) -> Result<Self, Error<P>> {
+		let evm_config = P::evm_config(Arc::clone(&chainspec));
 		let block_env = P::next_block_environment_context(
 			&chainspec,
 			parent.header(),
 			&attribs, //
 		);
 
-		let evm_env = evm_config //
+		let evm_env = evm_config
 			.next_evm_env(&parent, &block_env)
 			.map_err(Error::EvmEnv)?;
 

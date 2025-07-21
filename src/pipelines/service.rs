@@ -190,7 +190,6 @@ where
 			header,
 			attribs,
 			base_state,
-			self.service.evm_config().clone(),
 			self.service.chain_spec().clone(),
 		)
 		.map_err(PayloadBuilderError::other)?;

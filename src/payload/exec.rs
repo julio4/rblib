@@ -16,11 +16,14 @@ use {
 		primitives::Recovered,
 		revm::{
 			State,
-			db::{BundleState, WrapDatabaseRef},
+			db::{
+				BundleState,
+				WrapDatabaseRef,
+				states::bundle_state::BundleRetention,
+			},
 		},
+		transaction_pool::PoolTransaction,
 	},
-	reth_origin::revm::db::states::bundle_state::BundleRetention,
-	reth_transaction_pool::PoolTransaction,
 	std::fmt::Debug,
 };
 

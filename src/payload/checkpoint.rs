@@ -409,7 +409,10 @@ impl<P: Platform> Debug for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Checkpoint")
 			.field("depth", &self.depth() as &dyn Debug)
-			.field("block", &self.block() as &dyn Debug)
+			.field(
+				"block",
+				&format!("{} + 1", self.block().parent().hash()) as &dyn Debug,
+			)
 			.field(
 				"txs",
 				&self
@@ -419,7 +422,6 @@ impl<P: Platform> Debug for Checkpoint<P> {
 					.collect::<Vec<_>>() as &dyn Debug,
 			)
 			.field("result", &self.result() as &dyn Debug)
-			.field("state", &self.state() as &dyn Debug)
 			.finish()
 	}
 }

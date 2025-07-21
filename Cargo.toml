@@ -74,7 +74,7 @@ test-utils = [
 pipelines-macros = { path = "src/pipelines/macros" }
 
 # Common dependencies
-alloy-origin = { version = "1.0.18", package = "alloy" }
+alloy-origin = { version = "1.0.18", package = "alloy", features = ["k256"] }
 alloy-evm = "0.14"
 itertools = "0.14"
 eyre = "0.6"

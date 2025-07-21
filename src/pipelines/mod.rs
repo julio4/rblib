@@ -383,4 +383,5 @@ pub mod traits {
 }
 
 // internal utilities
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) use exec::clone_payload_error;

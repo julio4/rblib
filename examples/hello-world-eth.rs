@@ -89,7 +89,7 @@ async fn main() -> eyre::Result<()> {
 		&signers[1],
 		0,
 		signers[0].address(),
-		U256::from(25_000_000u64),
+		U256::from(28_000_000u64),
 	);
 
 	// checkpoints can be built on top of any arbitrary checkpoint, some may be

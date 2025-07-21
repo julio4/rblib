@@ -14,6 +14,7 @@ use {
 	bundle::EthereumBundle,
 	limits::EthereumDefaultLimits,
 	pool::FixedTransactions,
+	reth_transaction_pool::noop::NoopTransactionPool,
 	std::sync::Arc,
 };
 
@@ -54,14 +55,12 @@ impl Platform for Ethereum {
 		}
 	}
 
-	fn construct_payload<Pool, Provider>(
+	fn construct_payload<Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<Recovered<types::Transaction<Self>>>,
-		transaction_pool: &Pool,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
-		Pool: PoolBounds<Self>,
 		Provider: ProviderBounds<Self>,
 	{
 		let evm_config = block.evm_config().clone();
@@ -86,7 +85,7 @@ impl Platform for Ethereum {
 		default_ethereum_payload(
 			evm_config,
 			provider,
-			transaction_pool,
+			NoopTransactionPool::default(),
 			builder_config,
 			build_args,
 			|_| {

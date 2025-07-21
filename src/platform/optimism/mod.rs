@@ -73,14 +73,12 @@ impl Platform for Optimism {
 		}
 	}
 
-	fn construct_payload<Pool, Provider>(
+	fn construct_payload<Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<Recovered<types::Transaction<Self>>>,
-		_: &Pool,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
-		Pool: traits::PoolBounds<Self>,
 		Provider: traits::ProviderBounds<Self>,
 	{
 		let transactions = skip_sequencer_transactions(transactions, block);

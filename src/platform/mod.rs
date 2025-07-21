@@ -77,17 +77,15 @@ pub trait Platform:
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self>;
 
-	fn construct_payload<Pool, Provider>(
+	fn construct_payload<Provider>(
 		block: &BlockContext<Self>,
 		transactions: Vec<reth::primitives::Recovered<types::Transaction<Self>>>,
-		transaction_pool: &Pool,
 		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
 		reth::payload::builder::PayloadBuilderError,
 	>
 	where
-		Pool: traits::PoolBounds<Self>,
 		Provider: traits::ProviderBounds<Self>;
 }
 

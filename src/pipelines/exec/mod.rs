@@ -190,7 +190,6 @@ impl<
 					P::construct_payload(
 						&self.context.block,
 						input.history().transactions().cloned().collect(),
-						self.context.service.pool(),
 						self.context.service.provider(),
 					)
 					.map_err(ClonablePayloadBuilderError),
@@ -222,7 +221,6 @@ impl<
 					P::construct_payload(
 						&block,
 						Vec::new(),
-						self.context.service.pool(),
 						self.context.service.provider(),
 					)
 					.map_err(ClonablePayloadBuilderError),

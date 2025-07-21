@@ -18,7 +18,6 @@ use {
 		types,
 		*,
 	},
-	bundle::OpBundle,
 	limits::OptimismDefaultLimits,
 	reth_payload_util::PayloadTransactionsFixed,
 	std::sync::Arc,
@@ -26,6 +25,8 @@ use {
 
 mod bundle;
 mod limits;
+
+pub use bundle::OpBundle;
 
 /// Platform definition for Optimism Rollup chains.
 #[derive(Debug, Clone, Default)]
@@ -73,7 +74,7 @@ impl Platform for Optimism {
 		}
 	}
 
-	fn construct_payload<Provider>(
+	fn build_payload<Provider>(
 		payload: Checkpoint<Self>,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
@@ -172,6 +173,7 @@ fn extract_external_txs(
 			prefix_len += 1;
 		}
 	}
+
 	transactions
 		.into_iter()
 		.skip(prefix_len)

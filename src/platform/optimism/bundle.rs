@@ -27,8 +27,4 @@ impl Bundle<Optimism> for OpBundle {
 	fn is_optional(&self, _tx: TxHash) -> bool {
 		todo!()
 	}
-
-	fn uuid(&self) -> Uuid {
-		todo!()
-	}
 }

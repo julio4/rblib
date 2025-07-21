@@ -10,7 +10,6 @@ use {
 		},
 		traits::*,
 	},
-	bundle::EthereumBundle,
 	limits::EthereumDefaultLimits,
 	pool::FixedTransactions,
 	reth_transaction_pool::noop::NoopTransactionPool,
@@ -20,6 +19,8 @@ use {
 mod bundle;
 mod limits;
 mod pool;
+
+pub use bundle::EthereumBundle;
 
 /// Platform definition for ethereum mainnet.
 #[derive(Debug, Clone, Default)]
@@ -54,7 +55,7 @@ impl Platform for Ethereum {
 		}
 	}
 
-	fn construct_payload<Provider>(
+	fn build_payload<Provider>(
 		payload: Checkpoint<Self>,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>

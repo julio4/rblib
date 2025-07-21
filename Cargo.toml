@@ -74,8 +74,6 @@ test-utils = [
 pipelines-macros = { path = "src/pipelines/macros" }
 
 # Common dependencies
-alloy-origin = { version = "1.0.18", package = "alloy", features = ["k256"] }
-alloy-evm = "0.14"
 itertools = "0.14"
 eyre = "0.6"
 thiserror = "2.0"
@@ -86,6 +84,13 @@ dashmap = "6.1"
 uuid = "1.17"
 futures = { version = "0.3" }
 tokio = { version = "1.46" }
+serde = "1.0"
+
+alloy-origin = { version = "1.0.18", package = "alloy", features = [
+  "k256",
+  "rpc-types-mev",
+] }
+alloy-evm = "0.14"
 
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }

@@ -11,13 +11,17 @@ mod bundle;
 mod ethereum;
 mod limits;
 
-pub use {bundle::*, ethereum::Ethereum, limits::*};
+pub use {
+	bundle::*,
+	ethereum::{Ethereum, EthereumBundle},
+	limits::*,
+};
 
 #[cfg(feature = "optimism")]
 mod optimism;
 
 #[cfg(feature = "optimism")]
-pub use optimism::Optimism;
+pub use optimism::{OpBundle, Optimism};
 
 /// This type abstracts the platform specific types of the undelying system that
 /// is building the payload.
@@ -77,7 +81,7 @@ pub trait Platform:
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self>;
 
-	fn construct_payload<Provider>(
+	fn build_payload<Provider>(
 		payload: Checkpoint<Self>,
 		provider: &Provider,
 	) -> Result<

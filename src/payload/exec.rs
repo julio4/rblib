@@ -43,6 +43,9 @@ pub enum ExecutionError<P: Platform> {
 
 	#[error("Invalid bundle post-execution state: {0}")]
 	InvalidBundlePostExecutionState(types::BundlePostExecutionError<P>),
+
+	#[error("Bundle is not eligible for execution in this block")]
+	IneligibleBundle,
 }
 
 /// Describes an atomic unit of execution that can be used to create a state
@@ -122,6 +125,9 @@ impl<P: Platform> Executable<P> {
 	/// changes.
 	///
 	/// Notes:
+	/// - Bundles that are not eligible for execution in the current block are
+	///   considered invalid and no execution result will be produced.
+	///
 	/// - All transactions in the bundle are executed in the order in which they
 	///   were defined in the bundle.
 	///
@@ -171,6 +177,10 @@ impl<P: Platform> Executable<P> {
 	where
 		DB: DatabaseRef<Error = ProviderError> + Debug,
 	{
+		if !bundle.is_eligible(block) {
+			return Err(ExecutionError::IneligibleBundle);
+		}
+
 		let evm_env = block.evm_env();
 		let evm_config = block.evm_config();
 		let mut db = State::builder()

@@ -187,7 +187,7 @@ impl<
 			// result of the pipeline run.
 			return Cursor::Finalizing(
 				self.finalize(
-					P::construct_payload(input, self.context.service.provider())
+					P::build_payload(input, self.context.service.provider())
 						.map_err(ClonablePayloadBuilderError),
 				),
 			);
@@ -211,7 +211,7 @@ impl<
 
 			return Cursor::<P>::Finalizing(
 				self.finalize(
-					P::construct_payload(
+					P::build_payload(
 						self.context.block.start(),
 						self.context.service.provider(),
 					)

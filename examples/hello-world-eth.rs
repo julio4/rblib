@@ -93,10 +93,13 @@ async fn main() -> eyre::Result<()> {
 	);
 
 	// checkpoints can be built on top of any arbitrary checkpoint, some may be
-	// cheaply discarded fron the final payload.
+	// cheaply discarded from the final payload. Many forks may coexist in the
+	// payload building process.
 	let discarded_checkpoint = second_checkpoint.apply(tx3)?;
 	println!("checkpoint created: {discarded_checkpoint} (will be discarded)");
 
+	// You can pick whatever checkpoint as the final payload and use it to
+	// assemble a block.
 	let block = Ethereum::construct_payload(third_checkpoint, &state_provider)
 		.expect("payload should be built successfully");
 

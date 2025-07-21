@@ -78,8 +78,7 @@ pub trait Platform:
 	) -> types::NextBlockEnvContext<Self>;
 
 	fn construct_payload<Provider>(
-		block: &BlockContext<Self>,
-		transactions: Vec<reth::primitives::Recovered<types::Transaction<Self>>>,
+		payload: Checkpoint<Self>,
 		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,

@@ -5,7 +5,6 @@ use {
 			ethereum::{evm::EthEvmConfig, node::EthereumNode},
 			evm::NextBlockEnvAttributes,
 			payload::builder::*,
-			primitives::Recovered,
 			revm::{cached::CachedReads, cancelled::CancelOnDrop},
 			transaction_pool::*,
 		},
@@ -56,17 +55,16 @@ impl Platform for Ethereum {
 	}
 
 	fn construct_payload<Provider>(
-		block: &BlockContext<Self>,
-		transactions: Vec<Recovered<types::Transaction<Self>>>,
+		payload: Checkpoint<Self>,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
 		Provider: ProviderBounds<Self>,
 	{
-		let evm_config = block.evm_config().clone();
+		let evm_config = payload.block().evm_config().clone();
 		let payload_config = PayloadConfig {
-			parent_header: Arc::new(block.parent().clone()),
-			attributes: block.attributes().clone(),
+			parent_header: Arc::new(payload.block().parent().clone()),
+			attributes: payload.block().attributes().clone(),
 		};
 
 		let build_args = BuildArguments::<
@@ -80,6 +78,7 @@ impl Platform for Ethereum {
 		);
 
 		let builder_config = EthereumBuilderConfig::new();
+		let transactions = payload.history().transactions().cloned().collect();
 		let transactions = Box::new(FixedTransactions::<Self>::new(transactions));
 
 		default_ethereum_payload(

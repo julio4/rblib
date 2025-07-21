@@ -187,12 +187,8 @@ impl<
 			// result of the pipeline run.
 			return Cursor::Finalizing(
 				self.finalize(
-					P::construct_payload(
-						&self.context.block,
-						input.history().transactions().cloned().collect(),
-						self.context.service.provider(),
-					)
-					.map_err(ClonablePayloadBuilderError),
+					P::construct_payload(input, self.context.service.provider())
+						.map_err(ClonablePayloadBuilderError),
 				),
 			);
 		};
@@ -206,27 +202,25 @@ impl<
 	/// After pipeline steps are initialized, this method will identify the first
 	/// step to execute in the pipeline and prepare the cursor to run it.
 	fn first_step(&self) -> Cursor<P> {
-		if let Some(navigator) = StepNavigator::entrypoint(&self.context.pipeline) {
-			Cursor::BeforeStep(navigator.into(), self.context.block.start())
-		} else {
+		let Some(navigator) = StepNavigator::entrypoint(&self.context.pipeline)
+		else {
 			debug!(
-				"empty pipeline, building empty payloads for attributes: {:?}",
+				"empty pipeline, building empty payload for attributes: {:?}",
 				self.context.block.attributes()
 			);
 
-			let block = self.context.block.clone();
-
-			Cursor::<P>::Finalizing(
+			return Cursor::<P>::Finalizing(
 				self.finalize(
 					P::construct_payload(
-						&block,
-						Vec::new(),
+						self.context.block.start(),
 						self.context.service.provider(),
 					)
 					.map_err(ClonablePayloadBuilderError),
 				),
-			)
-		}
+			);
+		};
+
+		Cursor::BeforeStep(navigator.into(), self.context.block.start())
 	}
 
 	/// This method will walk through the pipeline steps and invoke the

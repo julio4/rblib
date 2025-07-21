@@ -74,14 +74,14 @@ impl Platform for Optimism {
 	}
 
 	fn construct_payload<Provider>(
-		block: &BlockContext<Self>,
-		transactions: Vec<Recovered<types::Transaction<Self>>>,
+		payload: Checkpoint<Self>,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
 		Provider: traits::ProviderBounds<Self>,
 	{
-		let transactions = skip_sequencer_transactions(transactions, block);
+		let block = payload.block();
+		let transactions = extract_external_txs(&payload);
 
 		let op_builder = OpBuilder::new(|_| {
 			PayloadTransactionsFixed::new(
@@ -108,7 +108,8 @@ impl Platform for Optimism {
 		};
 
 		// Top of Block chain state.
-		let state_provider = provider.state_by_block_hash(block.parent().hash())?;
+		let state_provider =
+			provider.state_by_block_hash(payload.block().parent().hash())?;
 
 		// Invoke the builder implementation from reth-optimism-node.
 		let build_outcome = op_builder.build(
@@ -139,21 +140,28 @@ impl Platform for Optimism {
 /// transactions are in the transactions list, they are not duplicated and
 /// removed from the transactions list provided as an argument.
 ///
+/// This function will extract and return the list of all transactions in the
+/// built payload excluding the sequencer transactions.
+///
 /// Payload builders might want to explicitly add those transactions during
 /// the progressive payload building process to have visibility into the
 /// state changes they cause and to know the cumulative gas usage including
 /// those txs. This happens for example when a pipeline has a the
 /// `OptimismPrologue` step that applies the sequencer transactions to the
 /// payload before any other step.
-fn skip_sequencer_transactions(
-	transactions: Vec<Recovered<types::Transaction<Optimism>>>,
-	block: &BlockContext<Optimism>,
+fn extract_external_txs(
+	payload: &Checkpoint<Optimism>,
 ) -> Vec<Recovered<types::Transaction<Optimism>>> {
-	let sequencer_txs = block
+	let sequencer_txs = payload
+		.block()
 		.attributes()
 		.transactions
 		.iter()
 		.map(|tx| tx.value().tx_hash());
+
+	// all txs including potentially sequencer txs
+	let full_history = payload.history();
+	let transactions: Vec<_> = full_history.transactions().collect();
 
 	let mut prefix_len = 0;
 	for (ix, sequencer_tx) in sequencer_txs.enumerate() {
@@ -164,9 +172,9 @@ fn skip_sequencer_transactions(
 			prefix_len += 1;
 		}
 	}
-
 	transactions
 		.into_iter()
 		.skip(prefix_len)
+		.cloned()
 		.collect::<Vec<_>>()
 }

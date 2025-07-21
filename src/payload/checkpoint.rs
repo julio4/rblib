@@ -429,13 +429,13 @@ impl<P: Platform> Debug for Checkpoint<P> {
 impl<P: Platform> Display for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let Mutation::Executable(exec_result) = &self.inner.mutation else {
-			return write!(f, "[{}] (barrier)", self.depth());
+			return write!(f, "[{}] barrier", self.depth());
 		};
 
 		match exec_result.source() {
 			Executable::Transaction(tx) => write!(
 				f,
-				"[{}] {} ({}, {} gas)",
+				"[{}] tx {} ({}, {} gas)",
 				self.depth(),
 				tx.tx_hash(),
 				match exec_result.results()[0] {

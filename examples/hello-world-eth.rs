@@ -1,3 +1,9 @@
+//! Minimal example of Payload API for Ethereum
+//!
+//! In this example we will build a block with two transactions on top of the
+//! genesis block of the Sepolia testnet. The transactions will transfer some
+//! ETH between two random accounts.
+
 use {
 	alloy::{
 		consensus::{EthereumTxEnvelope, TxEip4844},
@@ -21,11 +27,10 @@ use {
 async fn main() -> eyre::Result<()> {
 	let chainspec = SEPOLIA.clone();
 	let parent = chainspec.genesis_header.clone();
-	let signers = [PrivateKeySigner::random(), PrivateKeySigner::random()];
-	let state_provider =
-		MockEthProvider::default().with_chain_spec(chainspec.as_ref().clone());
+	let state_provider = MockEthProvider::default();
 
 	// prefund signers with 1 ETH each
+	let signers = [PrivateKeySigner::random(), PrivateKeySigner::random()];
 	state_provider.extend_accounts(signers.iter().map(|s| {
 		(
 			s.address(),
@@ -33,8 +38,8 @@ async fn main() -> eyre::Result<()> {
 		)
 	}));
 
-	let sp2 = state_provider.clone();
-
+	// This type usually comes from a consensus client as a signal that a new
+	// payload should be built with the given parameters.
 	let payload_attribs =
 		EthPayloadBuilderAttributes::new(parent.hash(), PayloadAttributes {
 			timestamp: parent.header().timestamp + 1,
@@ -44,15 +49,19 @@ async fn main() -> eyre::Result<()> {
 			parent_beacon_block_root: None,
 		});
 
+	// This is the entry point of the payload building API. We construct a
+	// building context for a given block and attributes.
 	let block_context = BlockContext::<Ethereum>::new(
 		parent,
 		payload_attribs,
-		Box::new(state_provider),
+		Box::new(state_provider.clone()),
 		chainspec,
 	)?;
 
+	// Next we progressively build the payload by creating checkpoints that have
+	// state mutations applied to them.
 	let first_checkpoint = block_context.start();
-	println!("initial checkpoint created: {first_checkpoint:#?}");
+	println!("checkpoint created: {first_checkpoint}");
 
 	let tx1 = make_transfer_tx(
 		&signers[0],
@@ -61,8 +70,10 @@ async fn main() -> eyre::Result<()> {
 		U256::from(50_000_000u64),
 	);
 
+	// Checkpoints can be applied on top of each other, creating a progressive
+	// history of state changes.
 	let second_checkpoint = first_checkpoint.apply(tx1)?;
-	println!("second checkpoint created: {second_checkpoint:#?}");
+	println!("checkpoint created: {second_checkpoint}");
 
 	let tx2 = make_transfer_tx(
 		&signers[1],
@@ -72,12 +83,24 @@ async fn main() -> eyre::Result<()> {
 	);
 
 	let third_checkpoint = second_checkpoint.apply(tx2)?;
-	println!("third checkpoint created: {third_checkpoint:#?}");
+	println!("checkpoint created: {third_checkpoint}");
 
-	let block = Ethereum::construct_payload(third_checkpoint, &sp2)
+	let tx3 = make_transfer_tx(
+		&signers[1],
+		0,
+		signers[0].address(),
+		U256::from(25_000_000u64),
+	);
+
+	// checkpoints can be built on top of any arbitrary checkpoint, some may be
+	// cheaply discarded fron the final payload.
+	let discarded_checkpoint = second_checkpoint.apply(tx3)?;
+	println!("checkpoint created: {discarded_checkpoint} (will be discarded)");
+
+	let block = Ethereum::construct_payload(third_checkpoint, &state_provider)
 		.expect("payload should be built successfully");
 
-	println!("built block: {block:#?}");
+	println!("block built: {block:#?}");
 
 	Ok(())
 }

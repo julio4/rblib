@@ -48,6 +48,7 @@ optimism = [
   "reth-optimism-node",
   "reth-optimism-chainspec",
   "reth-optimism-forks",
+  "reth-optimism-primitives",
   "reth-node-builder/op",
   "reth-payload-util",
   "reth-optimism-cli",
@@ -90,6 +91,7 @@ alloy-origin = { version = "1.0.18", package = "alloy", features = [
   "rpc-types-mev",
 ] }
 alloy-evm = "0.14"
+alloy-serde = "1.0.18"
 
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
@@ -115,6 +117,7 @@ reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5
 reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-payload-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
 
 # test-utils
 reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }

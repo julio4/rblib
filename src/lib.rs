@@ -69,6 +69,9 @@ pub mod reth {
 		pub mod cli {
 			pub use reth_optimism_cli::*;
 		}
+		pub mod primitives {
+			pub use reth_optimism_primitives::*;
+		}
 	}
 }
 

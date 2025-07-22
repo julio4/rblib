@@ -1,3 +1,5 @@
+//! Test extensions for common types used in tests.
+
 use {
 	super::*,
 	crate::*,
@@ -11,15 +13,13 @@ use {
 			TransactionResponse,
 			TxSignerSync,
 		},
-		primitives::{Address, B256, Bytes, TxHash, TxKind, U256},
+		primitives::{Address, Bytes, TxHash, TxKind, U256},
 		signers::Signature,
 	},
-	reth::{
-		ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
-		payload::builder::EthPayloadBuilderAttributes,
-		primitives::SealedHeader,
-	},
 };
+
+mod mock;
+pub use mock::*;
 
 pub trait BlockResponseExt<T: TransactionResponse> {
 	fn tx(&self, index: usize) -> Option<&T>;
@@ -166,49 +166,6 @@ where
 		let mut tx = self.build_unsigned()?;
 		let signature = signer.sign_transaction_sync(&mut tx)?;
 		Ok(tx.into_signed(signature).into())
-	}
-}
-
-pub trait PayloadBuilderAttributesExt {
-	fn mock_for_parent(parent: &SealedHeader) -> Self;
-}
-
-impl PayloadBuilderAttributesExt for EthPayloadBuilderAttributes {
-	fn mock_for_parent(parent: &SealedHeader) -> Self {
-		EthPayloadBuilderAttributes::new(parent.hash(), PayloadAttributes {
-			timestamp: parent.header().timestamp + 1,
-			prev_randao: B256::random(),
-			suggested_fee_recipient: Address::random(),
-			withdrawals: None,
-			parent_beacon_block_root: None,
-		})
-	}
-}
-
-#[cfg(feature = "optimism")]
-impl PayloadBuilderAttributesExt for reth::optimism::node::OpPayloadAttributes {
-	fn mock_for_parent(parent: &SealedHeader) -> Self {
-		use reth::optimism::{
-			chainspec::constants::{
-				BASE_MAINNET_MAX_GAS_LIMIT,
-				TX_SET_L1_BLOCK_OP_MAINNET_BLOCK_124665056,
-			},
-			node::OpPayloadAttributes,
-		};
-
-		OpPayloadAttributes {
-			payload_attributes: PayloadAttributes {
-				timestamp: parent.header().timestamp + 1,
-				parent_beacon_block_root: Some(B256::ZERO),
-				withdrawals: Some(vec![]),
-				..Default::default()
-			},
-			transactions: Some(vec![
-				TX_SET_L1_BLOCK_OP_MAINNET_BLOCK_124665056.into(),
-			]),
-			gas_limit: Some(BASE_MAINNET_MAX_GAS_LIMIT),
-			..Default::default()
-		}
 	}
 }
 

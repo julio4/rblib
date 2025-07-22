@@ -5,18 +5,13 @@ use {
 	crate::{
 		pipelines::job::PayloadJob,
 		reth::{
-			api::{NodeTypes, PayloadBuilderAttributes},
+			api::PayloadBuilderAttributes,
 			builder::{
 				BuilderContext,
 				NodeConfig,
 				components::PayloadServiceBuilder,
 			},
-			payload::builder::{
-				PayloadBuilderHandle,
-				PayloadBuilderService,
-				PayloadJob as RethPayloadJobTrait,
-				*,
-			},
+			payload::builder::{PayloadBuilderHandle, PayloadBuilderService, *},
 			providers::CanonStateSubscriptions,
 		},
 		*,
@@ -53,8 +48,7 @@ where
 		ctx: &BuilderContext<Node>,
 		pool: Pool,
 		_evm_config: EvmConfig,
-	) -> eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>>
-	{
+	) -> eyre::Result<PayloadBuilderHandle<types::PayloadTypes<Plat>>> {
 		let pipeline = self.pipeline;
 		debug!("Spawning payload builder service for: {pipeline:#?}");
 
@@ -165,7 +159,7 @@ where
 
 	fn new_payload_job(
 		&self,
-		attribs: <Self::Job as RethPayloadJobTrait>::PayloadAttributes,
+		attribs: types::PayloadBuilderAttributes<Plat>,
 	) -> Result<Self::Job, PayloadBuilderError> {
 		let header = if attribs.parent().is_zero() {
 			self.service.provider().latest_header()?.ok_or_else(|| {

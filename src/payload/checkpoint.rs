@@ -429,6 +429,13 @@ impl<P: Platform> Debug for Checkpoint<P> {
 impl<P: Platform> Display for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		let Mutation::Executable(exec_result) = &self.inner.mutation else {
+			if self.depth() == 0 {
+				// this is the initial checkpoint
+				return write!(f, "[{}] initial", self.depth());
+			}
+
+			// this is a barrier checkpoint, which has no transactions
+			// applied to it.
 			return write!(f, "[{}] barrier", self.depth());
 		};
 

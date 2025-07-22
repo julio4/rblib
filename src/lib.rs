@@ -79,6 +79,11 @@ pub mod alloy {
 		pub use alloy_evm::*;
 	}
 
+	#[cfg(any(test, feature = "test-utils"))]
+	pub mod genesis {
+		pub use alloy_genesis::*;
+	}
+
 	#[cfg(feature = "optimism")]
 	pub mod optimism {
 		pub use op_alloy::*;

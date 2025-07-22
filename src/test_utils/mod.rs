@@ -24,8 +24,8 @@ mod step;
 mod optimism;
 
 pub use {
-	accounts::FundedAccounts,
-	exts::{BlockResponseExt, TransactionRequestExt},
+	accounts::{FundedAccounts, WithFundedAccounts},
+	exts::*,
 	node::{ConsensusDriver, LocalNode},
 	platform::{NetworkSelector, TestNodeFactory, TestablePlatform, select},
 	rblib_tests_macros::{if_platform, rblib_test},

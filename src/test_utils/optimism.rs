@@ -2,22 +2,21 @@ use {
 	super::*,
 	crate::*,
 	alloy::{
-		consensus::SignableTransaction,
-		eips::{BlockNumberOrTag, Encodable2718, eip7685::Requests},
-		hex,
-		network::TxSignerSync,
-		optimism::{
-			consensus::{OpTxEnvelope, OpTypedTransaction, TxDeposit},
-			rpc_types::Transaction,
-		},
-		primitives::{B256, Bytes, TxKind, U256, address},
+		eips::{BlockNumberOrTag, eip7685::Requests},
+		optimism::rpc_types::Transaction,
+		primitives::B256,
 		providers::Provider,
 	},
-	alloy_genesis::{Genesis, GenesisAccount},
 	reth::{
 		ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
 		optimism::{
-			chainspec::OpChainSpec,
+			chainspec::{
+				self,
+				constants::{
+					BASE_MAINNET_MAX_GAS_LIMIT,
+					TX_SET_L1_BLOCK_OP_MAINNET_BLOCK_124665056,
+				},
+			},
 			node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
 		},
 		payload::builder::PayloadId,
@@ -25,7 +24,6 @@ use {
 	},
 	reth_ipc::client::IpcClientBuilder,
 	reth_optimism_rpc::OpEngineApiClient,
-	serde_json::from_str,
 };
 
 impl NetworkSelector for Optimism {
@@ -38,7 +36,8 @@ impl TestNodeFactory<Optimism> for Optimism {
 	async fn create_test_node(
 		pipeline: Pipeline<Optimism>,
 	) -> eyre::Result<LocalNode<Optimism, Self::ConsensusDriver>> {
-		LocalNode::new(OptimismConsensusDriver, chainspec(), move |builder| {
+		let chainspec = chainspec::OP_DEV.as_ref().clone().with_funded_accounts();
+		LocalNode::new(OptimismConsensusDriver, chainspec, move |builder| {
 			builder
 				.with_types::<OpNode>()
 				.with_components(
@@ -51,8 +50,6 @@ impl TestNodeFactory<Optimism> for Optimism {
 		.await
 	}
 }
-
-const DEFAULT_GAS_LIMIT: u64 = 200_000_000;
 
 pub struct OptimismConsensusDriver;
 impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
@@ -76,33 +73,6 @@ impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
 			.await?
 			.expect("Latest block should exist");
 
-		// Add L1 block info as the first transaction in every L2 block
-		// This deposit transaction contains L1 block metadata required by the L2
-		// chain Currently using hardcoded data from L1 block 124665056
-		// If this info is not provided, Reth cannot decode the receipt for any
-		// transaction in the block since it also includes this info as part of
-		// the result. It does not matter if the to address
-		// (4200000000000000000000000000000000000015) is not deployed on the L2
-		// chain since Reth queries the block to get the info and not the contract.
-		let block_info_tx: Bytes = {
-			let deposit_tx = TxDeposit {
-				source_hash: B256::default(),
-				from: address!("DeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001"),
-				to: TxKind::Call(address!("4200000000000000000000000000000000000015")),
-				mint: 0,
-				value: U256::default(),
-				gas_limit: 210_000,
-				is_system_transaction: false,
-				input: FJORD_DATA.into(),
-			};
-
-			let mut tx = OpTypedTransaction::Deposit(deposit_tx);
-			let signer = FundedAccounts::random();
-			let signature = signer.sign_transaction_sync(&mut tx)?;
-			let envelope: OpTxEnvelope = tx.into_signed(signature).into();
-			envelope.encoded_2718().into()
-		};
-
 		let payload_attributes = OpPayloadAttributes {
 			payload_attributes: PayloadAttributes {
 				timestamp: target_timestamp,
@@ -110,8 +80,10 @@ impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
 				withdrawals: Some(vec![]),
 				..Default::default()
 			},
-			transactions: Some(vec![block_info_tx]),
-			gas_limit: Some(DEFAULT_GAS_LIMIT),
+			transactions: Some(vec![
+				TX_SET_L1_BLOCK_OP_MAINNET_BLOCK_124665056.into(),
+			]),
+			gas_limit: Some(BASE_MAINNET_MAX_GAS_LIMIT),
 			..Default::default()
 		};
 
@@ -212,28 +184,3 @@ impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
 		Ok(block)
 	}
 }
-
-fn chainspec() -> OpChainSpec {
-	let funded_accounts = FundedAccounts::addresses().map(|address| {
-		let account =
-			GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH));
-		(address, account)
-	});
-
-	let genesis = include_str!("./artifacts/op-genesis.json");
-	let genesis: Genesis = from_str(genesis).expect("invalid genesis JSON");
-	let genesis = genesis.extend_accounts(funded_accounts);
-	OpChainSpec::from_genesis(genesis)
-}
-
-// L1 block info for OP mainnet block 124665056 (stored in input of tx at index
-// 0)
-//
-// https://optimistic.etherscan.io/tx/0x312e290cf36df704a2217b015d6455396830b0ce678b860ebfcc30f41403d7b1
-const FJORD_DATA: &[u8] = &hex!(
-	"440a5e200000146b000f79c500000000000000040000000066d052e700000000013ad8a
-    3000000000000000000000000000000000000000000000000000000003ef12787000000
-    00000000000000000000000000000000000000000000000000000000012fdf87b89884a
-    61e74b322bbcf60386f543bfae7827725efaaf0ab1de2294a5900000000000000000000
-    00006887246668a3b87f54deb3b94ba47a6f63f32985"
-);

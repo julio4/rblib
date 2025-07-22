@@ -223,7 +223,7 @@ where
 
 		// calculate the timestamp for the new block
 		let current_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?;
-		let elapsed_time = current_timestamp - latest_timestamp;
+		let elapsed_time = current_timestamp.saturating_sub(latest_timestamp);
 		let target_timestamp = latest_timestamp + self.block_time + elapsed_time;
 
 		// start the payload building process

@@ -79,7 +79,7 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 }
 
 #[rblib_test(Ethereum, Optimism)]
-async fn all_transactions_included_ethereum<P: TestablePlatform>() {
+async fn all_transactions_included<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),

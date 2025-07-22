@@ -40,7 +40,7 @@ impl Platform for Ethereum {
 	}
 
 	fn next_block_environment_context(
-		_chainspec: &types::ChainSpec<Self>,
+		_: &types::ChainSpec<Self>,
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self> {

@@ -1,4 +1,16 @@
-use crate::alloy::{primitives::Address, signers::local::PrivateKeySigner};
+use crate::{
+	alloy::{
+		genesis::{Genesis, GenesisAccount},
+		primitives::{Address, U256},
+		signers::local::PrivateKeySigner,
+	},
+	reth::{
+		chainspec::ChainSpec,
+		ethereum::EthPrimitives,
+		providers::test_utils::{ExtendedAccount, MockEthProvider},
+	},
+	test_utils::ONE_ETH,
+};
 
 /// Those accounts are defined in the gensis block of the test local node,
 /// each prefunded with 100 ETH and nonces starting from 0.
@@ -81,5 +93,55 @@ impl FundedAccounts {
 
 	pub fn by_address(address: Address) -> Option<PrivateKeySigner> {
 		Self::signers().find(|signer| signer.address() == address)
+	}
+}
+
+/// A Helper trait used to extend various test and mock types with
+/// the predefined funded accounts each funded with 100 ETH.
+pub trait WithFundedAccounts {
+	#[must_use]
+	fn with_funded_accounts(self) -> Self;
+}
+
+/// Extension trait for `MockEthProvider` to add funded accounts.
+impl<ChainSpec> WithFundedAccounts
+	for MockEthProvider<EthPrimitives, ChainSpec>
+{
+	fn with_funded_accounts(self) -> Self {
+		self.extend_accounts(FundedAccounts::signers().map(|s| {
+			(
+				s.address(),
+				ExtendedAccount::new(0, U256::from(100 * ONE_ETH)),
+			)
+		}));
+		self
+	}
+}
+
+impl WithFundedAccounts for ChainSpec {
+	fn with_funded_accounts(self) -> Self {
+		let mut chainspec = self;
+		chainspec.genesis = chainspec.genesis.with_funded_accounts();
+		chainspec
+	}
+}
+
+#[cfg(feature = "optimism")]
+impl WithFundedAccounts for crate::reth::optimism::chainspec::OpChainSpec {
+	fn with_funded_accounts(self) -> Self {
+		let mut chainspec = self;
+		chainspec.inner.genesis = chainspec.inner.genesis.with_funded_accounts();
+		chainspec
+	}
+}
+
+impl WithFundedAccounts for Genesis {
+	fn with_funded_accounts(self) -> Self {
+		self.extend_accounts(FundedAccounts::addresses().map(|address| {
+			(
+				address,
+				GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH)),
+			)
+		}))
 	}
 }

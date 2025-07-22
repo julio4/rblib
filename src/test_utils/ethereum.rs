@@ -3,13 +3,12 @@ use {
 	crate::*,
 	alloy::{
 		eips::{BlockNumberOrTag, eip7685::RequestsOrHash},
-		primitives::{B256, U256},
+		primitives::{Address, B256},
 		providers::Provider,
 		rpc::types::Block,
 	},
-	alloy_genesis::GenesisAccount,
 	reth::{
-		chainspec::{ChainSpec, DEV, MAINNET},
+		chainspec,
 		ethereum::node::{
 			EthEngineTypes,
 			EthereumNode,
@@ -33,7 +32,8 @@ impl TestNodeFactory<Ethereum> for Ethereum {
 	async fn create_test_node(
 		pipeline: Pipeline<Ethereum>,
 	) -> eyre::Result<LocalNode<Ethereum, Self::ConsensusDriver>> {
-		LocalNode::new(EthConsensusDriver, chainspec(), move |builder| {
+		let chainspec = chainspec::DEV.as_ref().clone().with_funded_accounts();
+		LocalNode::new(EthConsensusDriver, chainspec, move |builder| {
 			builder
 				.with_types::<EthereumNode>()
 				.with_components(
@@ -69,9 +69,10 @@ impl ConsensusDriver<Ethereum> for EthConsensusDriver {
 
 		let payload_attributes = EthPayloadAttributes {
 			timestamp: target_timestamp,
+			prev_randao: B256::random(),
+			suggested_fee_recipient: Address::random(),
 			withdrawals: Some(vec![]),
 			parent_beacon_block_root: Some(B256::ZERO),
-			..Default::default()
 		};
 
 		// Start the production of a new block
@@ -170,20 +171,4 @@ impl ConsensusDriver<Ethereum> for EthConsensusDriver {
 
 		Ok(block)
 	}
-}
-
-fn chainspec() -> ChainSpec {
-	let funded_accounts = FundedAccounts::addresses().map(|address| {
-		let account =
-			GenesisAccount::default().with_balance(U256::from(100 * ONE_ETH));
-		(address, account)
-	});
-
-	let mut chainspec = DEV.as_ref().clone();
-	chainspec.genesis = chainspec
-		.genesis
-		.extend_accounts(funded_accounts)
-		.with_gas_limit(DEFAULT_BLOCK_GAS_LIMIT);
-	chainspec.hardforks = MAINNET.hardforks.clone();
-	chainspec
 }

@@ -93,7 +93,9 @@ fn main() {
         .run(|builder, _| async move {
             let handle = builder
                 .with_types::<EthereumNode>()
-                .with_components(EthereumNode::components().payload(pipeline.into_service()))
+                .with_components(
+                    EthereumNode::components()
+                        .payload(pipeline.into_service()))
                 .with_add_ons(EthereumAddOns::default())
                 .launch()
                 .await?;

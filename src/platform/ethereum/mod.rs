@@ -16,11 +16,8 @@ use {
 	std::sync::Arc,
 };
 
-mod bundle;
 mod limits;
 mod pool;
-
-pub use bundle::EthereumBundle;
 
 /// Platform definition for ethereum mainnet.
 #[derive(Debug, Clone, Default)]
@@ -28,8 +25,8 @@ pub struct Ethereum {
 	_private: (),
 }
 
-impl Platform for Ethereum {
-	type Bundle = EthereumBundle;
+impl PlatformBase<Ethereum> for Ethereum {
+	type Bundle = FlashbotsBundle<Self>;
 	type DefaultLimits = EthereumDefaultLimits;
 	type EvmConfig = EthEvmConfig;
 	type NodeTypes = EthereumNode;

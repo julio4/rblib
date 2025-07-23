@@ -39,7 +39,7 @@ fn main() -> eyre::Result<()> {
 
 	// A bundle is an atomic set of transactions that must be included together
 	// consecutively in the same order as specified.
-	let bundle = EthereumBundle::default()
+	let bundle = FlashbotsBundle::default()
 		.with_transaction(tx2)
 		.with_transaction(tx3);
 

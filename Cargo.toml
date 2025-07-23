@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  ".",       # The main rblib library
-  "bin/op2",
+  ".",               # The main rblib library
+  "bin/flashblocks",
 ]
 resolver = "2"
 

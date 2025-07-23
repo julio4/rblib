@@ -1,5 +1,5 @@
 [package]
-name = "op2"
+name = "flashblocks"
 description = "Next-Gen Optimism L2 Block Builder"
 version.workspace = true
 edition.workspace = true

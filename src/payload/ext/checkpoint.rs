@@ -4,7 +4,11 @@ use crate::{
 	Span,
 	SpanError,
 	SpanExt,
-	alloy::consensus::Transaction,
+	alloy::{
+		consensus::Transaction,
+		primitives::{Address, U256},
+	},
+	reth::{errors::ProviderError, revm::DatabaseRef},
 };
 
 /// Quality of Life extensions for the `Checkpoint` type.
@@ -20,6 +24,12 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 
 	/// Gas used by this checkpoint.
 	fn gas_used(&self) -> u64;
+
+	/// Returns the cumulative gas used by all checkpoints in the history of this
+	/// checkpoint, including this checkpoint itself.
+	fn cumulative_gas_used(&self) -> u64 {
+		self.history().gas_used()
+	}
 
 	/// Returns the effective tip for this transaction.
 	fn effective_tip_per_gas(&self) -> u128;
@@ -69,6 +79,12 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	///
 	/// The other checkpoint can be either a previous or a future checkpoint.
 	fn to(&self, other: &Self) -> Result<Span<P>, SpanError>;
+
+	/// Returns the balance of a given address at this checkpoint.
+	fn balance_of(&self, address: Address) -> Result<U256, ProviderError>;
+
+	/// Returns the nonce of a given account at this checkpoint.
+	fn nonce_of(&self, address: Address) -> Result<u64, ProviderError>;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -138,5 +154,25 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// The other checkpoint can be either a previous or a future checkpoint.
 	fn to(&self, other: &Checkpoint<P>) -> Result<Span<P>, SpanError> {
 		Span::between(self, other)
+	}
+
+	/// Returns the balance of a given address at this checkpoint.
+	fn balance_of(&self, address: Address) -> Result<U256, ProviderError> {
+		Ok(
+			self
+				.basic_ref(address)?
+				.map(|basic| basic.balance)
+				.unwrap_or_default(),
+		)
+	}
+
+	/// Returns the nonce of a given account at this checkpoint.
+	fn nonce_of(&self, address: Address) -> Result<u64, ProviderError> {
+		Ok(
+			self
+				.basic_ref(address)?
+				.map(|basic| basic.nonce)
+				.unwrap_or_default(),
+		)
 	}
 }

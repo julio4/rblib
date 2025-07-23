@@ -23,10 +23,7 @@ use {
 	std::sync::Arc,
 };
 
-mod bundle;
 mod limits;
-
-pub use bundle::OpBundle;
 
 /// Platform definition for Optimism Rollup chains.
 #[derive(Debug, Clone, Default)]
@@ -34,8 +31,8 @@ pub struct Optimism {
 	_private: (),
 }
 
-impl Platform for Optimism {
-	type Bundle = OpBundle;
+impl PlatformBase<Optimism> for Optimism {
+	type Bundle = FlashbotsBundle<Self>;
 	type DefaultLimits = OptimismDefaultLimits;
 	type EvmConfig = OpEvmConfig;
 	type NodeTypes = OpNode;

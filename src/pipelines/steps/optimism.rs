@@ -5,12 +5,15 @@ use {crate::*, std::sync::Arc};
 /// It requires that the payload has no existing transactions in it as the
 /// sequencer expects its transactions to be at the top of the block.
 pub struct OptimismPrologue;
-impl Step<Optimism> for OptimismPrologue {
+impl<P> Step<P> for OptimismPrologue
+where
+	P: traits::PlatformExecBounds<Optimism>,
+{
 	async fn step(
 		self: Arc<Self>,
-		payload: Checkpoint<Optimism>,
-		ctx: StepContext<Optimism>,
-	) -> ControlFlow<Optimism> {
+		payload: Checkpoint<P>,
+		ctx: StepContext<P>,
+	) -> ControlFlow<P> {
 		let existing_transactions_count = payload.history().transactions().count();
 		if existing_transactions_count > 0 {
 			return ControlFlow::Fail(PayloadBuilderError::Other(
@@ -100,7 +103,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn sequencer_txs_are_included() {
-		let output = OneStep::new(OptimismPrologue).run().await.unwrap();
+		let output = OneStep::<Optimism>::new(OptimismPrologue)
+			.run()
+			.await
+			.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
@@ -137,7 +143,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn fails_on_non_empty_payload() {
-		let output = OneStep::new(OptimismPrologue)
+		let output = OneStep::<Optimism>::new(OptimismPrologue)
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().nonce(0))
 			.run()
 			.await

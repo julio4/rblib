@@ -238,6 +238,7 @@ struct TransactionPoolVTable<P: Platform> {
 			*const u8,
 			&[B256],
 		) -> Result<Option<Vec<BlobAndProofV2>>, BlobStoreError>,
+	pending_and_queued_txn_count: fn(*const u8) -> (usize, usize),
 }
 
 impl<P: Platform> TransactionPoolVTable<P> {
@@ -435,6 +436,10 @@ impl<P: Platform> TransactionPoolVTable<P> {
 					let pool = unsafe { &*self_ptr.cast::<Pool>() };
 					pool.get_blobs_for_versioned_hashes_v2(versioned_hashes)
 				},
+			pending_and_queued_txn_count: |self_ptr: *const u8| {
+				let pool = unsafe { &*self_ptr.cast::<Pool>() };
+				pool.pending_and_queued_txn_count()
+			},
 		}
 	}
 }
@@ -975,5 +980,12 @@ impl<P: Platform> RethTransactionPoolTrait for TransactionPool<P> {
 			self.vtable.self_ptr,
 			versioned_hashes,
 		)
+	}
+
+	/// Returns the number of transactions that are ready for inclusion in the
+	/// next block and the number of transactions that are ready for inclusion in
+	/// future blocks: `(pending, queued)`.
+	fn pending_and_queued_txn_count(&self) -> (usize, usize) {
+		(self.vtable.pending_and_queued_txn_count)(self.vtable.self_ptr)
 	}
 }

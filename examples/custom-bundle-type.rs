@@ -20,6 +20,7 @@ use {
 		primitives::Recovered,
 		revm::db::BundleState,
 	},
+	std::sync::Arc,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -33,7 +34,7 @@ impl Platform for CustomPlatform {
 	type PooledTransaction = types::PooledTransaction<Optimism>;
 
 	fn evm_config<P>(
-		chainspec: std::sync::Arc<types::ChainSpec<Optimism>>,
+		chainspec: Arc<types::ChainSpec<Optimism>>,
 	) -> Self::EvmConfig {
 		Optimism::evm_config::<Self>(chainspec)
 	}
@@ -51,10 +52,7 @@ impl Platform for CustomPlatform {
 	fn build_payload<P, Provider>(
 		payload: Checkpoint<P>,
 		provider: &Provider,
-	) -> Result<
-		types::BuiltPayload<Self>,
-		reth::payload::builder::PayloadBuilderError,
-	>
+	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
 		P: traits::PlatformExecBounds<Self>,
 		Provider: traits::ProviderBounds<Self>,

@@ -86,42 +86,42 @@ futures = { version = "0.3" }
 tokio = { version = "1.46" }
 serde = "1.0"
 
-alloy-origin = { version = "1.0.18", package = "alloy", features = [
+alloy-origin = { version = "1.0.23", package = "alloy", features = [
   "k256",
   "rpc-types-mev",
 ] }
-alloy-evm = "0.14"
-alloy-serde = "1.0.18"
+alloy-evm = "0.15"
+alloy-serde = "1.0.23"
 
-reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 
 # Reth dependencies
-reth-origin = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", package = "reth" }
-reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
+reth-origin = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", package = "reth" }
+reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", features = [
   "node",
   "evm",
 ] }
 
 # optimism dependencies (optional)
 op-alloy = { version = "0.18", features = ["consensus"], optional = true }
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-payload-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-payload-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
 
 # test-utils
-reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
-reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", optional = true }
+reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
+reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
 rblib-tests-macros = { path = "src/test_utils/macros", optional = true }
 
 nanoid = { version = "0.4", optional = true }
@@ -139,13 +139,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 alloy-genesis = "1.0"
 rand = "0.9"
 serde_json = "1.0"
-reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1", features = [
+reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", features = [
   "test-utils",
 ] }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
-reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.5.1" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 rblib-tests-macros = { path = "src/test_utils/macros" }
 rblib = { path = ".", features = ["test-utils"] }
 
@@ -155,7 +155,7 @@ features = ["network", "rpc-types"]
 
 [dev-dependencies.reth-optimism-rpc]
 git = "https://github.com/paradigmxyz/reth"
-tag = "v1.5.1"
+tag = "v1.6.0"
 features = ["client"]
 
 [lints.rust]

@@ -135,6 +135,9 @@ impl Not for Eligibility {
 
 /// A bundle of transactions that adheres to the [Flashbots specification].
 /// see: <https://docs.flashbots.net/flashbots-auction/searchers/advanced/rpc-endpoint#eth_sendbundle>
+///
+/// By default this is the bundle type that is used by both the `Ethereum` and
+/// `Optimism` platforms.
 #[derive(Debug, Clone)]
 pub struct FlashbotsBundle<P: Platform> {
 	inner: EthSendBundle,

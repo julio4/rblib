@@ -71,7 +71,7 @@ impl CliExt for Cli {
 			.version(env!("CARGO_PKG_VERSION"))
 			.about("Flashbots block builder for Optimism")
 			.author("Flashbots")
-			.name("op2")
+			.name("flashblocks")
 			.get_matches();
 		Cli::from_arg_matches(&matches).expect("Parsing args")
 	}

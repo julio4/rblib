@@ -1,0 +1,491 @@
+use {
+	crate::*,
+	alloy::primitives::B256,
+	alloy_origin::{
+		eips::{BlockNumHash, BlockNumberOrTag},
+		primitives::*,
+	},
+	core::ops::RangeBounds,
+	reth::{
+		chainspec::{ChainInfo, ChainSpecProvider, EthChainSpec},
+		ethereum::primitives::AlloyBlockHeader,
+		primitives::{Account, Bytecode, SealedHeader},
+		providers::*,
+		revm::db::BundleState,
+	},
+	reth_errors::{ProviderError, ProviderResult},
+	reth_ethereum::trie::{updates::TrieUpdates, *},
+	std::{collections::HashMap, sync::Arc},
+};
+
+#[derive(Debug, Clone)]
+pub struct GenesisProviderFactory<P: Platform> {
+	chainspec: Arc<types::ChainSpec<P>>,
+	state_provider: GenesisStateProvider,
+	genesis_header: SealedHeader<types::Header<P>>,
+}
+
+impl<P: Platform> GenesisProviderFactory<P> {
+	pub fn new(chainspec: Arc<types::ChainSpec<P>>) -> Self {
+		let mut state_provider = GenesisStateProvider::default();
+
+		// Insert accounts from the genesis alloc into the state provider.
+		for (address, account) in &chainspec.genesis().alloc {
+			state_provider.insert_account(
+				*address,
+				Account {
+					nonce: account.nonce.unwrap_or_default(),
+					balance: account.balance,
+					bytecode_hash: None,
+				},
+				None,
+				HashMap::default(),
+			);
+		}
+
+		state_provider.insert_block_hash(0, chainspec.genesis_hash());
+
+		Self {
+			state_provider,
+			genesis_header: SealedHeader::new(
+				chainspec.genesis_header().clone(),
+				chainspec.genesis_hash(),
+			),
+			chainspec,
+		}
+	}
+
+	pub fn state_provider(&self) -> StateProviderBox {
+		Box::new(self.state_provider.clone()) as StateProviderBox
+	}
+
+	pub const fn genesis_header(&self) -> &SealedHeader<types::Header<P>> {
+		&self.genesis_header
+	}
+}
+
+impl<P: Platform> StateProviderFactory for GenesisProviderFactory<P> {
+	fn latest(&self) -> ProviderResult<StateProviderBox> {
+		Ok(Box::new(self.state_provider.clone()) as StateProviderBox)
+	}
+
+	fn state_by_block_number_or_tag(
+		&self,
+		number_or_tag: BlockNumberOrTag,
+	) -> ProviderResult<StateProviderBox> {
+		if let BlockNumberOrTag::Number(block_number) = number_or_tag {
+			if block_number != 0 {
+				return self.history_by_block_number(block_number);
+			}
+		}
+
+		Ok(Box::new(self.state_provider.clone()) as StateProviderBox)
+	}
+
+	fn history_by_block_number(
+		&self,
+		block: BlockNumber,
+	) -> ProviderResult<StateProviderBox> {
+		if block == 0 {
+			return Ok(Box::new(self.state_provider.clone()) as StateProviderBox);
+		}
+
+		Err(ProviderError::HeaderNotFound(
+			alloy_origin::eips::HashOrNumber::Number(block),
+		))
+	}
+
+	fn history_by_block_hash(
+		&self,
+		block: BlockHash,
+	) -> ProviderResult<StateProviderBox> {
+		if block == self.chainspec.genesis_hash() {
+			return self.latest();
+		}
+
+		Err(ProviderError::HeaderNotFound(
+			alloy_origin::eips::HashOrNumber::Hash(block),
+		))
+	}
+
+	fn state_by_block_hash(
+		&self,
+		block: BlockHash,
+	) -> ProviderResult<StateProviderBox> {
+		if block == self.chainspec.genesis_hash() {
+			return self.latest();
+		}
+
+		Err(ProviderError::HeaderNotFound(
+			alloy_origin::eips::HashOrNumber::Hash(block),
+		))
+	}
+
+	/// [`StateProviderFactory::latest`]
+	fn pending(&self) -> ProviderResult<StateProviderBox> {
+		self.latest()
+	}
+
+	fn pending_state_by_hash(
+		&self,
+		_: B256,
+	) -> ProviderResult<Option<StateProviderBox>> {
+		Ok(None)
+	}
+}
+
+impl<P: Platform> BlockIdReader for GenesisProviderFactory<P> {
+	/// Get the current pending block number and hash.
+	fn pending_block_num_hash(&self) -> ProviderResult<Option<BlockNumHash>> {
+		Ok(Some(BlockNumHash {
+			number: 0,
+			hash: self.chainspec.genesis_hash(),
+		}))
+	}
+
+	/// Get the current safe block number and hash.
+	fn safe_block_num_hash(&self) -> ProviderResult<Option<BlockNumHash>> {
+		Ok(Some(BlockNumHash {
+			number: 0,
+			hash: self.chainspec.genesis_hash(),
+		}))
+	}
+
+	/// Get the current finalized block number and hash.
+	fn finalized_block_num_hash(&self) -> ProviderResult<Option<BlockNumHash>> {
+		Ok(Some(BlockNumHash {
+			number: 0,
+			hash: self.chainspec.genesis_hash(),
+		}))
+	}
+}
+
+impl<P: Platform> BlockNumReader for GenesisProviderFactory<P> {
+	/// Returns the current info for the chain.
+	fn chain_info(&self) -> ProviderResult<ChainInfo> {
+		Ok(ChainInfo {
+			best_hash: self.chainspec.genesis_hash(),
+			best_number: 0,
+		})
+	}
+
+	/// Returns the best block number in the chain.
+	fn best_block_number(&self) -> ProviderResult<BlockNumber> {
+		Ok(0)
+	}
+
+	/// Returns the last block number associated with the last canonical header in
+	/// the database.
+	fn last_block_number(&self) -> ProviderResult<BlockNumber> {
+		Ok(0)
+	}
+
+	/// Gets the `BlockNumber` for the given hash. Returns `None` if no block with
+	/// this hash exists.
+	fn block_number(&self, hash: B256) -> ProviderResult<Option<BlockNumber>> {
+		if hash == self.chainspec.genesis_hash() {
+			return Ok(Some(0));
+		}
+		Ok(None)
+	}
+}
+
+impl<P: Platform> BlockHashReader for GenesisProviderFactory<P> {
+	fn block_hash(&self, number: BlockNumber) -> ProviderResult<Option<B256>> {
+		if number == 0 {
+			return Ok(Some(self.chainspec.genesis_hash()));
+		}
+		Ok(None)
+	}
+
+	fn canonical_hashes_range(
+		&self,
+		start: BlockNumber,
+		end: BlockNumber,
+	) -> ProviderResult<Vec<B256>> {
+		if start == 0 && end == 1 {
+			return Ok(vec![self.chainspec.genesis_hash()]);
+		}
+		Err(ProviderError::HeaderNotFound(
+			alloy_origin::eips::HashOrNumber::Number(start),
+		))
+	}
+}
+
+impl<P: Platform> ChainSpecProvider for GenesisProviderFactory<P> {
+	type ChainSpec = types::ChainSpec<P>;
+
+	fn chain_spec(&self) -> Arc<types::ChainSpec<P>> {
+		self.chainspec.clone()
+	}
+}
+
+impl<P: Platform> HeaderProvider for GenesisProviderFactory<P> {
+	/// The header type this provider supports.
+	type Header = types::Header<P>;
+
+	/// Get header by block hash
+	fn header(
+		&self,
+		block_hash: &BlockHash,
+	) -> ProviderResult<Option<Self::Header>> {
+		if block_hash == &self.chainspec.genesis_hash() {
+			return Ok(Some(self.chainspec.genesis_header().clone()));
+		}
+		Ok(None)
+	}
+
+	/// Get header by block number
+	fn header_by_number(&self, num: u64) -> ProviderResult<Option<Self::Header>> {
+		if num == 0 {
+			return Ok(Some(self.chainspec.genesis_header().clone()));
+		}
+		Ok(None)
+	}
+
+	/// Get total difficulty by block hash.
+	fn header_td(&self, hash: &BlockHash) -> ProviderResult<Option<U256>> {
+		if hash == &self.chainspec.genesis_hash() {
+			return Ok(Some(self.chainspec.genesis_header().difficulty()));
+		}
+		Ok(None)
+	}
+
+	/// Get total difficulty by block number.
+	fn header_td_by_number(
+		&self,
+		number: BlockNumber,
+	) -> ProviderResult<Option<U256>> {
+		if number == 0 {
+			return Ok(Some(self.chainspec.genesis_header().difficulty()));
+		}
+		Ok(None)
+	}
+
+	/// Get headers in range of block numbers
+	fn headers_range(
+		&self,
+		range: impl RangeBounds<BlockNumber>,
+	) -> ProviderResult<Vec<Self::Header>> {
+		if range.contains(&0) {
+			return Ok(vec![self.chainspec.genesis_header().clone()]);
+		}
+		Ok(vec![])
+	}
+
+	/// Get a single sealed header by block number.
+	fn sealed_header(
+		&self,
+		number: BlockNumber,
+	) -> ProviderResult<Option<SealedHeader<Self::Header>>> {
+		if number == 0 {
+			return Ok(Some(SealedHeader::new(
+				self.chainspec.genesis_header().clone(),
+				self.chainspec.genesis_hash(),
+			)));
+		}
+		Ok(None)
+	}
+
+	/// Get sealed headers while `predicate` returns `true` or the range is
+	/// exhausted.
+	fn sealed_headers_while(
+		&self,
+		range: impl RangeBounds<BlockNumber>,
+		predicate: impl FnMut(&SealedHeader<Self::Header>) -> bool,
+	) -> ProviderResult<Vec<SealedHeader<Self::Header>>> {
+		let mut result = Vec::new();
+		let mut predicate = predicate;
+		for number in to_range(range) {
+			if let Some(header) = self.sealed_header(number)? {
+				if predicate(&header) {
+					result.push(header);
+				}
+			}
+		}
+		Ok(result)
+	}
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct GenesisStateProvider {
+	pub accounts: HashMap<Address, (HashMap<StorageKey, U256>, Account)>,
+	pub contracts: HashMap<B256, Bytecode>,
+	pub block_hash: HashMap<u64, B256>,
+}
+
+impl GenesisStateProvider {
+	pub fn insert_account(
+		&mut self,
+		address: Address,
+		mut account: Account,
+		bytecode: Option<Bytes>,
+		storage: HashMap<StorageKey, U256>,
+	) {
+		if let Some(bytecode) = bytecode {
+			let hash = keccak256(&bytecode);
+			account.bytecode_hash = Some(hash);
+			self.contracts.insert(hash, Bytecode::new_raw(bytecode));
+		}
+		self.accounts.insert(address, (storage, account));
+	}
+
+	pub fn insert_block_hash(&mut self, block_number: u64, block_hash: B256) {
+		self.block_hash.insert(block_number, block_hash);
+	}
+}
+
+impl AccountReader for GenesisStateProvider {
+	fn basic_account(
+		&self,
+		address: &Address,
+	) -> ProviderResult<Option<Account>> {
+		Ok(self.accounts.get(address).map(|(_, acc)| *acc))
+	}
+}
+
+impl BlockHashReader for GenesisStateProvider {
+	fn block_hash(&self, number: u64) -> ProviderResult<Option<B256>> {
+		Ok(self.block_hash.get(&number).copied())
+	}
+
+	fn canonical_hashes_range(
+		&self,
+		start: BlockNumber,
+		end: BlockNumber,
+	) -> ProviderResult<Vec<B256>> {
+		let range = start..end;
+		Ok(
+			self
+				.block_hash
+				.iter()
+				.filter_map(|(block, hash)| range.contains(block).then_some(*hash))
+				.collect(),
+		)
+	}
+}
+
+impl StateProvider for GenesisStateProvider {
+	fn storage(
+		&self,
+		account: Address,
+		storage_key: StorageKey,
+	) -> ProviderResult<Option<StorageValue>> {
+		Ok(
+			self
+				.accounts
+				.get(&account)
+				.and_then(|(storage, _)| storage.get(&storage_key).copied()),
+		)
+	}
+}
+
+impl BytecodeReader for GenesisStateProvider {
+	fn bytecode_by_hash(
+		&self,
+		code_hash: &B256,
+	) -> ProviderResult<Option<Bytecode>> {
+		Ok(self.contracts.get(code_hash).cloned())
+	}
+}
+
+impl HashedPostStateProvider for GenesisStateProvider {
+	fn hashed_post_state(&self, bundle_state: &BundleState) -> HashedPostState {
+		HashedPostState::from_bundle_state::<KeccakKeyHasher>(bundle_state.state())
+	}
+}
+
+impl StateProofProvider for GenesisStateProvider {
+	fn proof(
+		&self,
+		_input: TrieInput,
+		_address: Address,
+		_slots: &[B256],
+	) -> ProviderResult<AccountProof> {
+		unimplemented!("proof generation is not supported")
+	}
+
+	fn multiproof(
+		&self,
+		_input: TrieInput,
+		_targets: MultiProofTargets,
+	) -> ProviderResult<MultiProof> {
+		unimplemented!("proof generation is not supported")
+	}
+
+	fn witness(
+		&self,
+		_input: TrieInput,
+		_target: HashedPostState,
+	) -> ProviderResult<Vec<Bytes>> {
+		unimplemented!("witness generation is not supported")
+	}
+}
+
+impl StorageRootProvider for GenesisStateProvider {
+	fn storage_root(
+		&self,
+		_address: Address,
+		_hashed_storage: HashedStorage,
+	) -> ProviderResult<B256> {
+		Ok(B256::random())
+	}
+
+	fn storage_proof(
+		&self,
+		_address: Address,
+		_slot: B256,
+		_hashed_storage: HashedStorage,
+	) -> ProviderResult<StorageProof> {
+		unimplemented!("proof generation is not supported")
+	}
+
+	fn storage_multiproof(
+		&self,
+		_address: Address,
+		_slots: &[B256],
+		_hashed_storage: HashedStorage,
+	) -> ProviderResult<StorageMultiProof> {
+		unimplemented!("proof generation is not supported")
+	}
+}
+
+impl StateRootProvider for GenesisStateProvider {
+	fn state_root(&self, _hashed_state: HashedPostState) -> ProviderResult<B256> {
+		Ok(B256::random())
+	}
+
+	fn state_root_from_nodes(&self, _input: TrieInput) -> ProviderResult<B256> {
+		Ok(B256::random())
+	}
+
+	fn state_root_with_updates(
+		&self,
+		_hashed_state: HashedPostState,
+	) -> ProviderResult<(B256, TrieUpdates)> {
+		Ok((B256::random(), TrieUpdates::default()))
+	}
+
+	fn state_root_from_nodes_with_updates(
+		&self,
+		_input: TrieInput,
+	) -> ProviderResult<(B256, TrieUpdates)> {
+		Ok((B256::random(), TrieUpdates::default()))
+	}
+}
+
+fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Range<u64> {
+	let start = match bounds.start_bound() {
+		std::ops::Bound::Included(&v) => v,
+		std::ops::Bound::Excluded(&v) => v + 1,
+		std::ops::Bound::Unbounded => 0,
+	};
+
+	let end = match bounds.end_bound() {
+		std::ops::Bound::Included(&v) => v + 1,
+		std::ops::Bound::Excluded(&v) => v,
+		std::ops::Bound::Unbounded => u64::MAX,
+	};
+
+	start..end
+}

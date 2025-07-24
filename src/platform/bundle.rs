@@ -69,6 +69,7 @@ pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
 	fn validate_post_execution(
 		&self,
 		_: &BundleState,
+		_: &BlockContext<P>,
 	) -> Result<(), Self::PostExecutionError> {
 		Ok(())
 	}
@@ -134,10 +135,19 @@ impl Not for Eligibility {
 
 /// A bundle of transactions that adheres to the [Flashbots specification].
 /// see: <https://docs.flashbots.net/flashbots-auction/searchers/advanced/rpc-endpoint#eth_sendbundle>
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FlashbotsBundle<P: Platform> {
 	inner: EthSendBundle,
 	recovered: Vec<Recovered<types::Transaction<P>>>,
+}
+
+impl<P: Platform> Default for FlashbotsBundle<P> {
+	fn default() -> Self {
+		Self {
+			inner: EthSendBundle::default(),
+			recovered: Vec::new(),
+		}
+	}
 }
 
 impl<P: Platform> FlashbotsBundle<P> {

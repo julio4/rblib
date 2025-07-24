@@ -259,7 +259,7 @@ impl<P: Platform> Executable<P> {
 
 		// run the optional post-execution validation of the bundle.
 		bundle
-			.validate_post_execution(&state)
+			.validate_post_execution(&state, block)
 			.map_err(ExecutionError::InvalidBundlePostExecutionState)?;
 
 		Ok(ExecutionResult {

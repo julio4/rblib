@@ -314,14 +314,17 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 }
 
 pub mod traits {
-	use crate::{
-		reth::{
-			api::FullNodeTypes,
-			evm::ConfigureEvm,
-			providers::{BlockReaderIdExt, ChainSpecProvider, StateProviderFactory},
-			transaction_pool::{PoolTransaction, TransactionPool},
+	use {
+		crate::{
+			reth::{
+				api::FullNodeTypes,
+				evm::ConfigureEvm,
+				providers::{ChainSpecProvider, StateProviderFactory},
+				transaction_pool::{PoolTransaction, TransactionPool},
+			},
+			*,
 		},
-		*,
+		reth_origin::providers::HeaderProvider,
 	};
 
 	pub trait NodeBounds<P: Platform>:
@@ -337,7 +340,7 @@ pub mod traits {
 	pub trait ProviderBounds<P: Platform>:
 		StateProviderFactory
 		+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
-		+ BlockReaderIdExt<Header = types::Header<P>>
+		+ HeaderProvider<Header = types::Header<P>>
 		+ Clone
 		+ Send
 		+ Sync
@@ -348,7 +351,7 @@ pub mod traits {
 	impl<T, P: Platform> ProviderBounds<P> for T where
 		T: StateProviderFactory
 			+ ChainSpecProvider<ChainSpec = types::ChainSpec<P>>
-			+ BlockReaderIdExt<Header = types::Header<P>>
+			+ HeaderProvider<Header = types::Header<P>>
 			+ Clone
 			+ Send
 			+ Sync

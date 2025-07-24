@@ -161,19 +161,13 @@ where
 		&self,
 		attribs: types::PayloadBuilderAttributes<Plat>,
 	) -> Result<Self::Job, PayloadBuilderError> {
-		let header = if attribs.parent().is_zero() {
-			self.service.provider().latest_header()?.ok_or_else(|| {
+		let header = self
+			.service
+			.provider()
+			.sealed_header_by_hash(attribs.parent())?
+			.ok_or_else(|| {
 				PayloadBuilderError::MissingParentHeader(attribs.parent())
-			})
-		} else {
-			self
-				.service
-				.provider()
-				.sealed_header_by_hash(attribs.parent())?
-				.ok_or_else(|| {
-					PayloadBuilderError::MissingParentHeader(attribs.parent())
-				})
-		}?;
+			})?;
 
 		let base_state =
 			self.service.provider().state_by_block_hash(header.hash())?;

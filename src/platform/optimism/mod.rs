@@ -18,20 +18,19 @@ use {
 		types,
 		*,
 	},
-	limits::OptimismDefaultLimits,
+	reth_evm::ConfigureEvm,
 	reth_payload_util::PayloadTransactionsFixed,
 	std::sync::Arc,
 };
 
 mod limits;
+pub use limits::OptimismDefaultLimits;
 
 /// Platform definition for Optimism Rollup chains.
 #[derive(Debug, Clone, Default)]
-pub struct Optimism {
-	_private: (),
-}
+pub struct Optimism;
 
-impl PlatformBase<Optimism> for Optimism {
+impl Platform for Optimism {
 	type Bundle = FlashbotsBundle<Self>;
 	type DefaultLimits = OptimismDefaultLimits;
 	type EvmConfig = OpEvmConfig;
@@ -39,7 +38,7 @@ impl PlatformBase<Optimism> for Optimism {
 	type PooledTransaction = OpPooledTransaction;
 
 	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
-		OpEvmConfig::optimism(chainspec)
+		OptimismBase::evm_config::<Self>(chainspec)
 	}
 
 	fn next_block_environment_context(
@@ -47,6 +46,50 @@ impl PlatformBase<Optimism> for Optimism {
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self> {
+		OptimismBase::next_block_environment_context::<Self>(
+			chainspec, parent, attributes,
+		)
+	}
+
+	fn build_payload<Provider>(
+		payload: Checkpoint<Self>,
+		provider: &Provider,
+	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
+	where
+		Provider: traits::ProviderBounds<Self>,
+	{
+		OptimismBase::build_payload(payload, provider)
+	}
+}
+
+pub struct OptimismBase;
+
+impl OptimismBase {
+	pub fn evm_config<P>(
+		chainspec: std::sync::Arc<types::ChainSpec<P>>,
+	) -> types::EvmConfig<P>
+	where
+		P: Platform<
+				NodeTypes: reth::api::NodeTypes<ChainSpec = types::ChainSpec<Optimism>>,
+				EvmConfig = types::EvmConfig<Optimism>,
+			>,
+	{
+		OpEvmConfig::optimism(chainspec)
+	}
+
+	pub fn next_block_environment_context<P>(
+		chainspec: &types::ChainSpec<P>,
+		parent: &types::Header<P>,
+		attributes: &types::PayloadBuilderAttributes<P>,
+	) -> types::NextBlockEnvContext<P>
+	where
+		P: Platform<
+				NodeTypes = types::NodeTypes<Optimism>,
+				EvmConfig: ConfigureEvm<
+					NextBlockEnvCtx = types::NextBlockEnvContext<Optimism>,
+				>,
+			>,
+	{
 		OpNextBlockEnvAttributes {
 			timestamp: attributes.payload_attributes.timestamp,
 			suggested_fee_recipient: attributes
@@ -71,12 +114,17 @@ impl PlatformBase<Optimism> for Optimism {
 		}
 	}
 
-	fn build_payload<Provider>(
-		payload: Checkpoint<Self>,
+	#[expect(clippy::needless_pass_by_value)]
+	pub fn build_payload<P, Provider>(
+		payload: Checkpoint<P>,
 		provider: &Provider,
-	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
+	) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
 	where
-		Provider: traits::ProviderBounds<Self>,
+		P: Platform<
+				NodeTypes = types::NodeTypes<Optimism>,
+				EvmConfig = types::EvmConfig<Optimism>,
+			>,
+		Provider: traits::ProviderBounds<P>,
 	{
 		let block = payload.block();
 		let transactions = extract_external_txs(&payload);
@@ -97,7 +145,7 @@ impl PlatformBase<Optimism> for Optimism {
 			evm_config: block.evm_config(),
 			da_config: OpDAConfig::default(),
 			chain_spec: block.chainspec().clone(),
-			config: PayloadConfig::<types::PayloadBuilderAttributes<Self>, _>::new(
+			config: PayloadConfig::<types::PayloadBuilderAttributes<P>, _>::new(
 				block.parent().clone().into(),
 				(*block.attributes()).clone(),
 			),
@@ -147,9 +195,12 @@ impl PlatformBase<Optimism> for Optimism {
 /// those txs. This happens for example when a pipeline has a the
 /// `OptimismPrologue` step that applies the sequencer transactions to the
 /// payload before any other step.
-fn extract_external_txs(
-	payload: &Checkpoint<Optimism>,
-) -> Vec<Recovered<types::Transaction<Optimism>>> {
+fn extract_external_txs<P>(
+	payload: &Checkpoint<P>,
+) -> Vec<Recovered<types::Transaction<Optimism>>>
+where
+	P: Platform<NodeTypes = types::NodeTypes<Optimism>>,
+{
 	let sequencer_txs = payload
 		.block()
 		.attributes()

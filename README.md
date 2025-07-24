@@ -71,7 +71,7 @@ The Payload API works with any type implementing the `Platform` trait.
 
 Located in `src/pipelines/`, this API builds on the Payload API to provide a declarative, composable workflow for block building. It’s especially useful for L2 builders, where common logic can be reused and customized.
 
-#### Example: Minimal Builder Pipeline
+### Example: Minimal Builder Pipeline
 
 ```rust
 use rblib::*;
@@ -135,13 +135,15 @@ Default implementations for `Ethereum` and `Optimism` are included.
 ## Development Commands
 
 Run all tests:
+
 ```bash
 cargo test
 ```
 
 Debug a specific test with logs:
+
 ```bash
-TEST_TRACE=on cargo test smoke::all_transactions_included
+TEST_TRACE=on cargo test smoke::all_transactions_included_ethereum
 ```
 
 ---

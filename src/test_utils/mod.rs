@@ -16,6 +16,7 @@
 mod accounts;
 mod ethereum;
 mod exts;
+mod mock;
 mod node;
 mod platform;
 mod step;
@@ -26,6 +27,7 @@ mod optimism;
 pub use {
 	accounts::{FundedAccounts, WithFundedAccounts},
 	exts::*,
+	mock::{GenesisProviderFactory, GenesisStateProvider},
 	node::{ConsensusDriver, LocalNode},
 	platform::{NetworkSelector, TestNodeFactory, TestablePlatform, select},
 	rblib_tests_macros::{if_platform, rblib_test},

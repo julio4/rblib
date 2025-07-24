@@ -1,16 +1,29 @@
 use {
 	crate::{alloy::consensus::BlockHeader, reth::chainspec::EthChainSpec, *},
 	core::time::Duration,
+	reth_node_builder::PayloadTypes,
+	reth_optimism_node::OpPayloadBuilderAttributes,
 	std::time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone, Default)]
 pub struct OptimismDefaultLimits;
 
-impl LimitsFactory<Optimism> for OptimismDefaultLimits {
+impl<P> LimitsFactory<P> for OptimismDefaultLimits
+where
+	P: Platform<
+		NodeTypes: reth::api::NodeTypes<
+			Payload: PayloadTypes<
+				PayloadBuilderAttributes = OpPayloadBuilderAttributes<
+					types::Transaction<P>,
+				>,
+			>,
+		>,
+	>,
+{
 	fn create(
 		&self,
-		block: &BlockContext<Optimism>,
+		block: &BlockContext<P>,
 		enclosing: Option<&Limits>,
 	) -> Limits {
 		let mut limits = Limits::with_gas_limit(

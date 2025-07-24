@@ -21,11 +21,9 @@ mod pool;
 
 /// Platform definition for ethereum mainnet.
 #[derive(Debug, Clone, Default)]
-pub struct Ethereum {
-	_private: (),
-}
+pub struct Ethereum;
 
-impl PlatformBase<Ethereum> for Ethereum {
+impl Platform for Ethereum {
 	type Bundle = FlashbotsBundle<Self>;
 	type DefaultLimits = EthereumDefaultLimits;
 	type EvmConfig = EthEvmConfig;

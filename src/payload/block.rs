@@ -56,8 +56,8 @@ impl<P: Platform> BlockContext<P> {
 		base_state: StateProviderBox,
 		chainspec: Arc<types::ChainSpec<P>>,
 	) -> Result<Self, Error<P>> {
-		let evm_config = P::evm_config(Arc::clone(&chainspec));
-		let block_env = P::next_block_environment_context(
+		let evm_config = P::evm_config::<P>(Arc::clone(&chainspec));
+		let block_env = P::next_block_environment_context::<P>(
 			&chainspec,
 			parent.header(),
 			&attribs, //

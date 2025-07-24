@@ -12,11 +12,11 @@ use {
 		primitives::Recovered,
 		revm::{
 			DatabaseRef,
+			db::BundleState,
 			primitives::StorageKey,
 			state::{AccountInfo, Bytecode},
 		},
 	},
-	reth_origin::revm::db::BundleState,
 	std::sync::Arc,
 	thiserror::Error,
 };

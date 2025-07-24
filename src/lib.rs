@@ -39,6 +39,11 @@ pub mod reth {
 				reth_payload_builder::*,
 			};
 		}
+
+		#[cfg(feature = "optimism")]
+		pub mod util {
+			pub use reth_payload_util::*;
+		}
 	}
 
 	pub mod node {

@@ -5,12 +5,11 @@
 
 use {
 	alloy::{
-		consensus::{EthereumTxEnvelope, TxEip4844},
+		consensus::{EthereumTxEnvelope, Transaction, TxEip4844},
 		network::{TransactionBuilder, TxSignerSync},
 		primitives::{Address, U256},
 		signers::local::PrivateKeySigner,
 	},
-	alloy_origin::consensus::Transaction,
 	rblib::{
 		test_utils::{BlockContextMocked, FundedAccounts},
 		*,

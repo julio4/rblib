@@ -1,26 +1,21 @@
-use {
-	super::{
-		alloy::{
-			eips::Encodable2718,
-			optimism::consensus::OpPooledTransaction as AlloyPoolTx,
-			primitives::Bytes,
-		},
-		reth::{
-			chainspec::EthChainSpec,
-			optimism::{
-				forks::OpHardforks,
-				node::{payload::builder::*, txpool::OpPooledTransaction, *},
-			},
-			payload::builder::*,
-			primitives::Recovered,
-			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
-		},
-		types,
-		*,
+use super::{
+	alloy::{
+		eips::Encodable2718,
+		optimism::consensus::OpPooledTransaction as AlloyPoolTx,
+		primitives::Bytes,
 	},
-	reth_evm::ConfigureEvm,
-	reth_payload_util::PayloadTransactionsFixed,
-	std::sync::Arc,
+	reth::{
+		chainspec::EthChainSpec,
+		optimism::{
+			forks::OpHardforks,
+			node::{payload::builder::*, txpool::OpPooledTransaction, *},
+		},
+		payload::{builder::*, util::PayloadTransactionsFixed},
+		primitives::Recovered,
+		revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
+	},
+	types,
+	*,
 };
 
 mod limits;
@@ -37,35 +32,7 @@ impl Platform for Optimism {
 	type NodeTypes = OpNode;
 	type PooledTransaction = OpPooledTransaction;
 
-	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
-		OptimismBase::evm_config::<Self>(chainspec)
-	}
-
-	fn next_block_environment_context(
-		chainspec: &types::ChainSpec<Self>,
-		parent: &types::Header<Self>,
-		attributes: &types::PayloadBuilderAttributes<Self>,
-	) -> types::NextBlockEnvContext<Self> {
-		OptimismBase::next_block_environment_context::<Self>(
-			chainspec, parent, attributes,
-		)
-	}
-
-	fn build_payload<Provider>(
-		payload: Checkpoint<Self>,
-		provider: &Provider,
-	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
-	where
-		Provider: traits::ProviderBounds<Self>,
-	{
-		OptimismBase::build_payload(payload, provider)
-	}
-}
-
-pub struct OptimismBase;
-
-impl OptimismBase {
-	pub fn evm_config<P>(
+	fn evm_config<P>(
 		chainspec: std::sync::Arc<types::ChainSpec<P>>,
 	) -> types::EvmConfig<P>
 	where
@@ -77,18 +44,13 @@ impl OptimismBase {
 		OpEvmConfig::optimism(chainspec)
 	}
 
-	pub fn next_block_environment_context<P>(
+	fn next_block_environment_context<P>(
 		chainspec: &types::ChainSpec<P>,
 		parent: &types::Header<P>,
 		attributes: &types::PayloadBuilderAttributes<P>,
 	) -> types::NextBlockEnvContext<P>
 	where
-		P: Platform<
-				NodeTypes = types::NodeTypes<Optimism>,
-				EvmConfig: ConfigureEvm<
-					NextBlockEnvCtx = types::NextBlockEnvContext<Optimism>,
-				>,
-			>,
+		P: traits::PlatformExecBounds<Self>,
 	{
 		OpNextBlockEnvAttributes {
 			timestamp: attributes.payload_attributes.timestamp,
@@ -114,16 +76,12 @@ impl OptimismBase {
 		}
 	}
 
-	#[expect(clippy::needless_pass_by_value)]
-	pub fn build_payload<P, Provider>(
+	fn build_payload<P, Provider>(
 		payload: Checkpoint<P>,
 		provider: &Provider,
 	) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
 	where
-		P: Platform<
-				NodeTypes = types::NodeTypes<Optimism>,
-				EvmConfig = types::EvmConfig<Optimism>,
-			>,
+		P: traits::PlatformExecBounds<Self>,
 		Provider: traits::ProviderBounds<P>,
 	{
 		let block = payload.block();

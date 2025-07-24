@@ -30,11 +30,11 @@ impl Platform for Ethereum {
 	type NodeTypes = EthereumNode;
 	type PooledTransaction = EthPooledTransaction;
 
-	fn evm_config(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
+	fn evm_config<P>(chainspec: Arc<types::ChainSpec<Self>>) -> Self::EvmConfig {
 		EthEvmConfig::new(chainspec)
 	}
 
-	fn next_block_environment_context(
+	fn next_block_environment_context<P>(
 		_: &types::ChainSpec<Self>,
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
@@ -50,12 +50,13 @@ impl Platform for Ethereum {
 		}
 	}
 
-	fn build_payload<Provider>(
-		payload: Checkpoint<Self>,
+	fn build_payload<P, Provider>(
+		payload: Checkpoint<P>,
 		provider: &Provider,
-	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
+	) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
 	where
-		Provider: ProviderBounds<Self>,
+		P: traits::PlatformExecBounds<Self>,
+		Provider: ProviderBounds<P>,
 	{
 		let evm_config = payload.block().evm_config().clone();
 		let payload_config = PayloadConfig {

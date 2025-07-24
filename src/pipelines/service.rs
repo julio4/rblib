@@ -55,7 +55,7 @@ where
 		let service = ServiceContext {
 			pool,
 			provider: ctx.provider().clone(),
-			evm_config: Plat::evm_config(ctx.chain_spec()),
+			evm_config: Plat::evm_config::<Plat>(ctx.chain_spec()),
 			node_config: ctx.config().clone(),
 		};
 

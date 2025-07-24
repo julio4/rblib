@@ -16,10 +16,7 @@ use {
 	rblib::{test_utils::*, *},
 	reth::{
 		ethereum::primitives::SignedTransaction,
-		optimism::{
-			node::{OpEvmConfig, OpNode, txpool::OpPooledTransaction},
-			primitives::OpTransactionSigned,
-		},
+		optimism::primitives::OpTransactionSigned,
 		primitives::Recovered,
 		revm::db::BundleState,
 	},
@@ -30,38 +27,39 @@ struct CustomPlatform;
 
 impl Platform for CustomPlatform {
 	type Bundle = CustomBundleType;
-	type DefaultLimits = OptimismDefaultLimits;
-	type EvmConfig = OpEvmConfig;
-	type NodeTypes = OpNode;
-	type PooledTransaction = OpPooledTransaction;
+	type DefaultLimits = types::DefaultLimits<Optimism>;
+	type EvmConfig = types::EvmConfig<Optimism>;
+	type NodeTypes = types::NodeTypes<Optimism>;
+	type PooledTransaction = types::PooledTransaction<Optimism>;
 
-	fn evm_config(
+	fn evm_config<P>(
 		chainspec: std::sync::Arc<types::ChainSpec<Optimism>>,
 	) -> Self::EvmConfig {
-		OptimismBase::evm_config::<Self>(chainspec)
+		Optimism::evm_config::<Self>(chainspec)
 	}
 
-	fn next_block_environment_context(
+	fn next_block_environment_context<P>(
 		chainspec: &types::ChainSpec<Optimism>,
 		parent: &types::Header<Optimism>,
 		attributes: &types::PayloadBuilderAttributes<Optimism>,
 	) -> types::NextBlockEnvContext<Optimism> {
-		OptimismBase::next_block_environment_context::<Self>(
+		Optimism::next_block_environment_context::<Self>(
 			chainspec, parent, attributes,
 		)
 	}
 
-	fn build_payload<Provider>(
-		payload: Checkpoint<Self>,
+	fn build_payload<P, Provider>(
+		payload: Checkpoint<P>,
 		provider: &Provider,
 	) -> Result<
 		types::BuiltPayload<Self>,
 		reth::payload::builder::PayloadBuilderError,
 	>
 	where
+		P: traits::PlatformExecBounds<Self>,
 		Provider: traits::ProviderBounds<Self>,
 	{
-		OptimismBase::build_payload::<Self, Provider>(payload, provider)
+		Optimism::build_payload::<P, Provider>(payload, provider)
 	}
 }
 

@@ -324,7 +324,7 @@ pub mod traits {
 			},
 			*,
 		},
-		reth_origin::providers::HeaderProvider,
+		reth::providers::HeaderProvider,
 	};
 
 	pub trait NodeBounds<P: Platform>:
@@ -381,6 +381,16 @@ pub mod traits {
 
 	impl<T, P: Platform> EvmConfigBounds<P> for T where
 		T: ConfigureEvm<Primitives = types::Primitives<P>> + Send + Sync
+	{
+	}
+
+	pub trait PlatformExecBounds<P: Platform>:
+		Platform<NodeTypes = types::NodeTypes<P>, EvmConfig = types::EvmConfig<P>>
+	{
+	}
+
+	impl<T, P: Platform> PlatformExecBounds<T> for P where
+		T: Platform<NodeTypes = types::NodeTypes<P>, EvmConfig = types::EvmConfig<P>>
 	{
 	}
 }

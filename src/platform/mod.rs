@@ -68,23 +68,25 @@ pub trait Platform:
 
 	/// Instantiate the EVM configuration for the platform with a given chain
 	/// specification.
-	fn evm_config(
-		chainspec: std::sync::Arc<types::ChainSpec<Self>>,
-	) -> Self::EvmConfig;
-
-	fn next_block_environment_context(
-		chainspec: &types::ChainSpec<Self>,
-		parent: &types::Header<Self>,
-		attributes: &types::PayloadBuilderAttributes<Self>,
-	) -> types::NextBlockEnvContext<Self>;
-
-	fn build_payload<Provider>(
-		payload: Checkpoint<Self>,
-		provider: &Provider,
-	) -> Result<
-		types::BuiltPayload<Self>,
-		reth::payload::builder::PayloadBuilderError,
-	>
+	fn evm_config<P>(
+		chainspec: std::sync::Arc<types::ChainSpec<P>>,
+	) -> Self::EvmConfig
 	where
+		P: traits::PlatformExecBounds<Self>;
+
+	fn next_block_environment_context<P>(
+		chainspec: &types::ChainSpec<P>,
+		parent: &types::Header<P>,
+		attributes: &types::PayloadBuilderAttributes<P>,
+	) -> types::NextBlockEnvContext<P>
+	where
+		P: traits::PlatformExecBounds<Self>;
+
+	fn build_payload<P, Provider>(
+		payload: Checkpoint<P>,
+		provider: &Provider,
+	) -> Result<types::BuiltPayload<P>, reth::payload::builder::PayloadBuilderError>
+	where
+		P: traits::PlatformExecBounds<Self>,
 		Provider: traits::ProviderBounds<Self>;
 }

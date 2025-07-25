@@ -3,14 +3,11 @@
 //! This API is used to construct payload builders workflows.
 
 use {
-	crate::{
-		pipelines::step::WrappedStep,
-		reth::builder::components::PayloadServiceBuilder,
-		*,
-	},
+	crate::{reth::builder::components::PayloadServiceBuilder, *},
 	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
 	std::sync::Arc,
+	step::WrappedStep,
 };
 
 mod context;

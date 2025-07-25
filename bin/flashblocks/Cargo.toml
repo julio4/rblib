@@ -38,6 +38,9 @@ alloy-serde = "1.0.23"
 
 # reth dependencies
 reth-network-peers = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-db-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 
 [dev-dependencies]
 rblib = { path = "../../", features = ["test-utils"] }

@@ -25,7 +25,7 @@ use {
 /// eventually becomes a Paylod Job Generator. They payload Job Generator
 /// will be responsible for creating new [`PayloadJob`] instances
 /// whenever a new payload request comes in from the CL Node.
-pub(crate) struct PipelineServiceBuilder<P: Platform> {
+pub(super) struct PipelineServiceBuilder<P: Platform> {
 	pipeline: Pipeline<P>,
 }
 

@@ -3,7 +3,10 @@ use {
 	crate::*,
 	alloy::{
 		eips::{BlockNumberOrTag, eip7685::Requests},
-		optimism::rpc_types::Transaction,
+		optimism::{
+			network::{BlockResponse, Optimism as AlloyOpNetwork},
+			rpc_types::Transaction,
+		},
 		primitives::B256,
 		providers::Provider,
 	},
@@ -52,12 +55,16 @@ impl TestNodeFactory<Optimism> for Optimism {
 }
 
 pub struct OptimismConsensusDriver;
-impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
+impl<P> ConsensusDriver<P> for OptimismConsensusDriver
+where
+	P: traits::PlatformExecBounds<Optimism>
+		+ NetworkSelector<Network = AlloyOpNetwork>,
+{
 	type Params = ();
 
 	async fn start_building(
 		&self,
-		node: &LocalNode<Optimism, Self>,
+		node: &LocalNode<P, Self>,
 		target_timestamp: u64,
 		(): &Self::Params,
 	) -> eyre::Result<PayloadId> {
@@ -91,9 +98,9 @@ impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
 			OpEngineApiClient::<OpEngineTypes>::fork_choice_updated_v3(
 				&ipc_client,
 				ForkchoiceState {
-					head_block_hash: latest_block.header.hash,
-					safe_block_hash: latest_block.header.hash,
-					finalized_block_hash: latest_block.header.hash,
+					head_block_hash: latest_block.header().hash,
+					safe_block_hash: latest_block.header().hash,
+					finalized_block_hash: latest_block.header().hash,
 				},
 				Some(payload_attributes),
 			)
@@ -110,7 +117,7 @@ impl ConsensusDriver<Optimism> for OptimismConsensusDriver {
 
 	async fn finish_building(
 		&self,
-		node: &LocalNode<Optimism, Self>,
+		node: &LocalNode<P, Self>,
 		payload_id: PayloadId,
 		(): &Self::Params,
 	) -> eyre::Result<Block<Transaction>> {

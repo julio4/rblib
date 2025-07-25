@@ -1,5 +1,5 @@
 use {
-	crate::args::{op::OpRbuilderArgs, playground::PlaygroundOptions},
+	crate::args::playground::PlaygroundOptions,
 	clap::{CommandFactory, FromArgMatches},
 	rblib::reth::optimism::cli::{
 		Cli as OpCli,
@@ -10,6 +10,8 @@ use {
 
 mod op;
 mod playground;
+
+pub use op::OpRbuilderArgs;
 
 pub type Cli = OpCli<OpChainSpecParser, OpRbuilderArgs>;
 

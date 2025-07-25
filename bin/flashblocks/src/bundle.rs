@@ -1,15 +1,13 @@
 use {
 	crate::platform::FlashBlocks,
 	alloy::{
+		consensus::BlockHeader,
 		eips::Decodable2718,
-		primitives::{B256, Bytes},
+		primitives::{B256, Bytes, TxHash},
 	},
 	core::convert::Infallible,
-	rblib::{
-		alloy::{consensus::BlockHeader, primitives::TxHash},
-		reth::{core::primitives::SignerRecoverable, primitives::Recovered},
-		*,
-	},
+	rblib::{alloy::primitives::Keccak256, *},
+	reth::{core::primitives::SignerRecoverable, primitives::Recovered},
 	serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
@@ -24,7 +22,7 @@ pub struct FlashBlocksBundle {
 	/// Notes:
 	///  - The transactions are EIP-2718 encoded when serialized.
 	///  - Bundles must contain at least one transaction.
-	#[serde(with = "tx_encoding")]
+	#[serde(with = "encoded_2718")]
 	pub txs: Vec<Recovered<types::Transaction<FlashBlocks>>>,
 
 	/// The list of transaction hashes in this bundle that are allowed to revert.
@@ -57,6 +55,53 @@ pub struct FlashBlocksBundle {
 	// Not recommended because this is subject to the builder node clock
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub max_timestamp: Option<u64>,
+}
+
+impl FlashBlocksBundle {
+	pub fn with_transactions(
+		txs: Vec<Recovered<types::Transaction<FlashBlocks>>>,
+	) -> Self {
+		Self {
+			txs,
+			reverting_tx_hashes: Vec::new(),
+			dropping_tx_hashes: Vec::new(),
+			min_block_number: None,
+			max_block_number: None,
+			min_timestamp: None,
+			max_timestamp: None,
+		}
+	}
+
+	pub fn hash(&self) -> B256 {
+		let mut hasher = Keccak256::default();
+
+		for tx in &self.txs {
+			hasher.update(tx.tx_hash());
+		}
+
+		for tx in &self.reverting_tx_hashes {
+			hasher.update(tx);
+		}
+
+		for tx in &self.dropping_tx_hashes {
+			hasher.update(tx);
+		}
+
+		if let Some(min_bn) = self.min_block_number {
+			hasher.update(min_bn.to_be_bytes());
+		}
+		if let Some(max_bn) = self.max_block_number {
+			hasher.update(max_bn.to_be_bytes());
+		}
+		if let Some(min_ts) = self.min_timestamp {
+			hasher.update(min_ts.to_be_bytes());
+		}
+		if let Some(max_ts) = self.max_timestamp {
+			hasher.update(max_ts.to_be_bytes());
+		}
+
+		hasher.finalize().into()
+	}
 }
 
 /// Implements rblib Bundle semantics for the FlashBlocksBundle type.
@@ -133,9 +178,15 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 	}
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct BundleResult {
+	#[serde(rename = "bundleHash")]
+	pub bundle_hash: B256,
+}
+
 /// Implements the encoding and decoding of transactions to and from EIP-2718
 /// hex bytes.
-mod tx_encoding {
+mod encoded_2718 {
 	use {super::*, rblib::alloy::eips::Encodable2718};
 
 	type TxType = Recovered<types::Transaction<FlashBlocks>>;

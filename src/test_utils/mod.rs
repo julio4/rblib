@@ -21,11 +21,9 @@ mod node;
 mod platform;
 mod step;
 
-#[cfg(feature = "optimism")]
-mod optimism;
-
 pub use {
 	accounts::{FundedAccounts, WithFundedAccounts},
+	ethereum::EthConsensusDriver,
 	exts::*,
 	mock::{GenesisProviderFactory, GenesisStateProvider},
 	node::{ConsensusDriver, LocalNode},
@@ -34,14 +32,20 @@ pub use {
 	step::OneStep,
 };
 
+#[cfg(feature = "optimism")]
+mod optimism;
+
+#[cfg(feature = "optimism")]
+pub use optimism::OptimismConsensusDriver;
+
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
 pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
 
 /// This gets invoked before any tests, when the cargo test framework loads the
 /// test library.
-#[cfg(test)]
+#[cfg(feature = "test-utils")]
 #[ctor::ctor]
-fn init_tests() {
+fn init_test_logging() {
 	use tracing_subscriber::{filter::filter_fn, prelude::*};
 	if let Ok(v) = std::env::var("TEST_TRACE") {
 		#[allow(clippy::match_same_arms)]

@@ -67,6 +67,9 @@ test-utils = [
   "op-alloy?/network",
   "op-alloy?/rpc-types",
   "rblib-tests-macros",
+  "jsonrpsee-core",
+  "tracing-subscriber",
+  "ctor",
 ]
 
 [dependencies]
@@ -123,40 +126,21 @@ reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = 
 reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
 rblib-tests-macros = { path = "src/test_utils/macros", optional = true }
-
+jsonrpsee-core = { version = "0.25.1", optional = true }
 nanoid = { version = "0.4", optional = true }
 alloy-genesis = { version = "1.0", optional = true }
 rand = { version = "0.9", optional = true }
+ctor = { version = "0.4.2", optional = true }
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "json",
+], optional = true }
 
 [target.'cfg(unix)'.dependencies]
 tikv-jemallocator = { version = "0.6", optional = true }
 
 [dev-dependencies]
-nanoid = "0.4"
-ctor = "0.4.2"
-tokio = { version = "1.46", features = ["full"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-alloy-genesis = "1.0"
-rand = "0.9"
-serde_json = "1.0"
-reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
-reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
-reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", features = [
-  "test-utils",
-] }
-reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
-reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
-rblib-tests-macros = { path = "src/test_utils/macros" }
 rblib = { path = ".", features = ["test-utils"] }
-
-[dev-dependencies.op-alloy]
-version = "0.18"
-features = ["network", "rpc-types"]
-
-[dev-dependencies.reth-optimism-rpc]
-git = "https://github.com/paradigmxyz/reth"
-tag = "v1.6.0"
-features = ["client"]
 
 [lints.rust]
 type_alias_bounds = "allow"

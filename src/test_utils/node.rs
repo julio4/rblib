@@ -15,6 +15,7 @@ use {
 		time::Duration,
 	},
 	futures::FutureExt,
+	jsonrpsee_core::client::Client as RcpClient,
 	nanoid::nanoid,
 	reth::{
 		args::{DatadirArgs, NetworkArgs, RpcServerArgs},
@@ -36,6 +37,7 @@ use {
 		payload::builder::PayloadId,
 		tasks::{TaskExecutor, TaskManager},
 	},
+	reth_ipc::client::{IpcClientBuilder, IpcError},
 	std::{
 		sync::Arc,
 		time::{SystemTime, UNIX_EPOCH},
@@ -191,6 +193,13 @@ where
 	/// Returns a provider connected to this local node instance.
 	pub const fn provider(&self) -> &RootProvider<select::Network<P>> {
 		&self.provider
+	}
+
+	/// Returns a connected client to the RPC endpoint of this local node via IPC.
+	pub async fn rpc_client(&self) -> Result<RcpClient, IpcError> {
+		IpcClientBuilder::default()
+			.build(&self.config.rpc.ipcpath)
+			.await
 	}
 
 	/// Returns a reference to the node's consensus driver.

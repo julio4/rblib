@@ -1,8 +1,8 @@
 use {
 	crate::{
 		alloy::{consensus::Transaction, primitives::Address},
+		prelude::*,
 		reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
-		*,
 	},
 	itertools::Itertools,
 	std::{
@@ -14,8 +14,8 @@ use {
 /// This step will sort the transactions in the payload by their effective
 /// priority fee. During the sorting the transactions will preserve their
 /// sender, nonce dependencies.
-pub struct PriorityFeeOrdering;
-impl<P: Platform> Step<P> for PriorityFeeOrdering {
+pub struct OrderByPriorityFee;
+impl<P: Platform> Step<P> for OrderByPriorityFee {
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
@@ -165,7 +165,7 @@ mod tests {
 		payload: Vec<(u32, u64, u128)>, // signer_id, nonce, tip
 		expected: Vec<(u32, u64, u128)>,
 	) {
-		let mut step = OneStep::<P>::new(PriorityFeeOrdering);
+		let mut step = OneStep::<P>::new(OrderByPriorityFee);
 
 		for (sender_id, nonce, tip) in payload {
 			if sender_id == u32::MAX && nonce == u64::MAX && tip == u128::MAX {

@@ -1,7 +1,7 @@
-use {crate::*, std::sync::Arc};
+use {crate::prelude::*, std::sync::Arc};
 
-pub struct TotalProfitOrdering;
-impl<P: Platform> Step<P> for TotalProfitOrdering {
+pub struct OrderByTotalProfit;
+impl<P: Platform> Step<P> for OrderByTotalProfit {
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,

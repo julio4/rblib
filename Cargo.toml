@@ -61,7 +61,6 @@ test-utils = [
   "alloy-genesis",
   "rand",
   "reth-ipc",
-  "reth-rpc-api",
   "reth-ethereum/test-utils",
   "reth-optimism-rpc/client",
   "op-alloy?/network",
@@ -88,6 +87,7 @@ uuid = "1.17"
 futures = { version = "0.3" }
 tokio = { version = "1.46" }
 serde = "1.0"
+jsonrpsee = "0.25.1"
 
 alloy-origin = { version = "1.0.23", package = "alloy", features = [
   "k256",
@@ -105,6 +105,7 @@ reth-origin = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", pac
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-ethereum-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", features = [
@@ -124,7 +125,6 @@ reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = 
 
 # test-utils
 reth-ipc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
-reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0", optional = true }
 rblib-tests-macros = { path = "src/test_utils/macros", optional = true }
 jsonrpsee-core = { version = "0.25.1", optional = true }
 nanoid = { version = "0.4", optional = true }

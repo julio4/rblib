@@ -1,6 +1,7 @@
 use {
 	crate::{
 		alloy::{consensus::Transaction, primitives::TxHash},
+		prelude::*,
 		reth::{
 			ethereum::primitives::SignedTransaction,
 			payload::builder::PayloadBuilderError,
@@ -13,8 +14,8 @@ use {
 				},
 			},
 		},
-		*,
 	},
+	core::marker::PhantomData,
 	dashmap::DashSet,
 	std::{collections::HashSet, sync::Arc, time::Instant},
 };
@@ -37,7 +38,7 @@ use {
 /// append new transactions to the payload in each iteration of the loop until
 /// the pool is exhausted or the payload limits are reached.
 #[derive(Default)]
-pub struct AppendOneTransactionFromPool {
+pub struct AppendOneTransactionFromPool<P: Platform> {
 	/// Keeps track of the transactions that were added to the payload in this
 	/// payload building run. This is used to avoid infinite loops where some
 	/// future step of the pipeline removed a previously added transaction from
@@ -55,9 +56,10 @@ pub struct AppendOneTransactionFromPool {
 	///
 	/// This list is cleared at the end of each payload job.
 	previously_added: DashSet<TxHash>,
+	_phantom: PhantomData<fn() -> P>,
 }
 
-impl<P: Platform> Step<P> for AppendOneTransactionFromPool {
+impl<P: Platform> Step<P> for AppendOneTransactionFromPool<P> {
 	/// Clear the list of previously added transactions before the we begin
 	/// building for a new payload.
 	async fn before_job(

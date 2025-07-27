@@ -1,8 +1,15 @@
 use {
-	crate::{alloy::consensus::BlockHeader, reth::chainspec::EthChainSpec, *},
+	crate::{
+		alloy::consensus::BlockHeader,
+		prelude::*,
+		reth::{
+			api::NodeTypes,
+			chainspec::EthChainSpec,
+			node::builder::PayloadTypes,
+			optimism::node::OpPayloadBuilderAttributes,
+		},
+	},
 	core::time::Duration,
-	reth_node_builder::PayloadTypes,
-	reth_optimism_node::OpPayloadBuilderAttributes,
 	std::time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -12,7 +19,7 @@ pub struct OptimismDefaultLimits;
 impl<P> LimitsFactory<P> for OptimismDefaultLimits
 where
 	P: Platform<
-		NodeTypes: reth::api::NodeTypes<
+		NodeTypes: NodeTypes<
 			Payload: PayloadTypes<
 				PayloadBuilderAttributes = OpPayloadBuilderAttributes<
 					types::Transaction<P>,
@@ -35,11 +42,16 @@ where
 		.with_deadline(
 			Instant::now()
 				+ Duration::from_secs(
-					block.attributes().payload_attributes.timestamp
-						- SystemTime::now()
-							.duration_since(UNIX_EPOCH)
-							.unwrap_or_default()
-							.as_secs(),
+					block
+						.attributes()
+						.payload_attributes
+						.timestamp
+						.saturating_sub(
+							SystemTime::now()
+								.duration_since(UNIX_EPOCH)
+								.unwrap_or_default()
+								.as_secs(),
+						),
 				),
 		);
 

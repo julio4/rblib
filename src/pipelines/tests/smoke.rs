@@ -6,13 +6,13 @@ use {
 			optimism::consensus::DEPOSIT_TX_TYPE_ID,
 			primitives::U256,
 		},
+		prelude::*,
 		reth::{
 			cli::Cli,
 			ethereum::node::{EthereumNode, node::EthereumAddOns},
 		},
 		steps::*,
 		test_utils::*,
-		*,
 	},
 	tracing::info,
 };
@@ -53,8 +53,8 @@ async fn empty_pipeline_builds_empty_payload<P: TestablePlatform>() {
 async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
 		.with_step(GatherBestTransactions)
-		.with_step(PriorityFeeOrdering)
-		.with_step(RevertProtection);
+		.with_step(OrderByPriorityFee)
+		.with_step(RemoveRevertedTransactions);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
 	let block = node.next_block().await.unwrap();
@@ -82,7 +82,7 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 async fn all_transactions_included<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
-		(AppendOneTransactionFromPool::default(), PriorityFeeOrdering),
+		(AppendOneTransactionFromPool::default(), OrderByPriorityFee),
 	);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
@@ -135,9 +135,9 @@ async fn reth_minimal_integration_example() {
 			Loop,
 			(
 				AppendOneTransactionFromPool::default(),
-				PriorityFeeOrdering,
-				TotalProfitOrdering,
-				RevertProtection,
+				OrderByPriorityFee,
+				OrderByTotalProfit,
+				RemoveRevertedTransactions,
 			),
 		);
 

@@ -1,6 +1,6 @@
 use {
 	super::*,
-	crate::*,
+	crate::{alloy, prelude::*, reth},
 	alloy::{
 		eips::{BlockNumberOrTag, eip7685::Requests},
 		optimism::{

@@ -10,20 +10,21 @@ use {
 		consensus::Transaction,
 		network::{TransactionBuilder, TxSignerSync},
 		optimism::{consensus::OpTxEnvelope, rpc_types::OpTransactionRequest},
-		primitives::{Address, TxHash, U256},
+		primitives::{Address, B256, Keccak256, TxHash, U256},
 		signers::local::PrivateKeySigner,
 	},
-	rblib::{test_utils::*, *},
+	rblib::{alloy, prelude::*, reth, test_utils::*},
 	reth::{
 		ethereum::primitives::SignedTransaction,
 		optimism::primitives::OpTransactionSigned,
 		primitives::Recovered,
 		revm::db::BundleState,
 	},
+	serde::{Deserialize, Serialize},
 	std::sync::Arc,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct CustomPlatform;
 
 impl Platform for CustomPlatform {
@@ -121,7 +122,7 @@ fn main() -> eyre::Result<()> {
 
 /// This custom bundle type allows users to define the minimum coinbase profit
 /// this bundle generates for it to be considered valid.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct CustomBundleType {
 	pub txs: Vec<Recovered<types::Transaction<Optimism>>>,
 	pub reverting_txs: Vec<TxHash>,
@@ -225,6 +226,28 @@ impl Bundle<CustomPlatform> for CustomBundleType {
 		}
 
 		Ok(())
+	}
+
+	fn hash(&self) -> B256 {
+		let mut hasher = Keccak256::default();
+
+		for tx in &self.txs {
+			hasher.update(tx.tx_hash());
+		}
+
+		for tx in &self.reverting_txs {
+			hasher.update(tx);
+		}
+
+		for tx in &self.dropping_txs {
+			hasher.update(tx);
+		}
+
+		if self.min_coinbase_profit > U256::ZERO {
+			hasher.update(self.min_coinbase_profit.as_le_slice());
+		}
+
+		hasher.finalize()
 	}
 }
 

@@ -1,8 +1,8 @@
-use {crate::*, std::sync::Arc};
+use {crate::prelude::*, std::sync::Arc};
 
-/// This step eliminates transactions that are reverted from the payload.
-pub struct RevertProtection;
-impl<P: Platform> Step<P> for RevertProtection {
+/// This step removes transactions that are reverted from the payload.
+pub struct RemoveRevertedTransactions;
+impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
@@ -81,7 +81,10 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn empty_payload<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RevertProtection).run().await.unwrap();
+		let output = OneStep::<P>::new(RemoveRevertedTransactions)
+			.run()
+			.await
+			.unwrap();
 
 		let ControlFlow::Ok(payload) = output else {
 			panic!("Expected Ok payload, got: {output:?}");
@@ -93,7 +96,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn one_revert_one_ok<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RevertProtection)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions)
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.run()
@@ -109,7 +112,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn all_revert<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RevertProtection)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions)
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(2))
@@ -127,7 +130,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn all_revert_with_barrier<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RevertProtection)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions)
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.with_payload_barrier()
@@ -152,7 +155,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn none_revert<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RevertProtection)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions)
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(1))
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(2))

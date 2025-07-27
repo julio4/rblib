@@ -1,6 +1,6 @@
 use {
 	super::*,
-	crate::*,
+	crate::{alloy, prelude::*, reth},
 	alloy::{
 		eips::{Decodable2718, Encodable2718},
 		network::TransactionBuilder,
@@ -12,6 +12,40 @@ use {
 		mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
 	},
 };
+
+#[allow(unused_macros)]
+macro_rules! fake_step {
+	($name:ident) => {
+		#[derive(Debug, Clone)]
+		pub struct $name;
+		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
+			async fn step(
+				self: std::sync::Arc<Self>,
+				_: $crate::prelude::Checkpoint<P>,
+				_: $crate::prelude::StepContext<P>,
+			) -> $crate::prelude::ControlFlow<P> {
+				unimplemented!("Step `{}` is not implemented", stringify!($name))
+			}
+		}
+	};
+
+	($name:ident, $state:ident) => {
+		#[allow(dead_code)]
+		#[derive(Debug, Clone)]
+		pub struct $name($state);
+		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
+			async fn step(
+				self: std::sync::Arc<Self>,
+				_: $crate::prelude::Checkpoint<P>,
+				_: $crate::prelude::StepContext<P>,
+			) -> $crate::prelude::ControlFlow<P> {
+				unimplemented!("Step `{}` is not implemented", stringify!($name))
+			}
+		}
+	};
+}
+
+pub(crate) use fake_step;
 
 /// This test util is used in unit tests for testing a single step in isolation.
 ///
@@ -323,7 +357,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn break_is_recorded() {
-		let step = OneStep::<crate::Ethereum>::new(AlwaysBreak)
+		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysBreak)
 			.run()
 			.await
 			.unwrap();
@@ -332,7 +366,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn ok_is_recorded() {
-		let step = OneStep::<crate::Ethereum>::new(AlwaysOk)
+		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysOk)
 			.run()
 			.await
 			.unwrap();
@@ -341,7 +375,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn fail_is_recorded() {
-		let step = OneStep::<crate::Ethereum>::new(AlwaysFail)
+		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysFail)
 			.run()
 			.await
 			.unwrap();

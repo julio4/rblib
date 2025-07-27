@@ -5,7 +5,11 @@
 //! the standard Ethereum and Optimism platforms, but it can be extended to
 //! support other platforms as well.
 
-use super::*;
+use {
+	crate::{prelude::*, reth},
+	serde::{Serialize, de::DeserializeOwned},
+	std::sync::Arc,
+};
 
 mod bundle;
 mod ethereum;
@@ -30,7 +34,16 @@ pub use optimism::*;
 ///
 /// This trait should be customized for every context this API is embedded in.
 pub trait Platform:
-	Sized + Clone + core::fmt::Debug + Send + Sync + Unpin + 'static
+	Sized
+	+ Default
+	+ Clone
+	+ Serialize
+	+ DeserializeOwned
+	+ core::fmt::Debug
+	+ Send
+	+ Sync
+	+ Unpin
+	+ 'static
 {
 	/// Type that configures the essential types of an Ethereum-like node.
 	///
@@ -55,6 +68,7 @@ pub trait Platform:
 			Consensus = types::Transaction<Self>,
 		> + Send
 		+ Sync
+		+ Unpin
 		+ 'static;
 
 	/// Type that configures how bundles are represented and handled by the
@@ -68,9 +82,7 @@ pub trait Platform:
 
 	/// Instantiate the EVM configuration for the platform with a given chain
 	/// specification.
-	fn evm_config<P>(
-		chainspec: std::sync::Arc<types::ChainSpec<P>>,
-	) -> Self::EvmConfig
+	fn evm_config<P>(chainspec: Arc<types::ChainSpec<P>>) -> Self::EvmConfig
 	where
 		P: traits::PlatformExecBounds<Self>;
 

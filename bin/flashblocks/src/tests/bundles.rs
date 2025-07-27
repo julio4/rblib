@@ -1,22 +1,15 @@
 use {
-	crate::{
-		FlashBlocks,
-		bundle::{BundleResult, FlashBlocksBundle},
-		rpc::BundlesRpcApiClient,
-		tests::transfer_tx_compact,
-	},
+	crate::{FlashBlocks, bundle::FlashBlocksBundle, tests::transfer_tx_compact},
 	rblib::{
-		alloy::{
-			consensus::Transaction,
-			primitives::{B256, U256},
-		},
+		alloy::{consensus::Transaction, primitives::U256},
+		pool::{BundleResult, BundlesApiClient},
+		prelude::*,
 		test_utils::*,
-		*,
 	},
 };
 
 #[tokio::test]
-async fn bundle_with_one_tx_is_included() -> eyre::Result<()> {
+async fn bundle_with_one_valid_tx_is_included() -> eyre::Result<()> {
 	let node = FlashBlocks::create_test_node(Pipeline::default()).await?;
 
 	let bundle_with_one_tx =
@@ -25,7 +18,7 @@ async fn bundle_with_one_tx_is_included() -> eyre::Result<()> {
 		)]);
 	let bundle_hash = bundle_with_one_tx.hash();
 
-	let result = BundlesRpcApiClient::send_bundle(
+	let result = BundlesApiClient::<FlashBlocks>::send_bundle(
 		&node.rpc_client().await?,
 		bundle_with_one_tx,
 	)
@@ -38,6 +31,34 @@ async fn bundle_with_one_tx_is_included() -> eyre::Result<()> {
 	assert_eq!(block.header.number, 1);
 	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 bundle tx
 	assert_eq!(block.tx(1).unwrap().value(), U256::from(1_000_000));
+
+	Ok(())
+}
+
+#[tokio::test]
+async fn bundle_with_two_valid_txs_is_included() -> eyre::Result<()> {
+	let node = FlashBlocks::create_test_node(Pipeline::default()).await?;
+
+	let bundle_with_two_txs = FlashBlocksBundle::with_transactions(vec![
+		transfer_tx_compact(0, 0, 1_000_000),
+		transfer_tx_compact(0, 1, 2_000_000),
+	]);
+	let bundle_hash = bundle_with_two_txs.hash();
+
+	let result = BundlesApiClient::<FlashBlocks>::send_bundle(
+		&node.rpc_client().await?,
+		bundle_with_two_txs,
+	)
+	.await?;
+
+	assert_eq!(result, BundleResult { bundle_hash });
+
+	let block = node.next_block().await?;
+
+	assert_eq!(block.header.number, 1);
+	assert_eq!(block.tx_count(), 3); // sequencer deposit tx + 2 bundle txs
+	assert_eq!(block.tx(1).unwrap().value(), U256::from(1_000_000));
+	assert_eq!(block.tx(2).unwrap().value(), U256::from(2_000_000));
 
 	Ok(())
 }

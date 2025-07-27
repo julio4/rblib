@@ -1,6 +1,7 @@
 use {
 	super::*,
 	crate::{
+		alloy::consensus::BlockHeader,
 		reth::{
 			ethereum::{evm::EthEvmConfig, node::EthereumNode},
 			evm::NextBlockEnvAttributes,
@@ -8,11 +9,11 @@ use {
 			revm::{cached::CachedReads, cancelled::CancelOnDrop},
 			transaction_pool::*,
 		},
-		traits::*,
 	},
 	limits::EthereumDefaultLimits,
 	pool::FixedTransactions,
 	reth_transaction_pool::noop::NoopTransactionPool,
+	serde::{Deserialize, Serialize},
 	std::sync::Arc,
 };
 
@@ -20,7 +21,7 @@ mod limits;
 mod pool;
 
 /// Platform definition for ethereum mainnet.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Ethereum;
 
 impl Platform for Ethereum {
@@ -39,7 +40,6 @@ impl Platform for Ethereum {
 		parent: &types::Header<Self>,
 		attributes: &types::PayloadBuilderAttributes<Self>,
 	) -> types::NextBlockEnvContext<Self> {
-		use alloy::consensus::BlockHeader;
 		NextBlockEnvAttributes {
 			timestamp: attributes.timestamp,
 			suggested_fee_recipient: attributes.suggested_fee_recipient,
@@ -56,7 +56,7 @@ impl Platform for Ethereum {
 	) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
 	where
 		P: traits::PlatformExecBounds<Self>,
-		Provider: ProviderBounds<P>,
+		Provider: traits::ProviderBounds<P>,
 	{
 		let evm_config = payload.block().evm_config().clone();
 		let payload_config = PayloadConfig {

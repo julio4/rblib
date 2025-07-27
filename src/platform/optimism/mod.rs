@@ -1,28 +1,31 @@
-use super::{
-	alloy::{
-		eips::Encodable2718,
-		optimism::consensus::OpPooledTransaction as AlloyPoolTx,
-		primitives::Bytes,
-	},
-	reth::{
-		chainspec::EthChainSpec,
-		optimism::{
-			forks::OpHardforks,
-			node::{payload::builder::*, txpool::OpPooledTransaction, *},
+use {
+	crate::{
+		alloy::{
+			eips::Encodable2718,
+			optimism::consensus::OpPooledTransaction as AlloyPoolTx,
+			primitives::Bytes,
 		},
-		payload::{builder::*, util::PayloadTransactionsFixed},
-		primitives::Recovered,
-		revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
+		prelude::*,
+		reth::{
+			api::NodeTypes,
+			chainspec::EthChainSpec,
+			optimism::{
+				forks::OpHardforks,
+				node::{payload::builder::*, txpool::OpPooledTransaction, *},
+			},
+			payload::{builder::*, util::PayloadTransactionsFixed},
+			primitives::Recovered,
+			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
+		},
 	},
-	types,
-	*,
+	serde::{Deserialize, Serialize},
 };
 
 mod limits;
 pub use limits::OptimismDefaultLimits;
 
 /// Platform definition for Optimism Rollup chains.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Optimism;
 
 impl Platform for Optimism {
@@ -37,7 +40,7 @@ impl Platform for Optimism {
 	) -> types::EvmConfig<P>
 	where
 		P: Platform<
-				NodeTypes: reth::api::NodeTypes<ChainSpec = types::ChainSpec<Optimism>>,
+				NodeTypes: NodeTypes<ChainSpec = types::ChainSpec<Optimism>>,
 				EvmConfig = types::EvmConfig<Optimism>,
 			>,
 	{

@@ -1,12 +1,12 @@
-use crate::{steps::*, *};
+use crate::{prelude::*, steps::*, test_utils::*};
 
 #[test]
 fn only_steps() {
 	let pipeline = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue)
 		.with_step(GatherBestTransactions)
-		.with_step(PriorityFeeOrdering)
-		.with_step(RevertProtection);
+		.with_step(OrderByPriorityFee)
+		.with_step(RemoveRevertedTransactions);
 
 	println!("{pipeline:#?}");
 }
@@ -18,9 +18,9 @@ fn only_steps_optimism_specific() {
 		.with_epilogue(BuilderEpilogue)
 		.with_prologue(OptimismPrologue)
 		.with_step(GatherBestTransactions)
-		.with_step(PriorityFeeOrdering)
-		.with_step(TotalProfitOrdering)
-		.with_step(RevertProtection);
+		.with_step(OrderByPriorityFee)
+		.with_step(OrderByTotalProfit)
+		.with_step(RemoveRevertedTransactions);
 
 	println!("{pipeline:#?}");
 }
@@ -32,9 +32,9 @@ fn nested_verbose() {
 
 	let nested = Pipeline::<Ethereum>::default()
 		.with_step(AppendOneTransactionFromPool::default())
-		.with_step(PriorityFeeOrdering)
-		.with_step(TotalProfitOrdering)
-		.with_step(RevertProtection);
+		.with_step(OrderByPriorityFee)
+		.with_step(OrderByTotalProfit)
+		.with_step(RemoveRevertedTransactions);
 
 	let top_level = top_level //
 		.with_pipeline(Loop, nested);
@@ -55,8 +55,8 @@ fn nested_one_concise() {
 #[cfg(feature = "optimism")]
 fn nested_many_concise() {
 	// synthesize dummy steps
-	make_step!(TestStep1);
-	make_step!(TestStep2);
+	fake_step!(TestStep1);
+	fake_step!(TestStep2);
 
 	let top_level = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
@@ -66,9 +66,9 @@ fn nested_many_concise() {
 			Loop,
 			(
 				AppendOneTransactionFromPool::default(),
-				PriorityFeeOrdering,
-				TotalProfitOrdering,
-				RevertProtection,
+				OrderByPriorityFee,
+				OrderByTotalProfit,
+				RemoveRevertedTransactions,
 			),
 		)
 		.with_step(TestStep2);
@@ -88,10 +88,10 @@ fn flashblocks_example_closure() {
 		interval: Duration,
 	}
 
-	make_step!(WebSocketBeginBlock);
-	make_step!(WebSocketEndBlock);
-	make_step!(FlashblockEpilogue);
-	make_step!(PublishToWebSocket, FlashblocksConfig);
+	fake_step!(WebSocketBeginBlock);
+	fake_step!(WebSocketEndBlock);
+	fake_step!(FlashblockEpilogue);
+	fake_step!(PublishToWebSocket, FlashblocksConfig);
 
 	#[derive(Debug)]
 	struct FlashblockLimits(FlashblocksConfig);
@@ -118,9 +118,9 @@ fn flashblocks_example_closure() {
 					Loop,
 					(
 						AppendOneTransactionFromPool::default(),
-						PriorityFeeOrdering,
-						TotalProfitOrdering,
-						RevertProtection,
+						OrderByPriorityFee,
+						OrderByTotalProfit,
+						RemoveRevertedTransactions,
 					),
 				)
 				.with_step(PublishToWebSocket(config))
@@ -142,10 +142,10 @@ fn flashblocks_example_concise() {
 		interval: Duration,
 	}
 
-	make_step!(WebSocketBeginBlock);
-	make_step!(WebSocketEndBlock);
-	make_step!(FlashblockEpilogue);
-	make_step!(PublishToWebSocket, FlashblocksConfig);
+	fake_step!(WebSocketBeginBlock);
+	fake_step!(WebSocketEndBlock);
+	fake_step!(FlashblockEpilogue);
+	fake_step!(PublishToWebSocket, FlashblocksConfig);
 
 	#[derive(Debug)]
 	struct FlashblockLimits(FlashblocksConfig);
@@ -170,9 +170,9 @@ fn flashblocks_example_concise() {
 					Loop,
 					(
 						AppendOneTransactionFromPool::default(),
-						PriorityFeeOrdering,
-						TotalProfitOrdering,
-						RevertProtection,
+						OrderByPriorityFee,
+						OrderByTotalProfit,
+						RemoveRevertedTransactions,
 					)
 						.with_limits(FlashblockLimits(config.clone()))
 						.with_epilogue(FlashblockEpilogue),

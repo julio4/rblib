@@ -5,9 +5,9 @@ use {
 			network::{BlockResponse, TransactionBuilder},
 			primitives::U256,
 		},
+		prelude::*,
 		steps::*,
 		test_utils::*,
-		*,
 	},
 	tracing::info,
 };
@@ -18,8 +18,8 @@ async fn empty_payload_when_all_txs_revert_loop<P: TestablePlatform>() {
 		Loop,
 		(
 			AppendOneTransactionFromPool::default(),
-			PriorityFeeOrdering,
-			RevertProtection,
+			OrderByPriorityFee,
+			RemoveRevertedTransactions,
 		),
 	);
 
@@ -52,8 +52,8 @@ async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 		Loop,
 		(
 			AppendOneTransactionFromPool::default(),
-			PriorityFeeOrdering,
-			RevertProtection,
+			OrderByPriorityFee,
+			RemoveRevertedTransactions,
 		),
 	);
 
@@ -102,8 +102,8 @@ async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 async fn transfers_included_reverts_excluded_flat<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
 		.with_step(GatherBestTransactions)
-		.with_step(PriorityFeeOrdering)
-		.with_step(RevertProtection);
+		.with_step(OrderByPriorityFee)
+		.with_step(RemoveRevertedTransactions);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
 

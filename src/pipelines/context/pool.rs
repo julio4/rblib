@@ -1,6 +1,5 @@
 use {
 	crate::{
-		Platform,
 		alloy::{
 			eips::{
 				eip4844::{BlobAndProofV1, BlobAndProofV2},
@@ -8,12 +7,12 @@ use {
 			},
 			primitives::{Address, B256, TxHash},
 		},
+		prelude::*,
 		reth::{
 			network::types::HandleMempoolData,
 			primitives::Recovered,
 			transaction_pool::{TransactionPool as RethTransactionPoolTrait, *},
 		},
-		traits,
 	},
 	core::fmt::Debug,
 	futures::FutureExt,

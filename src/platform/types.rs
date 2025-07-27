@@ -49,7 +49,7 @@ pub type Bundle<P: Platform> = P::Bundle;
 /// Extracts the type that represent the optional post-execution bundle
 /// validation error.
 pub type BundlePostExecutionError<P: Platform> =
-	<Bundle<P> as bundle::Bundle<P>>::PostExecutionError;
+	<Bundle<P> as super::Bundle<P>>::PostExecutionError;
 
 /// Extracts the type that represents the final outcome of a payload building
 /// process, which is a built payload that can be submitted to the consensus

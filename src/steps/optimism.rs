@@ -1,4 +1,4 @@
-use {crate::*, std::sync::Arc};
+use {crate::prelude::*, std::sync::Arc};
 
 /// This step appends the sequencer transactions that are defined in the payload
 /// attributes parameter from the CL node into the payload under construction.
@@ -72,7 +72,7 @@ where
 #[cfg(test)]
 mod tests {
 	use {
-		crate::{steps::OptimismPrologue, test_utils::*, *},
+		crate::{prelude::*, steps::OptimismPrologue, test_utils::*},
 		std::sync::Arc,
 	};
 

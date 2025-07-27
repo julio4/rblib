@@ -3,7 +3,7 @@
 //! This API is used to construct payload builders workflows.
 
 use {
-	crate::{reth::builder::components::PayloadServiceBuilder, *},
+	crate::{prelude::*, reth::builder::components::PayloadServiceBuilder},
 	core::{any::type_name_of_val, fmt::Display},
 	pipelines_macros::impl_into_pipeline_steps,
 	std::sync::Arc,
@@ -15,7 +15,6 @@ mod exec;
 mod job;
 mod service;
 mod step;
-pub mod steps;
 
 #[cfg(test)]
 mod tests;
@@ -311,17 +310,14 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 }
 
 pub mod traits {
-	use {
-		crate::{
-			reth::{
-				api::FullNodeTypes,
-				evm::ConfigureEvm,
-				providers::{ChainSpecProvider, StateProviderFactory},
-				transaction_pool::{PoolTransaction, TransactionPool},
-			},
-			*,
+	use crate::{
+		prelude::*,
+		reth::{
+			api::FullNodeTypes,
+			evm::ConfigureEvm,
+			providers::{ChainSpecProvider, HeaderProvider, StateProviderFactory},
+			transaction_pool::{PoolTransaction, TransactionPool},
 		},
-		reth::providers::HeaderProvider,
 	};
 
 	pub trait NodeBounds<P: Platform>:

@@ -1,6 +1,6 @@
 use {
 	super::{ConsensusDriver, LocalNode},
-	crate::{Platform, alloy, reth},
+	crate::{alloy, prelude::*, reth},
 	alloy::{
 		consensus::{SignableTransaction, Signed},
 		network::Network as AlloyNetwork,
@@ -42,7 +42,7 @@ use {
 /// variants of all internal unit tests for all platforms. You can use
 /// [`rblib_test`] with externally defined platforms as long as they implement
 /// this trait.
-pub trait TestNodeFactory<P: crate::Platform + NetworkSelector> {
+pub trait TestNodeFactory<P: Platform + NetworkSelector> {
 	type ConsensusDriver: ConsensusDriver<P>;
 
 	/// Using the platform definition type alone and a pipeline this will create a
@@ -53,7 +53,7 @@ pub trait TestNodeFactory<P: crate::Platform + NetworkSelector> {
 	/// interface, triggering the EL <-> CL payload building protocol, and so on.
 	/// See docs for [`LocalNode`] for more details.
 	fn create_test_node(
-		pipeline: crate::Pipeline<P>,
+		pipeline: Pipeline<P>,
 	) -> impl Future<Output = eyre::Result<LocalNode<P, Self::ConsensusDriver>>>;
 }
 

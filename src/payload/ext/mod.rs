@@ -15,6 +15,6 @@ mod sealed {
 	/// traits defined in this module.
 	pub trait Sealed {}
 
-	impl<P: crate::Platform> Sealed for super::super::Span<P> {}
-	impl<P: crate::Platform> Sealed for super::super::Checkpoint<P> {}
+	impl<P: crate::platform::Platform> Sealed for super::super::Span<P> {}
+	impl<P: crate::platform::Platform> Sealed for super::super::Checkpoint<P> {}
 }

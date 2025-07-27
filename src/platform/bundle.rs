@@ -1,10 +1,10 @@
 use {
-	super::*,
+	crate::{alloy, prelude::*, reth},
 	alloy::{
 		consensus::BlockHeader,
 		eips::{Decodable2718, Encodable2718},
 		network::eip2718::Eip2718Error,
-		primitives::TxHash,
+		primitives::{B256, Keccak256, TxHash},
 	},
 	core::{
 		convert::Infallible,
@@ -21,7 +21,13 @@ use {
 		revm::db::BundleState,
 		rpc::types::mev::EthSendBundle,
 	},
-	serde::{Deserialize, Deserializer, Serialize, Serializer},
+	serde::{
+		Deserialize,
+		Deserializer,
+		Serialize,
+		Serializer,
+		de::DeserializeOwned,
+	},
 };
 
 /// This trait defines a set of transactions that are bundled together and
@@ -29,10 +35,12 @@ use {
 ///
 /// Examples of bundles are objects sent through the `eth_sendBundle` RPC
 /// method.
-pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
+pub trait Bundle<P: Platform>:
+	Serialize + DeserializeOwned + Clone + Debug + Send + Sync + 'static
+{
 	type PostExecutionError: core::error::Error + Send + Sync + 'static;
 
-	/// Returns an iterator over the transactions in the bundle.
+	/// Access to the transactions that are part of this bundle.
 	fn transactions(&self) -> &[Recovered<types::Transaction<P>>];
 
 	/// Returns a new bundle with the exact configuration and metadata as this one
@@ -73,6 +81,13 @@ pub trait Bundle<P: Platform>: Clone + Debug + Send + Sync + 'static {
 	) -> Result<(), Self::PostExecutionError> {
 		Ok(())
 	}
+
+	/// Calculates the hash of the bundle.
+	///
+	/// This hash should be unique for each bundle and take into account the
+	/// metadata attached to it, so two bundles with the same transactions but
+	/// different metadata should have different hashes.
+	fn hash(&self) -> B256;
 }
 
 /// The eligibility of a bundle for inclusion in a block.
@@ -287,6 +302,14 @@ impl<P: Platform> Bundle<P> for FlashbotsBundle<P> {
 
 	fn is_optional(&self, tx: TxHash) -> bool {
 		self.dropping_tx_hashes.contains(&tx)
+	}
+
+	fn hash(&self) -> B256 {
+		let mut hasher = Keccak256::default();
+		for tx in self.transactions() {
+			hasher.update(tx.tx_hash());
+		}
+		hasher.finalize()
 	}
 }
 

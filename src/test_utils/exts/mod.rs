@@ -2,7 +2,7 @@
 
 use {
 	super::*,
-	crate::*,
+	crate::{alloy, prelude::*, reth},
 	alloy::{
 		consensus::{SignableTransaction, Signed},
 		hex,
@@ -167,36 +167,4 @@ where
 		let signature = signer.sign_transaction_sync(&mut tx)?;
 		Ok(tx.into_signed(signature).into())
 	}
-}
-
-#[macro_export]
-macro_rules! make_step {
-	($name:ident) => {
-		#[derive(Debug, Clone)]
-		pub struct $name;
-		impl<P: Platform> Step<P> for $name {
-			async fn step(
-				self: std::sync::Arc<Self>,
-				_: Checkpoint<P>,
-				_: StepContext<P>,
-			) -> ControlFlow<P> {
-				unimplemented!("Step `{}` is not implemented", stringify!($name))
-			}
-		}
-	};
-
-	($name:ident, $state:ident) => {
-		#[allow(dead_code)]
-		#[derive(Debug, Clone)]
-		pub struct $name($state);
-		impl<P: Platform> Step<P> for $name {
-			async fn step(
-				self: std::sync::Arc<Self>,
-				_: Checkpoint<P>,
-				_: StepContext<P>,
-			) -> ControlFlow<P> {
-				unimplemented!("Step `{}` is not implemented", stringify!($name))
-			}
-		}
-	};
 }

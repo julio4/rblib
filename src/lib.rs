@@ -1,11 +1,20 @@
+// core modules, partially re-exported through `rblib::prelude`
 mod payload;
 mod pipelines;
 mod platform;
 
-// Public API exports
-pub use {payload::*, pipelines::*, platform::*};
+// RBLib Core Public API Prelude
+pub mod prelude {
+	pub use super::{payload::*, pipelines::*, platform::*};
+}
 
-// Exported test utilities for use in tests in this and other crates.
+/// Order Pool Public API
+pub mod pool;
+
+/// Common steps library
+pub mod steps;
+
+/// Externally available test utilities
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 

@@ -6,7 +6,7 @@ use {
 		primitives::{B256, Bytes, TxHash},
 	},
 	core::convert::Infallible,
-	rblib::{alloy::primitives::Keccak256, *},
+	rblib::{alloy, alloy::primitives::Keccak256, prelude::*, reth},
 	reth::{core::primitives::SignerRecoverable, primitives::Recovered},
 	serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
@@ -70,37 +70,6 @@ impl FlashBlocksBundle {
 			min_timestamp: None,
 			max_timestamp: None,
 		}
-	}
-
-	pub fn hash(&self) -> B256 {
-		let mut hasher = Keccak256::default();
-
-		for tx in &self.txs {
-			hasher.update(tx.tx_hash());
-		}
-
-		for tx in &self.reverting_tx_hashes {
-			hasher.update(tx);
-		}
-
-		for tx in &self.dropping_tx_hashes {
-			hasher.update(tx);
-		}
-
-		if let Some(min_bn) = self.min_block_number {
-			hasher.update(min_bn.to_be_bytes());
-		}
-		if let Some(max_bn) = self.max_block_number {
-			hasher.update(max_bn.to_be_bytes());
-		}
-		if let Some(min_ts) = self.min_timestamp {
-			hasher.update(min_ts.to_be_bytes());
-		}
-		if let Some(max_ts) = self.max_timestamp {
-			hasher.update(max_ts.to_be_bytes());
-		}
-
-		hasher.finalize().into()
 	}
 }
 
@@ -176,12 +145,37 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 	fn is_optional(&self, tx: TxHash) -> bool {
 		self.dropping_tx_hashes.contains(&tx)
 	}
-}
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct BundleResult {
-	#[serde(rename = "bundleHash")]
-	pub bundle_hash: B256,
+	fn hash(&self) -> B256 {
+		let mut hasher = Keccak256::default();
+
+		for tx in &self.txs {
+			hasher.update(tx.tx_hash());
+		}
+
+		for tx in &self.reverting_tx_hashes {
+			hasher.update(tx);
+		}
+
+		for tx in &self.dropping_tx_hashes {
+			hasher.update(tx);
+		}
+
+		if let Some(min_bn) = self.min_block_number {
+			hasher.update(min_bn.to_be_bytes());
+		}
+		if let Some(max_bn) = self.max_block_number {
+			hasher.update(max_bn.to_be_bytes());
+		}
+		if let Some(min_ts) = self.min_timestamp {
+			hasher.update(min_ts.to_be_bytes());
+		}
+		if let Some(max_ts) = self.max_timestamp {
+			hasher.update(max_ts.to_be_bytes());
+		}
+
+		hasher.finalize()
+	}
 }
 
 /// Implements the encoding and decoding of transactions to and from EIP-2718

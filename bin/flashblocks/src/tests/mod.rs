@@ -1,6 +1,7 @@
 use {
-	crate::{args::OpRbuilderArgs, node::FBNodeBuilder, platform::FlashBlocks},
+	crate::{args::OpRbuilderArgs, platform::FlashBlocks},
 	rblib::{
+		alloy,
 		alloy::{
 			network::{TransactionBuilder, TransactionResponse, TxSignerSync},
 			optimism::{
@@ -10,13 +11,19 @@ use {
 			primitives::{Address, U256},
 			signers::local::PrivateKeySigner,
 		},
+		pool::{AppendOneOrder, OrderPool},
+		prelude::*,
 		reth::{
 			core::primitives::SignedTransaction,
-			optimism::{chainspec, primitives::OpTransactionSigned},
+			optimism::{
+				chainspec,
+				node::{OpAddOns, OpNode},
+				primitives::OpTransactionSigned,
+			},
 			primitives::Recovered,
 		},
+		steps::*,
 		test_utils::*,
-		*,
 	},
 };
 
@@ -34,7 +41,28 @@ impl TestNodeFactory<FlashBlocks> for FlashBlocks {
 	) -> eyre::Result<LocalNode<FlashBlocks, Self::ConsensusDriver>> {
 		let chainspec = chainspec::OP_DEV.as_ref().clone().with_funded_accounts();
 		LocalNode::new(OptimismConsensusDriver, chainspec, move |builder| {
-			FlashBlocks::build_node(builder, OpRbuilderArgs::default())
+			let cli_args = OpRbuilderArgs::default();
+			let pool = OrderPool::<FlashBlocks>::default();
+
+			let pipeline = Pipeline::<FlashBlocks>::default()
+				.with_prologue(OptimismPrologue)
+				.with_pipeline(
+					Loop,
+					(
+						AppendOneOrder::from_pool(&pool),
+						OrderByPriorityFee,
+						RemoveRevertedTransactions,
+					),
+				)
+				.with_epilogue(BuilderEpilogue);
+
+			let opnode = OpNode::new(cli_args.rollup_args.clone());
+
+			builder
+				.with_types::<OpNode>()
+				.with_components(opnode.components().payload(pipeline.into_service()))
+				.with_add_ons(OpAddOns::default())
+				.extend_rpc_modules(move |mut rpc_ctx| pool.configure_rpc(&mut rpc_ctx))
 		})
 		.await
 	}

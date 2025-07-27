@@ -5,7 +5,7 @@
 //! etc.
 
 use {
-	crate::{pipelines::step::WrappedStep, *},
+	crate::{pipelines::step::WrappedStep, prelude::*},
 	derive_more::{From, Into},
 	smallvec::{SmallVec, smallvec},
 	std::sync::Arc,
@@ -498,31 +498,31 @@ impl<'a, P: Platform> From<StepNavigator<'a, P>> for StepPath {
 
 #[cfg(test)]
 mod test {
-	use super::*;
+	use {super::*, crate::test_utils::*};
 
-	make_step!(Epilogue1);
-	make_step!(Epilogue2);
-	make_step!(Epilogue3);
+	fake_step!(Epilogue1);
+	fake_step!(Epilogue2);
+	fake_step!(Epilogue3);
 
-	make_step!(Prologue1);
-	make_step!(Prologue2);
+	fake_step!(Prologue1);
+	fake_step!(Prologue2);
 
-	make_step!(Step1);
-	make_step!(Step2);
-	make_step!(Step3);
-	make_step!(Step4);
+	fake_step!(Step1);
+	fake_step!(Step2);
+	fake_step!(Step3);
+	fake_step!(Step4);
 
-	make_step!(StepA);
-	make_step!(StepB);
-	make_step!(StepC);
+	fake_step!(StepA);
+	fake_step!(StepB);
+	fake_step!(StepC);
 
-	make_step!(StepX);
-	make_step!(StepY);
-	make_step!(StepZ);
+	fake_step!(StepX);
+	fake_step!(StepY);
+	fake_step!(StepZ);
 
-	make_step!(StepI);
-	make_step!(StepII);
-	make_step!(StepIII);
+	fake_step!(StepI);
+	fake_step!(StepII);
+	fake_step!(StepIII);
 
 	impl StepPath {
 		fn append_prologue(self) -> Self {

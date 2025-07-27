@@ -34,6 +34,11 @@ where
 	///
 	/// This list is cleared at the end of each payload job.
 	attempted: DashSet<B256>,
+
+	/// If true, bundles that do not fit within the gas limit will be attempted
+	/// to be included by removing some of their optional transactions. Default
+	/// is false.
+	partial_orders: bool,
 }
 
 impl<P: Platform> AppendOneOrder<P>
@@ -44,7 +49,18 @@ where
 		Self {
 			pool: pool.clone(),
 			attempted: DashSet::new(),
+			partial_orders: false,
 		}
+	}
+
+	/// For bundles that do not fit within the gas limit, attempt to include them
+	/// by removing some of their optional transactions.
+	///
+	/// TODO: Implement this.
+	#[must_use]
+	pub fn allow_partial_orders(mut self) -> Self {
+		self.partial_orders = true;
+		self
 	}
 }
 
@@ -146,9 +162,8 @@ where
 			};
 
 			if new_payload.cumulative_gas_used() > ctx.limits().gas_limit {
-				// We've exceeded the gas limit with this order.
-				// TODO: check if this order would potentially fit if some optional
-				// transactions were removed from the payload.
+				// Including this order would exceed the gas limit for the payload.
+				// TODO: check if partial orders are allowed and try without optionals.
 				continue;
 			}
 
@@ -161,7 +176,7 @@ pub struct AppendManyOrders<P: Platform>
 where
 	P::Bundle: Serialize + DeserializeOwned,
 {
-	pool: OrderPool<P>,
+	_pool: OrderPool<P>,
 }
 
 impl<P: Platform> AppendManyOrders<P>
@@ -169,7 +184,9 @@ where
 	P::Bundle: Serialize + DeserializeOwned,
 {
 	pub fn from_pool(pool: &OrderPool<P>) -> Self {
-		Self { pool: pool.clone() }
+		Self {
+			_pool: pool.clone(),
+		}
 	}
 }
 

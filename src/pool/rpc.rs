@@ -1,5 +1,5 @@
 use {
-	super::OrderPool,
+	super::{Order, OrderPool},
 	crate::{alloy, prelude::*},
 	alloy::primitives::B256,
 	jsonrpsee::{
@@ -42,7 +42,8 @@ impl<P: Platform> BundlesApiServer<P> for BundleRpcApi<P> {
 		bundle: types::Bundle<P>,
 	) -> RpcResult<BundleResult> {
 		let bundle_hash = bundle.hash();
-		debug!("eth_sendBundle received: {bundle:?}");
+		debug!(hash = %bundle_hash, "eth_sendBundle received: {bundle:?}");
+		self.pool.insert(Order::Bundle(bundle));
 		Ok(BundleResult { bundle_hash })
 	}
 }

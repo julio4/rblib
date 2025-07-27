@@ -1,9 +1,16 @@
 use {
-	super::rpc::{BundleRpcApi, BundlesApiServer},
-	crate::prelude::*,
+	super::{
+		Order,
+		rpc::{BundleRpcApi, BundlesApiServer},
+	},
+	crate::{prelude::*, reth},
+	alloy_origin::primitives::B256,
+	dashmap::DashMap,
 	jsonrpsee::Methods,
-	reth_node_builder::{FullNodeComponents, rpc::RpcContext},
-	reth_rpc_api::eth::EthApiTypes,
+	reth::{
+		node::builder::{FullNodeComponents, rpc::RpcContext},
+		rpc::api::eth::EthApiTypes,
+	},
 	std::sync::Arc,
 };
 
@@ -31,10 +38,19 @@ impl<P: Platform> Clone for OrderPool<P> {
 impl<P: Platform> Default for OrderPool<P> {
 	fn default() -> Self {
 		Self {
-			inner: Arc::new(OrderPoolInner {
-				_p: std::marker::PhantomData,
-			}),
+			inner: Arc::new(OrderPoolInner::default()),
 		}
+	}
+}
+
+impl<P: Platform> OrderPool<P> {
+	pub fn insert(&self, order: Order<P>) {
+		let hash = order.hash();
+		self.inner.orders.insert(hash, order);
+	}
+
+	pub fn best_orders(&self) -> impl Iterator<Item = Order<P>> + '_ {
+		self.inner.orders.iter().map(|entry| entry.value().clone())
 	}
 }
 
@@ -60,9 +76,9 @@ impl<P: Platform> OrderPool<P> {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct OrderPoolInner<P: Platform> {
-	_p: std::marker::PhantomData<P>,
+	orders: DashMap<B256, Order<P>>,
 }
 
 impl<P: Platform> OrderPoolInner<P> {}

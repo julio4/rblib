@@ -1,6 +1,9 @@
 use {
 	crate::{alloy, prelude::*, reth},
-	alloy::{consensus::crypto::RecoveryError, primitives::TxHash},
+	alloy::{
+		consensus::crypto::RecoveryError,
+		primitives::{B256, TxHash},
+	},
 	reth::{
 		errors::ProviderError,
 		ethereum::primitives::SignedTransaction,
@@ -278,6 +281,14 @@ impl<P: Platform> Executable<P> {
 			Self::Bundle(bundle) => bundle.transactions(),
 		}
 	}
+
+	/// Returns hash of the transaction or the bundle.
+	pub fn hash(&self) -> B256 {
+		match self {
+			Self::Transaction(tx) => *tx.tx_hash(),
+			Self::Bundle(bundle) => bundle.hash(),
+		}
+	}
 }
 
 /// Convinience trait that allows all types that can be executed to be used as a
@@ -318,6 +329,13 @@ impl<P: Platform> IntoExecutable<P, u8> for Recovered<types::Transaction<P>> {
 impl<P: Platform> IntoExecutable<P, u16> for types::Bundle<P> {
 	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
 		Ok(Executable::Bundle(self))
+	}
+}
+
+/// Already converted executables
+impl<P: Platform> IntoExecutable<P, u64> for Executable<P> {
+	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
+		Ok(self)
 	}
 }
 

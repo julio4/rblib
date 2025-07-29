@@ -66,10 +66,7 @@ pub fn build_pipeline(
 	if let Some(ref signer) = cli_args.builder_signer {
 		let epilogue = BuilderEpilogue::with_signer(signer.clone().into());
 		let limiter = epilogue.limiter();
-
-		pipeline = pipeline
-			.with_epilogue(BuilderEpilogue::with_signer(signer.clone().into()))
-			.with_limits(limiter);
+		pipeline = pipeline.with_epilogue(epilogue).with_limits(limiter);
 	}
 
 	pipeline

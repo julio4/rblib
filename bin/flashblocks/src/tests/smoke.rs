@@ -3,10 +3,10 @@ use {
 	rblib::{
 		alloy::{
 			consensus::Transaction,
+			network::TransactionResponse,
 			primitives::{Address, U256},
 		},
-		prelude::Pipeline,
-		test_utils::{BlockResponseExt, FundedAccounts, TestNodeFactory},
+		test_utils::{BlockResponseExt, FundedAccounts},
 	},
 	tracing::debug,
 };
@@ -18,20 +18,14 @@ async fn chain_produces_blocks() -> eyre::Result<()> {
 	todo!()
 }
 
-/// This is a smoke test that ensures that the builder transaction is included
-/// in the block as the last transaction.
+/// Ensure that the chain produces blocks with a builder transaction
+/// when the builder signer is provided in the CLI arguments.
 #[tokio::test]
 async fn chain_produces_blocks_with_builder_tx() -> eyre::Result<()> {
-	let signer = FundedAccounts::signer(0);
-	let args = OpRbuilderArgs {
-		builder_signer: Some(signer.into()),
+	let node = FlashBlocks::test_node_with_cli_args(OpRbuilderArgs {
+		builder_signer: Some(FundedAccounts::signer(0).into()),
 		..Default::default()
-	};
-
-	let node = FlashBlocks::create_test_node_with_args(
-		Pipeline::<FlashBlocks>::default(),
-		args,
-	)
+	})
 	.await?;
 
 	let block = node.next_block().await?;
@@ -45,6 +39,7 @@ async fn chain_produces_blocks_with_builder_tx() -> eyre::Result<()> {
 	assert_eq!(builder_tx.value(), U256::ZERO);
 	assert_eq!(builder_tx.to(), Some(Address::ZERO));
 	assert_eq!(builder_tx.input(), "flashbots rblib block #1".as_bytes());
+	assert_eq!(builder_tx.from(), FundedAccounts::signer(0).address());
 
 	Ok(())
 }

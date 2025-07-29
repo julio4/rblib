@@ -165,6 +165,6 @@ where
 
 		let mut tx = self.build_unsigned()?;
 		let signature = signer.sign_transaction_sync(&mut tx)?;
-		Ok(tx.into_signed(signature).into())
+		Ok(Signed::new_unhashed(tx, signature).into())
 	}
 }

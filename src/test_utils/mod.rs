@@ -40,7 +40,6 @@ mod optimism;
 pub use optimism::OptimismConsensusDriver;
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
-pub const DEFAULT_BLOCK_GAS_LIMIT: u64 = 30_000_000;
 
 /// This gets invoked before any tests, when the cargo test framework loads the
 /// test library.

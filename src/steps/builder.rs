@@ -1,18 +1,30 @@
 use {
 	crate::{alloy, prelude::*, reth},
 	alloy::{
-		consensus::SignableTransaction,
 		eips::eip7623::TOTAL_COST_FLOOR_PER_TOKEN,
 		network::TransactionBuilder,
 		primitives::{Address, Bytes},
 		signers::local::PrivateKeySigner,
 	},
-	op_alloy::network::TxSignerSync,
 	reth::ethereum::chainspec::EthChainSpec,
 	std::sync::Arc,
 	tracing::warn,
 };
 
+/// This step is used as an epilogue of a payload building pipeline that adds a
+/// builder transaction to the block with a message.
+///
+/// Platforms that use this step should implement the `PlatformWithRpcTypes`
+/// trait because this step constructs a platform-specific transaction.
+///
+/// It is up to the builder implementation to ensure that the account signing
+/// the builder transaction has enough funds to pay for the transaction gas.
+///
+/// The transaction gas is proportional to the length of the message.
+///
+/// This step also provides its own limits factory that inherits the limits of
+/// the enclosing (or default) limits factory, but subtracts the gas limit for
+/// the builder transaction from the gas limit of the block.
 pub struct BuilderEpilogue<P: PlatformWithRpcTypes> {
 	signer: PrivateKeySigner,
 	required: bool,
@@ -20,6 +32,7 @@ pub struct BuilderEpilogue<P: PlatformWithRpcTypes> {
 }
 
 impl<P: PlatformWithRpcTypes> BuilderEpilogue<P> {
+	/// Creates a new `BuilderEpilogue` step with the given tx signer.
 	pub fn with_signer(signer: PrivateKeySigner) -> Self {
 		Self {
 			signer,
@@ -67,84 +80,55 @@ impl<P: PlatformWithRpcTypes> Step<P> for BuilderEpilogue<P> {
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
+		// if the epilogue transaction cannot be built or applied to the payload,
+		// we either fail the pipeline if it is marked as required or return the
+		// payload as is without the epilogue transaction.
+		macro_rules! try_ {
+			($expr:expr) => {
+				match $expr {
+					Ok(value) => value,
+					Err(error) => {
+						if self.required {
+							return ControlFlow::Fail(PayloadBuilderError::Other(
+								error.into(),
+							));
+						}
+						warn!(
+							"Failed to build builder epilogue transaction, skipping: \
+							 {error:?}"
+						);
+						return ControlFlow::Ok(payload);
+					}
+				}
+			};
+		}
+
+		let signer_nonce = try_!(payload.nonce_of(self.signer.address()));
 		let message: Bytes = (self.message_fn)(ctx.block()).into_bytes().into();
 		let gas_estimate = estimate_gas_for_tx(&message);
-		let signer_nonce = match payload.nonce_of(self.signer.address()) {
-			Ok(nonce) => nonce,
-			Err(e) => {
-				return ControlFlow::Fail(PayloadBuilderError::other(e));
-			}
-		};
 
-		let builder_tx = types::TransactionRequest::<P>::default()
+		let tx_params = types::TransactionRequest::<P>::default()
 			.with_chain_id(ctx.block().chainspec().chain_id())
 			.with_nonce(signer_nonce)
 			.with_gas_limit(gas_estimate)
 			.with_max_fee_per_gas(ctx.block().base_fee().into())
 			.with_max_priority_fee_per_gas(0)
 			.with_to(Address::ZERO)
-			.with_input(message)
-			.build_unsigned();
+			.with_input(message);
 
-		let mut builder_tx = match builder_tx {
-			Ok(tx) => tx,
-			Err(error) => {
-				if self.required {
-					return ControlFlow::Fail(PayloadBuilderError::Other(error.into()));
-				}
+		let signed_tx = try_!(build_signed::<P>(tx_params, &self.signer));
+		let new_payload = try_!(payload.apply(signed_tx));
 
-				warn!(
-					"Failed to build builder epilogue transaction, but it is not marked \
-					 as required, skipping: {error:?}"
-				);
-
-				return ControlFlow::Ok(payload);
-			}
-		};
-
-		let signature = match self.signer.sign_transaction_sync(&mut builder_tx) {
-			Ok(signature) => signature,
-			Err(error) => {
-				if self.required {
-					return ControlFlow::Fail(PayloadBuilderError::Other(error.into()));
-				}
-
-				warn!(
-					"Failed to sign builder epilogue transaction, but it is not marked \
-					 as required, skipping: {error:?}"
-				);
-
-				return ControlFlow::Ok(payload);
-			}
-		};
-
-		let signed_tx: types::TxEnvelope<P> =
-			builder_tx.into_signed(signature).into();
-		let signed_tx: types::Transaction<P> = signed_tx.into();
-
-		let new_checkpoint = match payload.apply(signed_tx) {
-			Ok(checkpoint) => checkpoint,
-			Err(error) => {
-				if self.required {
-					return ControlFlow::Fail(PayloadBuilderError::Other(error.into()));
-				}
-
-				warn!(
-					"Failed to append builder transaction to payload, but it is not \
-					 marked as required, skipping: {error:?}"
-				);
-
-				return ControlFlow::Ok(payload);
-			}
-		};
-
-		ControlFlow::Ok(new_checkpoint)
+		ControlFlow::Ok(new_payload)
 	}
 }
 
 type MessageFn<P: Platform> =
 	Arc<dyn Fn(&BlockContext<P>) -> String + Send + Sync + 'static>;
 
+/// A `LimitsFactory` that subtracts the gas limit for the epilogue transaction
+/// from the gas limit of the block. It inherits the limits from the enclosing
+/// limits factory or the default limits for the platform.
 struct LimitsMinusEpilogue<P: Platform> {
 	message_fn: MessageFn<P>,
 }
@@ -198,4 +182,68 @@ fn estimate_gas_for_tx(message: &[u8]) -> u64 {
 	let floor_gas = 21_000 + tokens_in_calldata * TOTAL_COST_FLOOR_PER_TOKEN;
 
 	std::cmp::max(zero_cost + nonzero_cost + 21_000, floor_gas)
+}
+
+#[cfg(test)]
+mod tests {
+	use {
+		super::*,
+		crate::test_utils::*,
+		alloy::{consensus::Transaction, primitives::U256},
+	};
+
+	#[rblib_test(Ethereum, Optimism)]
+	async fn empty_payload_has_builder_tx<P: TestablePlatform>() {
+		let step = OneStep::<P>::new(BuilderEpilogue::<P>::with_signer(
+			FundedAccounts::signer(0),
+		));
+
+		let output = step.run().await;
+		let Ok(ControlFlow::Ok(payload)) = output else {
+			panic!("Expected Ok payload, got {output:?}");
+		};
+
+		let history = payload.history();
+
+		assert_eq!(history.len(), 2); // init checkpoint + builder tx
+		assert_eq!(history.transactions().count(), 1);
+
+		let builder_tx = history.transactions().next().unwrap();
+
+		assert_eq!(builder_tx.signer(), FundedAccounts::signer(0).address());
+		assert_eq!(builder_tx.to(), Some(Address::ZERO));
+		assert_eq!(builder_tx.input(), "flashbots rblib block #1".as_bytes());
+		assert_eq!(builder_tx.value(), U256::ZERO);
+	}
+
+	/// Ensure that the builder epilogue step correctly retreives the current
+	/// nonce of the signer. In this test we will have a payload with existing
+	/// transactions signed by the same signer, and the builder epilogue should
+	/// use the next nonce.
+	#[rblib_test(Ethereum, Optimism)]
+	async fn builder_signer_nonce_is_correct<P: TestablePlatform>() {
+		let step = OneStep::<P>::new(BuilderEpilogue::<P>::with_signer(
+			FundedAccounts::signer(0),
+		))
+		.with_payload_tx(|tx| tx.transfer().with_funded_signer(0).with_nonce(0))
+		.with_payload_tx(|tx| tx.transfer().with_funded_signer(0).with_nonce(1));
+
+		let output = step.run().await;
+		let Ok(ControlFlow::Ok(payload)) = output else {
+			panic!("Expected Ok payload, got {output:?}");
+		};
+
+		let history = payload.history();
+
+		assert_eq!(history.len(), 4); // init checkpoint + builder tx + 2 user txs
+		assert_eq!(history.transactions().count(), 3);
+
+		// builder tx should be the last one
+		let builder_tx = history.transactions().last().unwrap();
+		assert_eq!(builder_tx.signer(), FundedAccounts::signer(0).address());
+		assert_eq!(builder_tx.nonce(), 2); // next nonce after the two user transactions
+		assert_eq!(builder_tx.to(), Some(Address::ZERO));
+		assert_eq!(builder_tx.input(), "flashbots rblib block #1".as_bytes());
+		assert_eq!(builder_tx.value(), U256::ZERO);
+	}
 }

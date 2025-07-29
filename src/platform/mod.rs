@@ -19,10 +19,11 @@ use {
 
 mod bundle;
 mod ethereum;
+mod ext;
 mod limits;
 
 pub mod types;
-pub use {bundle::*, ethereum::*, limits::*};
+pub use {bundle::*, ethereum::*, ext::*, limits::*};
 
 #[cfg(feature = "optimism")]
 mod optimism;

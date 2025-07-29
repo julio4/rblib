@@ -3,7 +3,11 @@ use {
 	rblib::{
 		pool::{AppendOneOrder, OrderPool},
 		prelude::*,
-		reth::{builder::Node, optimism::node::OpNode},
+		reth::optimism::node::{
+			OpEngineApiBuilder,
+			OpEngineValidatorBuilder,
+			OpNode,
+		},
 		steps::*,
 	},
 };
@@ -26,8 +30,17 @@ fn main() -> eyre::Result<()> {
 
 			let handle = builder
 				.with_types::<OpNode>()
-				.with_components(opnode.components().payload(pipeline.into_service()))
-				.with_add_ons(opnode.add_ons())
+				.with_components(
+					opnode
+						.components()
+						.pool(pool.component())
+						.payload(pipeline.into_service()),
+				)
+				.with_add_ons(
+					opnode
+						.add_ons_builder::<types::RpcTypes<FlashBlocks>>()
+						.build::<_, OpEngineValidatorBuilder, OpEngineApiBuilder<OpEngineValidatorBuilder>>(),
+				)
 				.extend_rpc_modules(move |mut rpc_ctx| pool.configure_rpc(&mut rpc_ctx))
 				.launch()
 				.await?;

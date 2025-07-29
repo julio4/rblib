@@ -12,7 +12,7 @@ use {
 		node::builder::{FullNodeComponents, rpc::RpcContext},
 		rpc::api::eth::EthApiTypes,
 	},
-	std::sync::Arc,
+	std::sync::{Arc, OnceLock},
 };
 
 mod select;
@@ -90,4 +90,5 @@ impl<P: Platform> Default for OrderPool<P> {
 struct OrderPoolInner<P: Platform> {
 	orders: DashMap<B256, Order<P>>,
 	txmap: DashMap<TxHash, DashSet<B256>>,
+	system_pool: OnceLock<Arc<dyn core::any::Any + Send + Sync>>,
 }

@@ -6,6 +6,7 @@ use {
 		core::{RpcResult, async_trait},
 		proc_macros::rpc,
 		tracing::debug,
+		types::{ErrorCode, ErrorObject},
 	},
 	serde::{Deserialize, Serialize},
 };
@@ -41,6 +42,14 @@ impl<P: Platform> BundlesApiServer<P> for BundleRpcApi<P> {
 		&self,
 		bundle: types::Bundle<P>,
 	) -> RpcResult<BundleResult> {
+		if bundle.transactions().is_empty() {
+			return Err(ErrorObject::borrowed(
+				ErrorCode::InvalidParams.code(),
+				"bundle must contain at least one transaction",
+				None,
+			));
+		}
+
 		let bundle_hash = bundle.hash();
 		debug!(hash = %bundle_hash, "eth_sendBundle received: {bundle:?}");
 		self.pool.insert(Order::Bundle(bundle));

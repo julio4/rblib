@@ -13,9 +13,12 @@ use {
 		pool::OrderPool,
 		prelude::*,
 		reth::{
-			builder::Node,
 			core::primitives::SignedTransaction,
-			optimism::{chainspec, node::OpNode, primitives::OpTransactionSigned},
+			optimism::{
+				chainspec,
+				node::{OpEngineApiBuilder, OpEngineValidatorBuilder, OpNode},
+				primitives::OpTransactionSigned,
+			},
 			primitives::Recovered,
 		},
 		test_utils::*,
@@ -31,9 +34,7 @@ impl FlashBlocks {
 	pub async fn test_node_with_cli_args(
 		cli_args: OpRbuilderArgs,
 	) -> eyre::Result<LocalNode<FlashBlocks, OptimismConsensusDriver>> {
-		let pool = OrderPool::<FlashBlocks>::default();
-		let pipeline = build_pipeline(&cli_args, &pool);
-		FlashBlocks::create_test_node(pipeline).await
+		FlashBlocks::create_test_node_with_args(Pipeline::default(), cli_args).await
 	}
 
 	pub async fn test_node()
@@ -48,18 +49,26 @@ impl TestNodeFactory<FlashBlocks> for FlashBlocks {
 	type ConsensusDriver = OptimismConsensusDriver;
 
 	async fn create_test_node_with_args(
-		pipeline: Pipeline<FlashBlocks>,
+		_: Pipeline<FlashBlocks>,
 		cli_args: Self::CliExtArgs,
 	) -> eyre::Result<LocalNode<FlashBlocks, Self::ConsensusDriver>> {
 		let chainspec = chainspec::OP_DEV.as_ref().clone().with_funded_accounts();
 		LocalNode::new(OptimismConsensusDriver, chainspec, move |builder| {
 			let pool = OrderPool::<FlashBlocks>::default();
+			let pipeline = build_pipeline(&cli_args, &pool);
 			let opnode = OpNode::new(cli_args.rollup_args.clone());
 
 			builder
 				.with_types::<OpNode>()
-				.with_components(opnode.components().payload(pipeline.into_service()))
-				.with_add_ons(opnode.add_ons())
+				.with_components(
+					opnode
+						.components()
+						.pool(pool.component())
+						.payload(pipeline.into_service()),
+				)
+				.with_add_ons(opnode
+						.add_ons_builder::<types::RpcTypes<FlashBlocks>>()
+						.build::<_, OpEngineValidatorBuilder, OpEngineApiBuilder<OpEngineValidatorBuilder>>())
 				.extend_rpc_modules(move |mut rpc_ctx| pool.configure_rpc(&mut rpc_ctx))
 		})
 		.await

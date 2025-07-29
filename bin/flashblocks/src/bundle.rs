@@ -192,10 +192,6 @@ mod encoded_2718 {
 	where
 		S: Serializer,
 	{
-		if txs.is_empty() {
-			return Err(serde::ser::Error::custom("empty transactions list"));
-		}
-
 		let encoded: Vec<Bytes> =
 			txs.iter().map(|tx| tx.encoded_2718().into()).collect();
 		encoded.serialize(serializer)
@@ -206,10 +202,6 @@ mod encoded_2718 {
 		D: Deserializer<'de>,
 	{
 		let encoded = Vec::<Bytes>::deserialize(deserializer)?;
-
-		if encoded.is_empty() {
-			return Err(serde::de::Error::custom("empty transactions list"));
-		}
 
 		let txs = encoded
 			.into_iter()

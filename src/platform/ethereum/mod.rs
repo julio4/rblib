@@ -97,3 +97,7 @@ impl Platform for Ethereum {
 		.ok_or_else(|| PayloadBuilderError::MissingPayload)
 	}
 }
+
+impl PlatformWithRpcTypes for Ethereum {
+	type RpcTypes = alloy::network::Ethereum;
+}

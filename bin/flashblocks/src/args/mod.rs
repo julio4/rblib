@@ -10,6 +10,7 @@ use {
 
 mod op;
 mod playground;
+mod signer;
 
 pub use op::OpRbuilderArgs;
 

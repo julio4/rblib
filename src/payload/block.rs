@@ -117,6 +117,11 @@ impl<P: Platform> BlockContext<P> {
 		self.attributes().timestamp()
 	}
 
+	/// Returns the number of the block for which the payload is being built.
+	pub fn number(&self) -> u64 {
+		self.parent().header().number() + 1
+	}
+
 	/// Returns the state provider that provides access to the state of the
 	/// environment rooted at the end of the parent block for which the payload
 	/// is being built.

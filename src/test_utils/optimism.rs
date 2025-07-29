@@ -12,6 +12,7 @@ use {
 	},
 	reth::{
 		ethereum::node::engine::EthPayloadAttributes as PayloadAttributes,
+		node::builder::Node,
 		optimism::{
 			chainspec::{
 				self,
@@ -20,35 +21,31 @@ use {
 					TX_SET_L1_BLOCK_OP_MAINNET_BLOCK_124665056,
 				},
 			},
-			node::{OpAddOns, OpEngineTypes, OpNode, OpPayloadAttributes},
+			node::{OpEngineTypes, OpNode, OpPayloadAttributes},
 		},
 		payload::builder::PayloadId,
 		rpc::types::{Block, engine::ForkchoiceState},
 	},
 	reth_ipc::client::IpcClientBuilder,
+	reth_optimism_node::args::RollupArgs,
 	reth_optimism_rpc::OpEngineApiClient,
 };
 
-impl NetworkSelector for Optimism {
-	type Network = op_alloy::network::Optimism;
-}
-
 impl TestNodeFactory<Optimism> for Optimism {
+	type CliExtArgs = RollupArgs;
 	type ConsensusDriver = OptimismConsensusDriver;
 
-	async fn create_test_node(
+	async fn create_test_node_with_args(
 		pipeline: Pipeline<Optimism>,
+		args: Self::CliExtArgs,
 	) -> eyre::Result<LocalNode<Optimism, Self::ConsensusDriver>> {
 		let chainspec = chainspec::OP_DEV.as_ref().clone().with_funded_accounts();
 		LocalNode::new(OptimismConsensusDriver, chainspec, move |builder| {
+			let opnode = OpNode::new(args);
 			builder
 				.with_types::<OpNode>()
-				.with_components(
-					OpNode::default()
-						.components()
-						.payload(pipeline.into_service()),
-				)
-				.with_add_ons(OpAddOns::default())
+				.with_components(opnode.components().payload(pipeline.into_service()))
+				.with_add_ons(opnode.add_ons())
 		})
 		.await
 	}
@@ -58,7 +55,7 @@ pub struct OptimismConsensusDriver;
 impl<P> ConsensusDriver<P> for OptimismConsensusDriver
 where
 	P: traits::PlatformExecBounds<Optimism>
-		+ NetworkSelector<Network = AlloyOpNetwork>,
+		+ PlatformWithRpcTypes<RpcTypes = AlloyOpNetwork>,
 {
 	type Params = ();
 

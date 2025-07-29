@@ -22,15 +22,13 @@ use {
 	reth_rpc_api::EngineApiClient,
 };
 
-impl NetworkSelector for Ethereum {
-	type Network = alloy::network::Ethereum;
-}
-
 impl TestNodeFactory<Ethereum> for Ethereum {
+	type CliExtArgs = ();
 	type ConsensusDriver = EthConsensusDriver;
 
-	async fn create_test_node(
+	async fn create_test_node_with_args(
 		pipeline: Pipeline<Ethereum>,
+		(): Self::CliExtArgs,
 	) -> eyre::Result<LocalNode<Ethereum, Self::ConsensusDriver>> {
 		let chainspec = chainspec::DEV.as_ref().clone().with_funded_accounts();
 		LocalNode::new(EthConsensusDriver, chainspec, move |builder| {

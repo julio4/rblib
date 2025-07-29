@@ -1,9 +1,12 @@
-use crate::{prelude::*, steps::*, test_utils::*};
+use {
+	crate::{prelude::*, steps::*, test_utils::*},
+	alloy_origin::signers::local::LocalSigner,
+};
 
 #[test]
 fn only_steps() {
 	let pipeline = Pipeline::<Ethereum>::default()
-		.with_epilogue(BuilderEpilogue)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(GatherBestTransactions)
 		.with_step(OrderByPriorityFee)
 		.with_step(RemoveRevertedTransactions);
@@ -15,20 +18,20 @@ fn only_steps() {
 #[cfg(feature = "optimism")]
 fn only_steps_optimism_specific() {
 	let pipeline = Pipeline::<Optimism>::default()
-		.with_epilogue(BuilderEpilogue)
 		.with_prologue(OptimismPrologue)
 		.with_step(GatherBestTransactions)
 		.with_step(OrderByPriorityFee)
 		.with_step(OrderByTotalProfit)
-		.with_step(RemoveRevertedTransactions);
+		.with_step(RemoveRevertedTransactions)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
 	println!("{pipeline:#?}");
 }
 
 #[test]
 fn nested_verbose() {
-	let top_level =
-		Pipeline::<Ethereum>::default().with_epilogue(BuilderEpilogue);
+	let top_level = Pipeline::<Ethereum>::default()
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
 	let nested = Pipeline::<Ethereum>::default()
 		.with_step(AppendOneTransactionFromPool::default())
@@ -45,7 +48,7 @@ fn nested_verbose() {
 #[test]
 fn nested_one_concise() {
 	let top_level = Pipeline::<Ethereum>::default()
-		.with_epilogue(BuilderEpilogue)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_pipeline(Loop, (AppendOneTransactionFromPool::default(),));
 
 	println!("{top_level:#?}");
@@ -60,7 +63,7 @@ fn nested_many_concise() {
 
 	let top_level = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
-		.with_epilogue(BuilderEpilogue)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(TestStep1)
 		.with_pipeline(
 			Loop,
@@ -108,7 +111,7 @@ fn flashblocks_example_closure() {
 
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
-		.with_epilogue(BuilderEpilogue)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(WebSocketBeginBlock)
 		.with_pipeline(Loop, |nested: Pipeline<Optimism>| {
 			nested
@@ -162,7 +165,7 @@ fn flashblocks_example_concise() {
 
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
-		.with_epilogue(BuilderEpilogue)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(WebSocketBeginBlock)
 		.with_pipeline(Loop, |nested: Pipeline<Optimism>| {
 			nested

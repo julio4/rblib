@@ -6,7 +6,13 @@
 //! support other platforms as well.
 
 use {
-	crate::{prelude::*, reth},
+	crate::{alloy, prelude::*, reth},
+	alloy::{
+		consensus::{SignableTransaction, Signed},
+		network::Network as AlloyNetwork,
+		signers::Signature,
+	},
+	reth::ethereum::primitives::SignedTransaction,
 	serde::{Serialize, de::DeserializeOwned},
 	std::sync::Arc,
 };
@@ -25,7 +31,7 @@ mod optimism;
 pub use optimism::*;
 
 /// This type abstracts the platform specific types of the undelying node that
-/// is building or manipulating payloads.
+/// is building block payloads.
 ///
 /// The payload builder API is agnostic to the underlying payload types, header
 /// types, transaction types, and other platform-specific details. It's primary
@@ -101,4 +107,23 @@ pub trait Platform:
 	where
 		P: traits::PlatformExecBounds<Self>,
 		Provider: traits::ProviderBounds<Self>;
+}
+
+/// This is an optional extention trait for platforms that want to provide info
+/// about their RPC types. Implementing this trait for a platform makes it
+/// usable with all `alloy` utilities such as transaction builders, signers, rpc
+/// clients, etc.
+///
+/// In Pipelines some steps require platforms to implement this trait if they
+/// produce new transactions as part of their logic and want to remain
+/// platform-agnostic, such as [`BuilderEpilogue`].
+pub trait PlatformWithRpcTypes: Platform {
+	type RpcTypes: AlloyNetwork<
+			Header = types::Header<Self>,
+			UnsignedTx: SignableTransaction<Signature>,
+			TxEnvelope: From<Signed<types::UnsignedTx<Self>, Signature>>
+			              + SignedTransaction
+			              + From<types::Transaction<Self>>
+			              + Into<types::Transaction<Self>>,
+		>;
 }

@@ -53,7 +53,7 @@ pub(crate) use fake_step;
 /// payload as an input and returns the output of the step control flow result.
 ///
 /// The step is invoked with full node facilities and in realistic condition.
-pub struct OneStep<P: Platform + NetworkSelector> {
+pub struct OneStep<P: PlatformWithRpcTypes> {
 	pipeline: Pipeline<P>,
 	pool_txs: Vec<BoxedTxBuilderFn<P>>,
 	payload_input: Vec<BarrierOrTxFn<P>>,
@@ -63,7 +63,7 @@ pub struct OneStep<P: Platform + NetworkSelector> {
 	break_rx: UnboundedReceiver<Checkpoint<P>>,
 }
 
-impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
+impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 	pub fn new(step: impl Step<P>) -> Self {
 		let (prepopulate, payload_tx) = PopulatePayload::new();
 		let (record_ok, ok_rx) = RecordOk::new();
@@ -108,8 +108,8 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 	pub fn with_payload_tx(
 		mut self,
 		builder: impl FnMut(
-			select::TransactionRequest<P>,
-		) -> select::TransactionRequest<P>
+			types::TransactionRequest<P>,
+		) -> types::TransactionRequest<P>
 		+ 'static,
 	) -> Self {
 		self
@@ -132,8 +132,8 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 	pub fn with_pool_tx(
 		mut self,
 		builder: impl FnMut(
-			select::TransactionRequest<P>,
-		) -> select::TransactionRequest<P>
+			types::TransactionRequest<P>,
+		) -> types::TransactionRequest<P>
 		+ 'static,
 	) -> Self {
 		self.pool_txs.push(Box::new(builder));
@@ -195,11 +195,11 @@ impl<P: Platform + NetworkSelector + TestNodeFactory<P>> OneStep<P> {
 	}
 }
 
-struct PopulatePayload<P: Platform + NetworkSelector> {
+struct PopulatePayload<P: PlatformWithRpcTypes> {
 	receiver: Mutex<UnboundedReceiver<BarrierOrTx<P>>>,
 }
 
-impl<P: Platform + NetworkSelector> PopulatePayload<P> {
+impl<P: PlatformWithRpcTypes> PopulatePayload<P> {
 	pub fn new() -> (Self, UnboundedSender<BarrierOrTx<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(
@@ -211,7 +211,7 @@ impl<P: Platform + NetworkSelector> PopulatePayload<P> {
 	}
 }
 
-impl<P: Platform + NetworkSelector> Step<P> for PopulatePayload<P> {
+impl<P: PlatformWithRpcTypes> Step<P> for PopulatePayload<P> {
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
@@ -304,19 +304,18 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 	}
 }
 
-enum BarrierOrTxFn<P: Platform + NetworkSelector> {
+enum BarrierOrTxFn<P: PlatformWithRpcTypes> {
 	Barrier,
 	Tx(BoxedTxBuilderFn<P>),
 }
 
-enum BarrierOrTx<P: Platform + NetworkSelector> {
+enum BarrierOrTx<P: PlatformWithRpcTypes> {
 	Barrier,
-	Tx(select::TxEnvelope<P>),
+	Tx(types::TxEnvelope<P>),
 }
 
-type BoxedTxBuilderFn<P> = Box<
-	dyn FnMut(select::TransactionRequest<P>) -> select::TransactionRequest<P>,
->;
+type BoxedTxBuilderFn<P> =
+	Box<dyn FnMut(types::TransactionRequest<P>) -> types::TransactionRequest<P>>;
 
 #[cfg(test)]
 mod tests {

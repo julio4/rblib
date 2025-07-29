@@ -1,7 +1,6 @@
 use {
-	crate::{args::OpRbuilderArgs, platform::FlashBlocks},
+	crate::{args::OpRbuilderArgs, build_pipeline, platform::FlashBlocks},
 	rblib::{
-		alloy,
 		alloy::{
 			network::{TransactionBuilder, TransactionResponse, TxSignerSync},
 			optimism::{
@@ -11,57 +10,41 @@ use {
 			primitives::{Address, U256},
 			signers::local::PrivateKeySigner,
 		},
-		pool::{AppendOneOrder, OrderPool},
+		pool::OrderPool,
 		prelude::*,
 		reth::{
+			builder::Node,
 			core::primitives::SignedTransaction,
-			optimism::{
-				chainspec,
-				node::{OpAddOns, OpNode},
-				primitives::OpTransactionSigned,
-			},
+			optimism::{chainspec, node::OpNode, primitives::OpTransactionSigned},
 			primitives::Recovered,
 		},
-		steps::*,
 		test_utils::*,
 	},
 };
 
 mod bundles;
-
-impl NetworkSelector for FlashBlocks {
-	type Network = alloy::optimism::network::Optimism;
-}
+mod ordering;
+mod revert;
+mod smoke;
 
 impl TestNodeFactory<FlashBlocks> for FlashBlocks {
+	type CliExtArgs = OpRbuilderArgs;
 	type ConsensusDriver = OptimismConsensusDriver;
 
-	async fn create_test_node(
+	async fn create_test_node_with_args(
 		_: Pipeline<FlashBlocks>,
+		cli_args: Self::CliExtArgs,
 	) -> eyre::Result<LocalNode<FlashBlocks, Self::ConsensusDriver>> {
 		let chainspec = chainspec::OP_DEV.as_ref().clone().with_funded_accounts();
 		LocalNode::new(OptimismConsensusDriver, chainspec, move |builder| {
-			let cli_args = OpRbuilderArgs::default();
 			let pool = OrderPool::<FlashBlocks>::default();
-
-			let pipeline = Pipeline::<FlashBlocks>::default()
-				.with_prologue(OptimismPrologue)
-				.with_pipeline(
-					Loop,
-					(
-						AppendOneOrder::from_pool(&pool),
-						OrderByPriorityFee,
-						RemoveRevertedTransactions,
-					),
-				)
-				.with_epilogue(BuilderEpilogue);
-
+			let pipeline = build_pipeline(&cli_args, &pool);
 			let opnode = OpNode::new(cli_args.rollup_args.clone());
 
 			builder
 				.with_types::<OpNode>()
 				.with_components(opnode.components().payload(pipeline.into_service()))
-				.with_add_ons(OpAddOns::default())
+				.with_add_ons(opnode.add_ons())
 				.extend_rpc_modules(move |mut rpc_ctx| pool.configure_rpc(&mut rpc_ctx))
 		})
 		.await
@@ -102,7 +85,7 @@ pub fn transfer_tx_compact(
 }
 
 #[tokio::test]
-async fn test_node_produces_empty_block() -> eyre::Result<()> {
+async fn testing_node_works_with_flashblocks_platform() -> eyre::Result<()> {
 	let node = FlashBlocks::create_test_node(Pipeline::default()).await?;
 	assert_eq!(node.chain_id(), 1337);
 

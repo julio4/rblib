@@ -9,7 +9,7 @@ use {
 };
 
 #[tokio::test]
-async fn bundle_with_one_valid_tx_is_included() -> eyre::Result<()> {
+async fn one_valid_tx_included() -> eyre::Result<()> {
 	let node = FlashBlocks::create_test_node(Pipeline::default()).await?;
 
 	let bundle_with_one_tx =
@@ -36,7 +36,7 @@ async fn bundle_with_one_valid_tx_is_included() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn bundle_with_two_valid_txs_is_included() -> eyre::Result<()> {
+async fn two_valid_txs_included() -> eyre::Result<()> {
 	let node = FlashBlocks::create_test_node(Pipeline::default()).await?;
 
 	let bundle_with_two_txs = FlashBlocksBundle::with_transactions(vec![
@@ -61,4 +61,29 @@ async fn bundle_with_two_valid_txs_is_included() -> eyre::Result<()> {
 	assert_eq!(block.tx(2).unwrap().value(), U256::from(2_000_000));
 
 	Ok(())
+}
+
+#[tokio::test]
+async fn min_block_number_constraint() -> eyre::Result<()> {
+	todo!()
+}
+
+#[tokio::test]
+async fn max_block_number_constraint() -> eyre::Result<()> {
+	todo!()
+}
+
+#[tokio::test]
+async fn min_block_timestamp_constraint() -> eyre::Result<()> {
+	todo!()
+}
+
+#[tokio::test]
+async fn max_block_timestamp_constraint() -> eyre::Result<()> {
+	todo!()
+}
+
+#[tokio::test]
+async fn empty_bundle_rejected_by_rpc() -> eyre::Result<()> {
+	todo!()
 }

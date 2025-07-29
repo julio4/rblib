@@ -1,5 +1,5 @@
 use {
-	super::{Order, OrderPool},
+	super::OrderPool,
 	crate::{
 		alloy::primitives::B256,
 		prelude::*,
@@ -56,7 +56,7 @@ where
 	/// For bundles that do not fit within the gas limit, attempt to include them
 	/// by removing some of their optional transactions.
 	///
-	/// TODO: Implement this.
+	/// TODO: Implement this feature.
 	#[must_use]
 	pub fn allow_partial_orders(mut self) -> Self {
 		self.partial_orders = true;
@@ -68,13 +68,22 @@ impl<P: Platform> Step<P> for AppendOneOrder<P>
 where
 	P::Bundle: Serialize + DeserializeOwned,
 {
-	/// Clear the list of previously added transactions before the we begin
-	/// building for a new payload.
 	async fn before_job(
 		self: Arc<Self>,
 		_: Arc<StepContext<P>>,
 	) -> Result<(), PayloadBuilderError> {
+		// Clear the list of attempted orders for this payload job.
 		self.attempted.clear();
+		Ok(())
+	}
+
+	async fn after_job(
+		self: Arc<Self>,
+		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> Result<(), PayloadBuilderError> {
+		if let Ok(built_payload) = result.as_ref() {
+			self.pool.report_produced_payload(built_payload);
+		}
 		Ok(())
 	}
 
@@ -83,21 +92,9 @@ where
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
-		let mut orders = self.pool.best_orders();
-		let history = payload.history();
-
-		if history.gas_used() >= ctx.limits().gas_limit {
+		if payload.cumulative_gas_used() >= ctx.limits().gas_limit {
 			// We've already reached the gas limit.
 			return ControlFlow::Break(payload);
-		}
-
-		if let Some(n_limit) = ctx.limits().max_transactions {
-			if history.transactions().count() >= n_limit {
-				// We've reached the maximum number of txs in the block.
-				// This is not a standard ethereum limit, but it may be configured
-				// by the [`Limits`] trait implementation.
-				return ControlFlow::Break(payload);
-			}
 		}
 
 		let existing_txs: HashSet<_> = payload
@@ -106,6 +103,17 @@ where
 			.map(|tx| tx.tx_hash())
 			.copied()
 			.collect();
+
+		if let Some(n_limit) = ctx.limits().max_transactions {
+			if existing_txs.len() >= n_limit {
+				// We've reached the maximum number of txs in the block.
+				// This is not a standard ethereum limit, but it may be configured
+				// by the [`Limits`] trait implementation.
+				return ControlFlow::Break(payload);
+			}
+		}
+
+		let mut orders = self.pool.best_orders_for_block(ctx.block());
 
 		loop {
 			// check if we have reached the deadline
@@ -126,8 +134,15 @@ where
 			};
 
 			let order_hash = order.hash();
+
+			// tell the order pool that there was an inclusion attempt for this
+			// order, this will help the pool make better decisions in future
+			// `best_orders()` calls.
+			self.pool.report_inclusion_attempt(order_hash, ctx.block());
+
 			if self.attempted.contains(&order_hash) {
-				// This order was already attempted to be added to the payload.
+				// This order was already attempted to be added to the payload for this
+				// payload job.
 				continue;
 			}
 
@@ -142,23 +157,36 @@ where
 				.iter()
 				.any(|tx| existing_txs.contains(tx.tx_hash()))
 			{
-				// this order is not eligible for adding to the payload
+				// this order is not eligible for inclusion in the payload because it
+				// contains transactions that are already included in the payload.
 				continue;
 			}
 
-			let Ok(executable): Result<Executable<P>, _> = (match order {
-				Order::Transaction(tx) => tx.try_into_executable(),
-				Order::Bundle(bundle) => bundle.try_into_executable(),
-			}) else {
-				continue;
+			let executable = match order.try_into_executable() {
+				Ok(executable) => executable,
+				Err(err) => {
+					// Order has transactions that cannot have their signers recovered.
+					self.pool.report_execution_error(
+						order_hash,
+						ExecutionError::InvalidSignature(err),
+					);
+					continue;
+				}
 			};
 
-			// we could potentially fit this order into the payload,
-			// create a new state checkpoint with the order applied and check if we
-			// can still fit within the gas limit.
-			let Ok(new_payload) = payload.apply(executable) else {
-				// skip this order, it cannot be applied to the payload
-				continue;
+			// try to create a new payload checkpoint with the order, we could
+			// potentially fit this order into the payload, but we need to check if
+			// it fits within the gas limit.
+			let new_payload = match payload.apply(executable) {
+				Ok(checkpoint) => checkpoint,
+				Err(err) => {
+					// skip this order, it cannot be applied to the payload and let the
+					// order pool know about this failure so it can make better
+					// decisions in the future when it returns the best orders
+					// iterator.
+					self.pool.report_execution_error(order_hash, err);
+					continue;
+				}
 			};
 
 			if new_payload.cumulative_gas_used() > ctx.limits().gas_limit {

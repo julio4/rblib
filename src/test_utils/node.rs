@@ -1,5 +1,5 @@
 use {
-	super::{platform::select, *},
+	super::*,
 	crate::{alloy, prelude::*, reth},
 	alloy::{
 		consensus::{BlockHeader, SignableTransaction},
@@ -49,7 +49,7 @@ use {
 /// for generating `ForkChoiceUpdate`, `GetPayload`, `SetPayload` and other
 /// Engine API calls to trigger payload building and canonical chain updates on
 /// test [`LocalNode`].
-pub trait ConsensusDriver<P: Platform + NetworkSelector>:
+pub trait ConsensusDriver<P: PlatformWithRpcTypes>:
 	Sized + Unpin + Send + Sync + 'static
 {
 	type Params: Default;
@@ -75,7 +75,7 @@ pub trait ConsensusDriver<P: Platform + NetworkSelector>:
 		node: &LocalNode<P, Self>,
 		payload_id: PayloadId,
 		params: &Self::Params,
-	) -> impl Future<Output = eyre::Result<select::BlockResponse<P>>>;
+	) -> impl Future<Output = eyre::Result<types::BlockResponse<P>>>;
 }
 
 /// This is used to create local execution nodes for testing purposes that can
@@ -84,7 +84,7 @@ pub trait ConsensusDriver<P: Platform + NetworkSelector>:
 /// RPC.
 pub struct LocalNode<P, C>
 where
-	P: Platform + NetworkSelector,
+	P: PlatformWithRpcTypes,
 	C: ConsensusDriver<P>,
 {
 	/// The consensus driver used to build blocks and interact with the node.
@@ -96,7 +96,7 @@ where
 	/// The configuration of the node.
 	config: NodeConfig<types::ChainSpec<P>>,
 	/// The provider used to interact with the node.
-	provider: RootProvider<select::Network<P>>,
+	provider: RootProvider<types::RpcTypes<P>>,
 	/// The task manager used to manage async tasks in the node.
 	tasks: Option<TaskManager>,
 	/// The block time used by the node.
@@ -108,7 +108,7 @@ where
 
 impl<P, C> LocalNode<P, C>
 where
-	P: Platform + NetworkSelector,
+	P: PlatformWithRpcTypes,
 	C: ConsensusDriver<P>,
 {
 	/// Unless otherwise specified, The payload building process will be given
@@ -158,7 +158,7 @@ where
 		rpc_ready_rx.await?;
 
 		let provider =
-			ProviderBuilder::<Identity, Identity, select::Network<P>>::default()
+			ProviderBuilder::<Identity, Identity, types::RpcTypes<P>>::default()
 				.connect_ipc(config.rpc.ipcpath.clone().into())
 				.await?;
 
@@ -191,7 +191,7 @@ where
 	}
 
 	/// Returns a provider connected to this local node instance.
-	pub const fn provider(&self) -> &RootProvider<select::Network<P>> {
+	pub const fn provider(&self) -> &RootProvider<types::RpcTypes<P>> {
 		&self.provider
 	}
 
@@ -211,7 +211,7 @@ where
 
 	/// Triggers the building of a new block on this node with default paramters
 	/// and returns the newly built block.
-	pub async fn next_block(&self) -> eyre::Result<select::BlockResponse<P>> {
+	pub async fn next_block(&self) -> eyre::Result<types::BlockResponse<P>> {
 		self.next_block_with_params(C::Params::default()).await
 	}
 
@@ -220,7 +220,7 @@ where
 	pub async fn next_block_with_params(
 		&self,
 		params: C::Params,
-	) -> eyre::Result<select::BlockResponse<P>> {
+	) -> eyre::Result<types::BlockResponse<P>> {
 		let latest_block = self
 			.provider()
 			.get_block_by_number(BlockNumberOrTag::Latest)
@@ -253,8 +253,8 @@ where
 	}
 
 	/// Creates a new transaction builder compatible with this local node.
-	pub fn build_tx(&self) -> select::TransactionRequest<P> {
-		select::TransactionRequest::<P>::default()
+	pub fn build_tx(&self) -> types::TransactionRequest<P> {
+		types::TransactionRequest::<P>::default()
 			.with_chain_id(self.chain_id())
 			.with_random_funded_signer()
 			.with_gas_limit(210_000)
@@ -269,8 +269,8 @@ where
 	/// explicitly.
 	pub async fn send_tx(
 		&self,
-		request: impl TransactionBuilder<select::Network<P>>,
-	) -> eyre::Result<PendingTransactionBuilder<select::Network<P>>> {
+		request: impl TransactionBuilder<types::RpcTypes<P>>,
+	) -> eyre::Result<PendingTransactionBuilder<types::RpcTypes<P>>> {
 		let Some(from) = request.from() else {
 			return Err(eyre::eyre!(
 				"Transaction request must have a 'from' field, use sign_and_send_tx \
@@ -290,9 +290,9 @@ where
 	/// using the provided signer.
 	pub async fn sign_and_send_tx(
 		&self,
-		request: impl TransactionBuilder<select::Network<P>>,
+		request: impl TransactionBuilder<types::RpcTypes<P>>,
 		signer: impl TxSignerSync<Signature> + Send + Sync + 'static,
-	) -> eyre::Result<PendingTransactionBuilder<select::Network<P>>> {
+	) -> eyre::Result<PendingTransactionBuilder<types::RpcTypes<P>>> {
 		let request = request.with_from(signer.address());
 
 		// if nonce is not explictly set, fetch it from the provider
@@ -340,7 +340,7 @@ where
 
 		let mut tx = request.build_unsigned()?;
 		let signature = signer.sign_transaction_sync(&mut tx)?;
-		let envelope: select::TxEnvelope<P> = tx.into_signed(signature).into();
+		let envelope: types::TxEnvelope<P> = tx.into_signed(signature).into();
 		let encoded = envelope.encoded_2718();
 
 		self
@@ -353,7 +353,7 @@ where
 
 impl<P, C> Drop for LocalNode<P, C>
 where
-	P: Platform + NetworkSelector,
+	P: PlatformWithRpcTypes,
 	C: ConsensusDriver<P>,
 {
 	fn drop(&mut self) {
@@ -372,7 +372,7 @@ where
 
 impl<P, C> Future for LocalNode<P, C>
 where
-	P: Platform + NetworkSelector,
+	P: PlatformWithRpcTypes,
 	C: ConsensusDriver<P>,
 {
 	type Output = eyre::Result<()>;

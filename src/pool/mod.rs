@@ -1,7 +1,7 @@
 //! Order pool
 
 use crate::{
-	alloy::primitives::B256,
+	alloy::{consensus::crypto::RecoveryError, primitives::B256},
 	prelude::*,
 	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
 };
@@ -37,6 +37,13 @@ impl<P: Platform> Order<P> {
 		match self {
 			Order::Bundle(bundle) => bundle.transactions(),
 			Order::Transaction(tx) => core::slice::from_ref(tx),
+		}
+	}
+
+	pub fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
+		match self {
+			Order::Transaction(tx) => tx.try_into_executable(),
+			Order::Bundle(bundle) => bundle.try_into_executable(),
 		}
 	}
 }

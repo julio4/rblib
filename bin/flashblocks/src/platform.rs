@@ -51,3 +51,8 @@ impl Platform for FlashBlocks {
 		Optimism::build_payload::<P, Provider>(payload, provider)
 	}
 }
+
+/// Inherits all optimism RPC types for the FlashBlocks platform.
+impl PlatformWithRpcTypes for FlashBlocks {
+	type RpcTypes = types::RpcTypes<Optimism>;
+}

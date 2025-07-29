@@ -28,7 +28,7 @@ pub use {
 	exts::*,
 	mock::{GenesisProviderFactory, GenesisStateProvider},
 	node::{ConsensusDriver, LocalNode},
-	platform::{NetworkSelector, TestNodeFactory, TestablePlatform, select},
+	platform::{TestNodeFactory, TestablePlatform},
 	rblib_tests_macros::{if_platform, rblib_test},
 	step::OneStep,
 };

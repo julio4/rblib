@@ -91,7 +91,7 @@ pub trait Bundle<P: Platform>:
 }
 
 /// The eligibility of a bundle for inclusion in a block.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Eligibility {
 	/// The bundle is eligible for inclusion in this given block. This does not
 	/// mean that the bundle will actually be included, but only that static

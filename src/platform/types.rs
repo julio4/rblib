@@ -99,3 +99,24 @@ pub type DefaultLimits<P: Platform> = P::DefaultLimits;
 /// The result of executing a transaction in the EVM.
 pub type TransactionExecutionResult<P: Platform> =
 	ExecutionResult<EvmHaltReason<P>>;
+
+/// For platforms that implement the `PlatformWithRpcTypes` trait, this type
+/// extracts the top-level alloy network types aggregate type.
+pub type RpcTypes<P: PlatformWithRpcTypes> =
+	<P as PlatformWithRpcTypes>::RpcTypes;
+
+/// Extracts the type that allows interactions with RPC calls that return
+/// blocks.
+pub type BlockResponse<P: PlatformWithRpcTypes> =
+	<RpcTypes<P> as AlloyNetwork>::BlockResponse;
+
+/// Extracts the type that allows building transactions for the platform
+/// using the alloy-rs utilities.
+pub type TransactionRequest<P: PlatformWithRpcTypes> =
+	<RpcTypes<P> as AlloyNetwork>::TransactionRequest;
+
+pub type TxEnvelope<P: PlatformWithRpcTypes> =
+	<RpcTypes<P> as AlloyNetwork>::TxEnvelope;
+
+pub type UnsignedTx<P: PlatformWithRpcTypes> =
+	<RpcTypes<P> as AlloyNetwork>::UnsignedTx;

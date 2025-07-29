@@ -1,12 +1,6 @@
 use {
 	super::{ConsensusDriver, LocalNode},
-	crate::{alloy, prelude::*, reth},
-	alloy::{
-		consensus::{SignableTransaction, Signed},
-		network::Network as AlloyNetwork,
-		signers::Signature,
-	},
-	reth::ethereum::primitives::SignedTransaction,
+	crate::prelude::*,
 };
 
 /// This trait is used to automatically select the correct local test node type
@@ -42,8 +36,9 @@ use {
 /// variants of all internal unit tests for all platforms. You can use
 /// [`rblib_test`] with externally defined platforms as long as they implement
 /// this trait.
-pub trait TestNodeFactory<P: Platform + NetworkSelector> {
+pub trait TestNodeFactory<P: Platform + PlatformWithRpcTypes> {
 	type ConsensusDriver: ConsensusDriver<P>;
+	type CliExtArgs: Default + Send + Sync;
 
 	/// Using the platform definition type alone and a pipeline this will create a
 	/// fully functional [`LocalNode`] that is an in-process reth node with the
@@ -52,8 +47,28 @@ pub trait TestNodeFactory<P: Platform + NetworkSelector> {
 	/// The test node has all the battery included, for accessing the node RPC
 	/// interface, triggering the EL <-> CL payload building protocol, and so on.
 	/// See docs for [`LocalNode`] for more details.
+	///
+	/// This variant will use the default CLI arguments for the platform.
 	fn create_test_node(
 		pipeline: Pipeline<P>,
+	) -> impl Future<Output = eyre::Result<LocalNode<P, Self::ConsensusDriver>>>
+	{
+		Self::create_test_node_with_args(pipeline, Self::CliExtArgs::default())
+	}
+
+	/// Using the platform definition type alone and a pipeline this will create a
+	/// fully functional [`LocalNode`] that is an in-process reth node with the
+	/// pipeline configured as they payload builder.
+	///
+	/// The test node has all the battery included, for accessing the node RPC
+	/// interface, triggering the EL <-> CL payload building protocol, and so on.
+	/// See docs for [`LocalNode`] for more details.
+	///
+	/// This variant allows to pass the `Ext` type that is used to extend the reth
+	/// node cli arguments.
+	fn create_test_node_with_args(
+		pipeline: Pipeline<P>,
+		args: Self::CliExtArgs,
 	) -> impl Future<Output = eyre::Result<LocalNode<P, Self::ConsensusDriver>>>;
 }
 
@@ -65,43 +80,11 @@ pub trait TestNodeFactory<P: Platform + NetworkSelector> {
 /// many platforms without needing to create separate versions of the test for
 /// each platform.
 pub trait TestablePlatform:
-	Platform + NetworkSelector + TestNodeFactory<Self>
+	PlatformWithRpcTypes + TestNodeFactory<Self>
 {
 }
 
 /// Blanket implementation for all platforms that implement `Platform` and
 /// `NetworkSelector` and `TestNodeFactory`.
-impl<T> TestablePlatform for T where
-	T: Platform + NetworkSelector + TestNodeFactory<T>
-{
-}
-
-/// A type used in tests to bind alloy's network traits to a specific platform.
-///
-/// This trait is used to automatically configure the RPC and Engine API
-/// interfaces that are part of the local test node apis.
-pub trait NetworkSelector {
-	type Network: AlloyNetwork<
-			UnsignedTx: SignableTransaction<Signature>,
-			TxEnvelope: From<Signed<select::UnsignedTx<Self>, Signature>>
-			              + SignedTransaction,
-		>;
-}
-
-pub mod select {
-	use super::{AlloyNetwork, NetworkSelector};
-
-	pub type Network<P: NetworkSelector> = <P as NetworkSelector>::Network;
-
-	pub type BlockResponse<P: NetworkSelector> =
-		<Network<P> as AlloyNetwork>::BlockResponse;
-
-	pub type TxEnvelope<P: NetworkSelector> =
-		<Network<P> as AlloyNetwork>::TxEnvelope;
-
-	pub type UnsignedTx<P: NetworkSelector> =
-		<Network<P> as AlloyNetwork>::UnsignedTx;
-
-	pub type TransactionRequest<P: NetworkSelector> =
-		<Network<P> as AlloyNetwork>::TransactionRequest;
-}
+impl<T> TestablePlatform for T where T: PlatformWithRpcTypes + TestNodeFactory<T>
+{}

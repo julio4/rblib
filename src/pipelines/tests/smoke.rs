@@ -129,17 +129,15 @@ async fn all_transactions_included<P: TestablePlatform>() {
 #[ignore = "This test never completes but ensures that this syntax compiles"]
 #[allow(clippy::large_futures)]
 async fn reth_minimal_integration_example() {
-	let pipeline = Pipeline::<Ethereum>::default()
-		.with_epilogue(BuilderEpilogue)
-		.with_pipeline(
-			Loop,
-			(
-				AppendOneTransactionFromPool::default(),
-				OrderByPriorityFee,
-				OrderByTotalProfit,
-				RemoveRevertedTransactions,
-			),
-		);
+	let pipeline = Pipeline::<Ethereum>::default().with_pipeline(
+		Loop,
+		(
+			AppendOneTransactionFromPool::default(),
+			OrderByPriorityFee,
+			OrderByTotalProfit,
+			RemoveRevertedTransactions,
+		),
+	);
 
 	Cli::parse_args()
 		.run(|builder, _| async move {

@@ -77,6 +77,11 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 
 /// This type is returned from every step in the pipeline and it controls the
 /// next action of the pipeline execution.
+///
+/// TODO:
+/// 	Consider reducing the number of variant to just `Ok` and `Break` and make
+///   `ControlFlow` a `Result` type. This will allow us to use the `?` operator
+///   in the step implementations and make the code more concise.
 #[derive(Debug)]
 pub enum ControlFlow<P: Platform> {
 	/// Immediately terminate the pipeline execution with an error and

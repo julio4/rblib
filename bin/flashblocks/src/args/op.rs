@@ -1,4 +1,5 @@
 use {
+	crate::args::signer::BuilderSigner,
 	clap::Parser,
 	eyre::{Result, eyre},
 	rblib::reth::optimism::{cli::commands::Commands, node::args::RollupArgs},
@@ -23,6 +24,10 @@ pub struct OpRbuilderArgs {
 	/// Whether to enable revert protection by default
 	#[arg(long = "builder.enable-revert-protection", default_value = "false")]
 	pub enable_revert_protection: bool,
+
+	/// Builder secret key for signing last transaction in block
+	#[arg(long = "rollup.builder-secret-key", env = "BUILDER_SECRET_KEY")]
+	pub builder_signer: Option<BuilderSigner>,
 
 	/// Path to builder playgorund to automatically start up the node connected
 	/// to it

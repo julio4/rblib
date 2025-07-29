@@ -1,22 +1,20 @@
 use {
-	crate::{
-		alloy::{
-			eips::Encodable2718,
-			optimism::consensus::OpPooledTransaction as AlloyPoolTx,
-			primitives::Bytes,
+	crate::{alloy, prelude::*, reth},
+	alloy::{
+		eips::Encodable2718,
+		optimism::consensus::OpPooledTransaction as AlloyPoolTx,
+		primitives::Bytes,
+	},
+	reth::{
+		api::NodeTypes,
+		chainspec::EthChainSpec,
+		optimism::{
+			forks::OpHardforks,
+			node::{payload::builder::*, txpool::OpPooledTransaction, *},
 		},
-		prelude::*,
-		reth::{
-			api::NodeTypes,
-			chainspec::EthChainSpec,
-			optimism::{
-				forks::OpHardforks,
-				node::{payload::builder::*, txpool::OpPooledTransaction, *},
-			},
-			payload::{builder::*, util::PayloadTransactionsFixed},
-			primitives::Recovered,
-			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
-		},
+		payload::{builder::*, util::PayloadTransactionsFixed},
+		primitives::Recovered,
+		revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
 	},
 	serde::{Deserialize, Serialize},
 };
@@ -140,6 +138,10 @@ impl Platform for Optimism {
 		// Done!
 		Ok(built_payload)
 	}
+}
+
+impl PlatformWithRpcTypes for Optimism {
+	type RpcTypes = alloy::optimism::network::Optimism;
 }
 
 /// The op builder will automatically inject all transactions that are in the

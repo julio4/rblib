@@ -324,7 +324,7 @@ impl<P: Platform> Bundle<P> for FlashbotsBundle<P> {
 
 		if self
 			.max_timestamp
-			.is_some_and(|max_ts| max_ts > block.timestamp())
+			.is_some_and(|max_ts| max_ts < block.timestamp())
 		{
 			return true;
 		}

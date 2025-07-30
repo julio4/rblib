@@ -126,7 +126,7 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 
 		if self
 			.max_timestamp
-			.is_some_and(|max_ts| max_ts > block.timestamp())
+			.is_some_and(|max_ts| max_ts < block.timestamp())
 		{
 			// this bundle will never be eligible for inclusion anymore
 			return Eligibility::PermanentlyIneligible;
@@ -161,7 +161,7 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 
 		if self
 			.max_timestamp
-			.is_some_and(|max_ts| max_ts > block.timestamp())
+			.is_some_and(|max_ts| max_ts < block.timestamp())
 		{
 			return true;
 		}

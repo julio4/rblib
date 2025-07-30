@@ -165,14 +165,12 @@ async fn max_block_number_in_past() -> eyre::Result<()> {
 async fn max_block_timestamp_in_past() -> eyre::Result<()> {
 	// node at genesis, block 0
 	let node = FlashBlocks::test_node().await?;
-
 	let genesis_timestamp = node.config().chain.genesis_timestamp();
-
 	let mut bundle =
 		FlashBlocksBundle::with_transactions(vec![transfer_tx_compact(
 			0, 0, 1_000_000,
 		)]);
-	bundle.max_block_number = Some(genesis_timestamp.saturating_sub(1));
+	bundle.max_timestamp = Some(genesis_timestamp.saturating_sub(1));
 
 	let result = BundlesApiClient::<FlashBlocks>::send_bundle(
 		&node.rpc_client().await?,

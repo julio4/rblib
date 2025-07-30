@@ -122,7 +122,7 @@ pub fn transfer_tx_compact(
 }
 
 #[tokio::test]
-async fn testing_node_works_with_flashblocks_platform() -> eyre::Result<()> {
+async fn test_node_for_flashblocks_platform_smoke() -> eyre::Result<()> {
 	let node = FlashBlocks::test_node().await?;
 	assert_eq!(node.chain_id(), 1337);
 

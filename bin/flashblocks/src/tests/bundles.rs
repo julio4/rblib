@@ -2,7 +2,12 @@ use {
 	crate::{FlashBlocks, bundle::FlashBlocksBundle, tests::transfer_tx_compact},
 	jsonrpsee::core::ClientError,
 	rblib::{
-		alloy::{consensus::Transaction, primitives::U256},
+		alloy::{
+			consensus::Transaction,
+			eips::Typed2718,
+			optimism::consensus::DEPOSIT_TX_TYPE_ID,
+			primitives::U256,
+		},
 		pool::{BundleResult, BundlesApiClient},
 		prelude::*,
 		test_utils::*,
@@ -63,6 +68,40 @@ async fn two_valid_txs_included() -> eyre::Result<()> {
 	assert_eq!(block.tx_count(), 3); // sequencer deposit tx + 2 bundle txs
 	assert_eq!(block.tx(1).unwrap().value(), U256::from(1_000_000));
 	assert_eq!(block.tx(2).unwrap().value(), U256::from(2_000_000));
+
+	Ok(())
+}
+
+/// Ensures that a a user transaction send to the RPC interface of the node
+/// makes its way into the next block.
+#[tokio::test]
+async fn non_bundle_tx_included_in_block() -> eyre::Result<()> {
+	// builders signer is not configured, so won't produce a builder tx
+	let node = FlashBlocks::test_node().await?;
+
+	let txhash = *node
+		.send_tx(node.build_tx().transfer().value(U256::from(1_234_000)))
+		.await
+		.expect("transaction should be sent successfully")
+		.tx_hash();
+
+	let block = node.next_block().await?;
+	debug!("produced block: {block:#?}");
+
+	assert_eq!(block.number(), 1);
+	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 user tx
+	assert!(
+		block.includes(&txhash),
+		"Block should include the transaction"
+	);
+
+	let transactions = block.transactions.into_transactions_vec();
+
+	let sequencer_tx = transactions.first().unwrap();
+	assert_eq!(sequencer_tx.ty(), DEPOSIT_TX_TYPE_ID);
+
+	let user_tx = transactions.last().unwrap();
+	assert_eq!(user_tx.value(), U256::from(1_234_000));
 
 	Ok(())
 }

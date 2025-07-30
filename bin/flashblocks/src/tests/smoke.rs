@@ -8,7 +8,7 @@ use {
 			optimism::consensus::DEPOSIT_TX_TYPE_ID,
 			primitives::{Address, U256},
 		},
-		test_utils::{BlockResponseExt, FundedAccounts, TransactionRequestExt},
+		test_utils::{BlockResponseExt, FundedAccounts},
 	},
 	tracing::debug,
 };
@@ -28,40 +28,6 @@ async fn chain_produces_blocks() -> eyre::Result<()> {
 
 	let sequencer_tx = block.tx(0).unwrap();
 	assert_eq!(sequencer_tx.ty(), DEPOSIT_TX_TYPE_ID);
-
-	Ok(())
-}
-
-/// Ensures that a a user transaction send to the RPC interface of the node
-/// makes its way into the next block.
-#[tokio::test]
-async fn one_tx_included_in_block() -> eyre::Result<()> {
-	// builders signer is not configured, so won't produce a builder tx
-	let node = FlashBlocks::test_node().await?;
-
-	let txhash = *node
-		.send_tx(node.build_tx().transfer().value(U256::from(1_234_000)))
-		.await
-		.expect("transaction should be sent successfully")
-		.tx_hash();
-
-	let block = node.next_block().await?;
-	debug!("produced block: {block:#?}");
-
-	assert_eq!(block.number(), 1);
-	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 user tx
-	assert!(
-		block.includes(&txhash),
-		"Block should include the transaction"
-	);
-
-	let transactions = block.transactions.into_transactions_vec();
-
-	let sequencer_tx = transactions.first().unwrap();
-	assert_eq!(sequencer_tx.ty(), DEPOSIT_TX_TYPE_ID);
-
-	let user_tx = transactions.last().unwrap();
-	assert_eq!(user_tx.value(), U256::from(1_234_000));
 
 	Ok(())
 }

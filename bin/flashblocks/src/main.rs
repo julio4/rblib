@@ -1,7 +1,7 @@
 use {
 	crate::args::{Cli, CliExt, OpRbuilderArgs},
 	rblib::{
-		pool::{AppendOneOrder, OrderPool},
+		pool::*,
 		prelude::*,
 		reth::optimism::node::{
 			OpEngineApiBuilder,
@@ -33,7 +33,7 @@ fn main() -> eyre::Result<()> {
 				.with_components(
 					opnode
 						.components()
-						.pool(pool.system_pool())
+						.replace_pool(&pool)
 						.payload(pipeline.into_service()),
 				)
 				.with_add_ons(

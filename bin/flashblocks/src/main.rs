@@ -33,7 +33,7 @@ fn main() -> eyre::Result<()> {
 				.with_components(
 					opnode
 						.components()
-						.replace_pool(&pool)
+						.attach_pool(&pool)
 						.payload(pipeline.into_service()),
 				)
 				.with_add_ons(
@@ -41,7 +41,7 @@ fn main() -> eyre::Result<()> {
 						.add_ons_builder::<types::RpcTypes<FlashBlocks>>()
 						.build::<_, OpEngineValidatorBuilder, OpEngineApiBuilder<OpEngineValidatorBuilder>>(),
 				)
-				.extend_rpc_modules(move |mut rpc_ctx| pool.configure_rpc(&mut rpc_ctx))
+				.extend_rpc_modules(move |mut rpc_ctx| pool.attach_rpc(&mut rpc_ctx))
 				.launch()
 				.await?;
 

@@ -42,10 +42,22 @@ impl<P: Platform> BundlesApiServer<P> for BundleRpcApi<P> {
 		&self,
 		bundle: types::Bundle<P>,
 	) -> RpcResult<BundleResult> {
+		// empty bundles are never valid
 		if bundle.transactions().is_empty() {
 			return Err(ErrorObject::borrowed(
 				ErrorCode::InvalidParams.code(),
 				"bundle must contain at least one transaction",
+				None,
+			));
+		}
+
+		// If we can tell that the bundle is permanently ineligible for inclusion in
+		// any future block, we reject it immediately without adding it to the
+		// pool.
+		if self.pool.is_permanently_ineligible(&bundle) {
+			return Err(ErrorObject::borrowed(
+				ErrorCode::InvalidParams.code(),
+				"bundle is ineligible for inclusion",
 				None,
 			));
 		}

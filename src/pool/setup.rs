@@ -4,20 +4,29 @@
 //! environment components to work with the order pool.
 
 use {
-	super::*,
-	reth_node_builder::{
-		FullNodeTypes,
-		NodeTypes,
-		components::{ComponentsBuilder, PoolBuilder},
+	super::{
+		rpc::{BundleRpcApi, BundlesApiServer},
+		*,
 	},
-	reth_transaction_pool::TransactionPool,
-	tracing::debug,
+	core::mem::MaybeUninit,
+	reth::{
+		node::builder::{
+			BuilderContext,
+			FullNodeComponents,
+			FullNodeTypes,
+			NodeTypes,
+			components::{ComponentsBuilder, PoolBuilder},
+			rpc::RpcContext,
+		},
+		rpc::api::eth::EthApiTypes,
+		transaction_pool::TransactionPool,
+	},
 };
 
 impl<P: Platform> OrderPool<P> {
 	/// Installs the order pool RPC endpoints for receiving bundles and other
 	/// methods offered by the common reth rpc infra.
-	pub fn configure_rpc<Node, EthApi>(
+	pub fn attach_rpc<Node, EthApi>(
 		&self,
 		rpc_context: &mut RpcContext<Node, EthApi>,
 	) -> eyre::Result<()>
@@ -36,7 +45,13 @@ impl<P: Platform> OrderPool<P> {
 /// In the current implementation of the `OrderPool`, we use the default node
 /// transaction pool for handling individual non-bundle transactions. This type
 /// allows us to reuse the existing pool builder construction logic and store a
-/// reference to the constructed pool in the `OrderPoolInner`.
+/// reference to the constructed pool in the `OrderPoolInner`. It also attaches
+/// the order pool to the host node, allowing it to leverage the host node's
+/// functionalities.
+///
+/// Attaching the order pool to the host node is optional, but greatly enhances
+/// the functionality of the order pool. See more in the [`HostNode`]
+/// documentation.
 ///
 /// In future iterations, we're expecting to have our own implementation of the
 /// system transaction pool.
@@ -49,7 +64,7 @@ impl<P: Platform> OrderPool<P> {
 /// 		let opnode = OpNode::new(cli_args);
 ///     let handle = builder
 ///         .with_types::<OpNode>()
-///         .with_components(opnode.components().replace_pool(&pool))
+///         .with_components(opnode.components().attach_pool(&pool))
 ///         .with_add_ons(opnode.add_ons())
 ///         .launch()
 ///         .await?;
@@ -58,13 +73,13 @@ impl<P: Platform> OrderPool<P> {
 /// 		})
 /// 		.unwrap();
 /// ```
-pub trait ComponentBuilderPoolInstaller<P: Platform> {
+pub trait HostNodeInstaller<P: Platform> {
 	type Node: FullNodeTypes<Types: NodeTypes<Primitives = types::Primitives<P>>>;
 
 	/// The type of the `ComponentsBuilder` with a wrapped pool builder.
 	type Output<WrappedPoolB>;
 
-	fn replace_pool(
+	fn attach_pool(
 		self,
 		with: &OrderPool<P>,
 	) -> Self::Output<
@@ -76,7 +91,7 @@ pub trait ComponentBuilderPoolInstaller<P: Platform> {
 }
 
 impl<P: Platform, Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
-	ComponentBuilderPoolInstaller<P>
+	HostNodeInstaller<P>
 	for ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
 where
 	PoolB: PoolBuilderBounds<P, Node>,
@@ -86,31 +101,32 @@ where
 	type Output<WrappedPoolB> =
 		ComponentsBuilder<Node, WrappedPoolB, PayloadB, NetworkB, ExecB, ConsB>;
 
-	fn replace_pool(
+	fn attach_pool(
 		self,
-		with: &OrderPool<P>,
+		to: &OrderPool<P>,
 	) -> Self::Output<
 		impl PoolBuilder<
 			Node,
 			Pool: TransactionPool<Transaction = types::PooledTransaction<P>>,
 		> + use<P, Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>,
 	> {
-		let mut current_pool_builder = None;
+		let mut current_pool_builder = MaybeUninit::uninit();
 		let current_components = self.map_pool(|pool| {
-			current_pool_builder = Some(pool.clone());
+			current_pool_builder.write(pool.clone());
 			pool
 		});
 
 		current_components.pool(SystemPoolWrapper::new(
-			current_pool_builder.unwrap(),
-			with.inner.clone(),
+			// SAFETY: we have just written to the `MaybeUninit` in `map_pool`.
+			unsafe { current_pool_builder.assume_init() },
+			to.inner.clone(),
 		))
 	}
 }
 
-/// This type wraps the system transaction pool builder and allows us to store a
-/// reference to the built system pool in the `OrderPoolInner`. Reth node will
-/// receive the pool built by the wrapped builder.
+/// This type wraps the system transaction pool builder upon instantiation by
+/// reth it will store a reference to the system transaction pool as well as
+/// attach the reth node to the order pool.
 #[must_use]
 struct SystemPoolWrapper<P: Platform, Builder> {
 	builder: Builder,
@@ -140,16 +156,15 @@ where
 
 	async fn build_pool(
 		self,
-		ctx: &reth_node_builder::BuilderContext<Node>,
+		ctx: &BuilderContext<Node>,
 	) -> eyre::Result<Self::Pool> {
-		let built_pool = Arc::new(self.builder.build_pool(ctx).await?);
+		let system_pool = Arc::new(self.builder.build_pool(ctx).await?);
+		let order_pool = Arc::clone(&self.order_pool);
 		self
 			.order_pool
-			.system_pool
-			.set(built_pool.clone())
-			.map_err(|_| eyre::eyre!("System pool already constructed"))?;
-		debug!("Order pool configured with system pool {built_pool:?}");
-		Ok(built_pool)
+			.host
+			.attach(Arc::clone(&system_pool), order_pool, ctx)?;
+		Ok(system_pool)
 	}
 }
 

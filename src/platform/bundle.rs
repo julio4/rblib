@@ -18,6 +18,7 @@ use {
 			SignerRecoverable,
 			crypto::RecoveryError,
 		},
+		primitives::SealedHeader,
 		revm::db::BundleState,
 		rpc::types::mev::EthSendBundle,
 	},
@@ -53,9 +54,22 @@ pub trait Bundle<P: Platform>:
 	#[must_use]
 	fn without_transaction(self, tx: TxHash) -> Self;
 
-	/// Statically checks if the bundle is eligible for inclusion in the block
+	/// Checks if the bundle is eligible for inclusion in the block
 	/// before executing any of its transactions.
 	fn is_eligible(&self, block: &BlockContext<P>) -> Eligibility;
+
+	/// Optional check that allows the bundle to check if it knows for sure that
+	/// it will never be eligible for inclusion in any future block that is a
+	/// descendant of the given header.
+	///
+	/// Implementing this method is optional for bundles but it gives the ability
+	/// to filter out bundles at the RPC level before they are sent to the pool.
+	fn is_permanently_ineligible(
+		&self,
+		_: &SealedHeader<types::Header<P>>,
+	) -> bool {
+		false
+	}
 
 	/// Checks if a transaction with a given hash is allowed to not have a
 	/// successful execution result for this bundle.
@@ -117,6 +131,9 @@ pub enum Eligibility {
 	///
 	/// Bundles in this state should be removed from the pool and not attempted
 	/// to be included in any future blocks.
+	///
+	/// Once a bundle returns this state, it should never return any other
+	/// eligibility state.
 	PermanentlyIneligible,
 }
 
@@ -294,6 +311,29 @@ impl<P: Platform> Bundle<P> for FlashbotsBundle<P> {
 		}
 
 		Eligibility::Eligible
+	}
+
+	fn is_permanently_ineligible(
+		&self,
+		block: &SealedHeader<types::Header<P>>,
+	) -> bool {
+		if self.transactions().is_empty() {
+			// empty bundles are never eligible
+			return true;
+		}
+
+		if self
+			.max_timestamp
+			.is_some_and(|max_ts| max_ts > block.timestamp())
+		{
+			return true;
+		}
+
+		if self.block_number != 0 && self.block_number < block.number() {
+			return true;
+		}
+
+		false
 	}
 
 	fn is_allowed_to_fail(&self, tx: TxHash) -> bool {

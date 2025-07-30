@@ -17,7 +17,7 @@ use {
 	},
 	futures::{FutureExt, future::Shared},
 	std::sync::Arc,
-	tracing::{debug, info},
+	tracing::debug,
 };
 
 /// This type is responsible for handling one payload generation request.
@@ -94,7 +94,7 @@ where
 			// The future that is returned here must resolve within 1 second per eth
 			// protocol.
 			PayloadKind::Earliest => {
-				info!(
+				debug!(
 					"Resolving earliest payload for job {}",
 					self.block.attributes().payload_id()
 				);

@@ -1,13 +1,18 @@
 use {
 	crate::platform::FlashBlocks,
-	alloy::{
-		consensus::BlockHeader,
-		eips::Decodable2718,
-		primitives::{B256, Bytes, TxHash},
-	},
 	core::convert::Infallible,
-	rblib::{alloy, alloy::primitives::Keccak256, prelude::*, reth},
-	reth::{core::primitives::SignerRecoverable, primitives::Recovered},
+	rblib::{
+		alloy::{
+			consensus::BlockHeader,
+			eips::Decodable2718,
+			primitives::{B256, Bytes, Keccak256, TxHash},
+		},
+		prelude::*,
+		reth::{
+			core::primitives::SignerRecoverable,
+			primitives::{Recovered, SealedHeader},
+		},
+	},
 	serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
@@ -136,6 +141,32 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 		}
 
 		Eligibility::Eligible
+	}
+
+	fn is_permanently_ineligible(
+		&self,
+		block: &SealedHeader<types::Header<FlashBlocks>>,
+	) -> bool {
+		if self.transactions().is_empty() {
+			// empty bundles are never eligible
+			return true;
+		}
+
+		if self
+			.max_block_number
+			.is_some_and(|max_bn| max_bn < block.number())
+		{
+			return true;
+		}
+
+		if self
+			.max_timestamp
+			.is_some_and(|max_ts| max_ts > block.timestamp())
+		{
+			return true;
+		}
+
+		false
 	}
 
 	fn is_allowed_to_fail(&self, tx: TxHash) -> bool {

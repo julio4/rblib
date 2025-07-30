@@ -93,16 +93,6 @@ where
 		Ok(())
 	}
 
-	async fn after_job(
-		self: Arc<Self>,
-		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
-	) -> Result<(), PayloadBuilderError> {
-		if let Ok(built_payload) = result.as_ref() {
-			self.pool.report_produced_payload(built_payload);
-		}
-		Ok(())
-	}
-
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
@@ -225,36 +215,5 @@ where
 
 			return ControlFlow::Ok(new_payload);
 		}
-	}
-}
-
-pub struct AppendManyOrders<P: Platform>
-where
-	P::Bundle: Serialize + DeserializeOwned,
-{
-	_pool: OrderPool<P>,
-}
-
-impl<P: Platform> AppendManyOrders<P>
-where
-	P::Bundle: Serialize + DeserializeOwned,
-{
-	pub fn from_pool(pool: &OrderPool<P>) -> Self {
-		Self {
-			_pool: pool.clone(),
-		}
-	}
-}
-
-impl<P: Platform> Step<P> for AppendManyOrders<P>
-where
-	P::Bundle: Serialize + DeserializeOwned,
-{
-	async fn step(
-		self: Arc<Self>,
-		payload: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Ok(payload)
 	}
 }

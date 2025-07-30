@@ -198,10 +198,13 @@ impl Bundle<CustomPlatform> for CustomBundleType {
 			.suggested_fee_recipient;
 
 		let Some(coinbase) = state.account(&coinbase) else {
-			return Err(MinimumProfitNotMet {
-				min: self.min_coinbase_profit,
-				actual: U256::ZERO,
-			});
+			if self.min_coinbase_profit > U256::ZERO {
+				return Err(MinimumProfitNotMet {
+					min: self.min_coinbase_profit,
+					actual: U256::ZERO,
+				});
+			}
+			return Ok(());
 		};
 
 		let current_balance = coinbase

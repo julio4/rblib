@@ -6,7 +6,7 @@
 
 use {
 	super::*,
-	reth::node::builder::{BlockBody, BuiltPayload},
+	reth::{node::builder::BlockBody, primitives::SealedBlock},
 	tracing::trace,
 };
 
@@ -54,18 +54,12 @@ impl<P: Platform> OrderPool<P> {
 	) {
 	}
 
-	/// Invoked when a payload job has successfully produced a new payload.
-	///
-	/// This will tell the pool to remove all orders that got included or for some
-	/// other reason are no longer valid.
-	///
-	/// This is also where the pool learns about the inclusion status of
-	/// transactions so they can be reported back by the RPC API.
-	pub fn report_produced_payload(&self, payload: &types::BuiltPayload<P>) {
-		// For successfully built payloads, remove all orders that had any of
-		// their transactions included in the payload.
-		for tx in payload.block().body().transactions() {
-			self.remove_all_containing(*tx.tx_hash());
+	/// Signals to the order pool that a block has been committed to the chain.
+	/// This will remove all orders that had any of their transactions included
+	/// in the payload.
+	pub fn report_committed_block(&self, block: &SealedBlock<types::Block<P>>) {
+		for tx in block.body().transactions() {
+			self.remove_any_with(*tx.tx_hash());
 		}
 	}
 }

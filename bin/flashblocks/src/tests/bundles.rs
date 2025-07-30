@@ -15,6 +15,27 @@ use {
 	tracing::debug,
 };
 
+macro_rules! assert_ineligible {
+	($result:expr) => {
+		let result = $result;
+		assert!(
+			result.is_err(),
+			"Expected error for this bundle, got {result:?}"
+		);
+
+		let Err(ClientError::Call(error)) = result else {
+			panic!("Expected Call error, got {result:?}");
+		};
+
+		assert_eq!(
+			error.code(),
+			jsonrpsee::types::ErrorCode::InvalidParams.code()
+		);
+
+		assert_eq!(error.message(), "bundle is ineligible for inclusion");
+	};
+}
+
 #[tokio::test]
 async fn one_valid_tx_included() -> eyre::Result<()> {
 	let node = FlashBlocks::test_node().await?;
@@ -107,22 +128,65 @@ async fn non_bundle_tx_included_in_block() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn min_block_number_constraint() -> eyre::Result<()> {
-	todo!()
+async fn max_block_number_in_past() -> eyre::Result<()> {
+	// node at genesis, block 0
+	let node = FlashBlocks::test_node().await?;
+
+	let block = node.next_block().await?;
+	assert_eq!(block.number(), 1);
+
+	let block = node.next_block().await?;
+	assert_eq!(block.number(), 2);
+
+	let block = node.next_block().await?;
+	assert_eq!(block.number(), 3);
+
+	let block = node.next_block().await?;
+	assert_eq!(block.number(), 4);
+
+	let mut bundle =
+		FlashBlocksBundle::with_transactions(vec![transfer_tx_compact(
+			0, 0, 1_000_000,
+		)]);
+	bundle.max_block_number = Some(2);
+
+	let result = BundlesApiClient::<FlashBlocks>::send_bundle(
+		&node.rpc_client().await?,
+		bundle,
+	)
+	.await;
+
+	assert_ineligible!(result);
+
+	Ok(())
 }
 
 #[tokio::test]
-async fn max_block_number_constraint() -> eyre::Result<()> {
-	todo!()
+async fn max_block_timestamp_in_past() -> eyre::Result<()> {
+	// node at genesis, block 0
+	let node = FlashBlocks::test_node().await?;
+
+	let genesis_timestamp = node.config().chain.genesis_timestamp();
+
+	let mut bundle =
+		FlashBlocksBundle::with_transactions(vec![transfer_tx_compact(
+			0, 0, 1_000_000,
+		)]);
+	bundle.max_block_number = Some(genesis_timestamp.saturating_sub(1));
+
+	let result = BundlesApiClient::<FlashBlocks>::send_bundle(
+		&node.rpc_client().await?,
+		bundle,
+	)
+	.await;
+
+	assert_ineligible!(result);
+
+	Ok(())
 }
 
 #[tokio::test]
 async fn min_block_timestamp_constraint() -> eyre::Result<()> {
-	todo!()
-}
-
-#[tokio::test]
-async fn max_block_timestamp_constraint() -> eyre::Result<()> {
 	todo!()
 }
 

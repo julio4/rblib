@@ -73,6 +73,8 @@ fn init_test_logging() {
 			"reth_db_common",
 			"pruner",
 			"reth_node_events",
+			"provider::storage_writer",
+			"providers::db",
 		];
 
 		tracing_subscriber::registry()

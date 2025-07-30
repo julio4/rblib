@@ -12,7 +12,7 @@ mod steps;
 
 // Order Pool public API
 pub use {
-	backend::OrderPool,
+	backend::{ComponentBuilderPoolInstaller, OrderPool},
 	rpc::{BundleResult, BundlesApiClient},
 	steps::{AppendManyOrders, AppendOneOrder},
 };

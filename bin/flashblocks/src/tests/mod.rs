@@ -10,7 +10,7 @@ use {
 			primitives::{Address, U256},
 			signers::local::PrivateKeySigner,
 		},
-		pool::OrderPool,
+		pool::*,
 		prelude::*,
 		reth::{
 			core::primitives::SignedTransaction,
@@ -39,8 +39,16 @@ impl FlashBlocks {
 
 	pub async fn test_node()
 	-> eyre::Result<LocalNode<FlashBlocks, OptimismConsensusDriver>> {
-		let cli_args = OpRbuilderArgs::default();
-		FlashBlocks::test_node_with_cli_args(cli_args).await
+		FlashBlocks::test_node_with_cli_args(OpRbuilderArgs::default()).await
+	}
+
+	pub async fn test_node_with_builder_signer()
+	-> eyre::Result<LocalNode<FlashBlocks, OptimismConsensusDriver>> {
+		FlashBlocks::test_node_with_cli_args(OpRbuilderArgs {
+			builder_signer: Some(FundedAccounts::signer(0).into()),
+			..Default::default()
+		})
+		.await
 	}
 }
 
@@ -48,6 +56,11 @@ impl TestNodeFactory<FlashBlocks> for FlashBlocks {
 	type CliExtArgs = OpRbuilderArgs;
 	type ConsensusDriver = OptimismConsensusDriver;
 
+	/// Notes:
+	///
+	/// - Here we are ignoring the `pipeline` argument because we are not
+	///   interested in running arbitrary pipelines for this platform, instead we
+	///   construct the pipeline based on the CLI arguments.
 	async fn create_test_node_with_args(
 		_: Pipeline<FlashBlocks>,
 		cli_args: Self::CliExtArgs,
@@ -63,7 +76,7 @@ impl TestNodeFactory<FlashBlocks> for FlashBlocks {
 				.with_components(
 					opnode
 						.components()
-						.pool(pool.component())
+						.replace_pool(&pool)
 						.payload(pipeline.into_service()),
 				)
 				.with_add_ons(opnode

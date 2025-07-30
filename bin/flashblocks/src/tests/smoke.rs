@@ -1,5 +1,5 @@
 use {
-	crate::{FlashBlocks, args::OpRbuilderArgs},
+	crate::FlashBlocks,
 	rblib::{
 		alloy::{
 			consensus::Transaction,
@@ -70,11 +70,7 @@ async fn one_tx_included_in_block() -> eyre::Result<()> {
 /// when the builder signer is provided in the CLI arguments.
 #[tokio::test]
 async fn blocks_have_builder_tx() -> eyre::Result<()> {
-	let node = FlashBlocks::test_node_with_cli_args(OpRbuilderArgs {
-		builder_signer: Some(FundedAccounts::signer(0).into()),
-		..Default::default()
-	})
-	.await?;
+	let node = FlashBlocks::test_node_with_builder_signer().await?;
 
 	let block = node.next_block().await?;
 	debug!("produced block: {block:#?}");

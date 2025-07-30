@@ -5,12 +5,17 @@
 
 use {
 	super::*,
-	reth_node_builder::{FullNodeTypes, components::PoolBuilder},
+	reth_node_builder::{
+		FullNodeTypes,
+		components::{ComponentsBuilder, PoolBuilder},
+	},
 	reth_optimism_node::OpPoolBuilder,
 	reth_transaction_pool::TransactionPool,
 };
 
 impl<P: Platform> OrderPool<P> {
+	/// Installs the order pool RPC endpoints for receiving bundles and other
+	/// methods offered by the common reth rpc infra.
 	pub fn configure_rpc<Node, EthApi>(
 		&self,
 		rpc_context: &mut RpcContext<Node, EthApi>,
@@ -21,13 +26,9 @@ impl<P: Platform> OrderPool<P> {
 	{
 		rpc_context
 			.modules
-			.add_or_replace_configured(self.rpc_modules())?;
+			.add_or_replace_configured(BundleRpcApi::new(self).into_rpc())?;
 
 		Ok(())
-	}
-
-	pub fn rpc_modules(&self) -> impl Into<Methods> {
-		BundleRpcApi::new(self).into_rpc()
 	}
 }
 
@@ -35,7 +36,7 @@ impl<P> OrderPool<P>
 where
 	P: Platform<PooledTransaction = types::PooledTransaction<Optimism>>,
 {
-	pub fn component<Node>(
+	pub fn system_pool<Node>(
 		&self,
 	) -> impl PoolBuilder<
 		Node,
@@ -50,16 +51,16 @@ where
 	{
 		let builder =
 			OpPoolBuilder::<types::PooledTransaction<Optimism>>::default();
-		WrappedBuilder::new(builder, self.inner.clone())
+		SystemPoolBuilder::new(builder, self.inner.clone())
 	}
 }
 
-struct WrappedBuilder<P: Platform, Builder> {
+struct SystemPoolBuilder<P: Platform, Builder> {
 	builder: Builder,
 	order_pool: Arc<OrderPoolInner<P>>,
 }
 
-impl<P: Platform, Builder> WrappedBuilder<P, Builder>
+impl<P: Platform, Builder> SystemPoolBuilder<P, Builder>
 where
 	P: Platform,
 {
@@ -78,7 +79,7 @@ where
 	}
 }
 
-impl<P, Builder, Node> PoolBuilder<Node> for WrappedBuilder<P, Builder>
+impl<P, Builder, Node> PoolBuilder<Node> for SystemPoolBuilder<P, Builder>
 where
 	P: Platform,
 	Builder: PoolBuilder<
@@ -101,5 +102,40 @@ where
 			.map_err(|_| eyre::eyre!("System pool already constructed"))?;
 		tracing::info!("Order pool configured with system pool {built_pool:?}");
 		Ok(built_pool)
+	}
+}
+
+pub trait ComponentBuilderPoolInstaller<
+	P: Platform,
+	Node,
+	PoolB,
+	PayloadB,
+	NetworkB,
+	ExecB,
+	ConsB,
+>
+{
+	fn replace_pool(
+		self,
+		with: &OrderPool<P>,
+	) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>;
+}
+
+impl<P: Platform, Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
+	ComponentBuilderPoolInstaller<
+		P,
+		Node,
+		PoolB,
+		PayloadB,
+		NetworkB,
+		ExecB,
+		ConsB,
+	> for ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB>
+{
+	fn replace_pool(
+		self,
+		_with: &OrderPool<P>,
+	) -> ComponentsBuilder<Node, PoolB, PayloadB, NetworkB, ExecB, ConsB> {
+		self
 	}
 }

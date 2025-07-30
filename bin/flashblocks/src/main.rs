@@ -33,7 +33,7 @@ fn main() -> eyre::Result<()> {
 				.with_components(
 					opnode
 						.components()
-						.pool(pool.component())
+						.pool(pool.system_pool())
 						.payload(pipeline.into_service()),
 				)
 				.with_add_ons(

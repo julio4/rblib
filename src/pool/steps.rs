@@ -1,11 +1,12 @@
 use {
-	super::OrderPool,
-	crate::{
-		alloy::primitives::B256,
-		prelude::*,
-		reth::ethereum::primitives::SignedTransaction,
-	},
+	super::{Order, OrderPool},
+	crate::{alloy, prelude::*, reth},
+	alloy::primitives::B256,
 	dashmap::DashSet,
+	reth::{
+		ethereum::primitives::SignedTransaction,
+		transaction_pool::TransactionPool,
+	},
 	serde::{Serialize, de::DeserializeOwned},
 	std::{collections::HashSet, sync::Arc, time::Instant},
 	tracing::debug,
@@ -39,6 +40,11 @@ where
 	/// to be included by removing some of their optional transactions. Default
 	/// is false.
 	partial_orders: bool,
+
+	/// When enabled, the step will not pull any orders from the system
+	/// transaction pool. Otherwise, when there are no orders in the
+	/// `OrderPool`, it will pull orders from the system pool provided by reth.
+	disable_system_pool: bool,
 }
 
 impl<P: Platform> AppendOneOrder<P>
@@ -50,6 +56,7 @@ where
 			pool: pool.clone(),
 			attempted: DashSet::new(),
 			partial_orders: false,
+			disable_system_pool: false,
 		}
 	}
 
@@ -60,6 +67,15 @@ where
 	#[must_use]
 	pub fn allow_partial_orders(mut self) -> Self {
 		self.partial_orders = true;
+		self
+	}
+
+	/// When enabled, the step will not pull any orders from the system
+	/// transaction pool. Otherwise, when there are no orders in the
+	/// `OrderPool`, it will pull orders from the system pool provided by reth.
+	#[must_use]
+	pub fn disable_system_pool(mut self) -> Self {
+		self.disable_system_pool = true;
 		self
 	}
 }
@@ -114,6 +130,7 @@ where
 		}
 
 		let mut orders = self.pool.best_orders_for_block(ctx.block());
+		let mut system_pool_txs = ctx.pool().best_transactions();
 
 		loop {
 			// check if we have reached the deadline
@@ -128,9 +145,20 @@ where
 				}
 			}
 
-			let Some(order) = orders.next() else {
-				// No more orders in the pool to add to the payload.
-				return ControlFlow::Break(payload);
+			// pull next order
+			let order = if let Some(order) = orders.next() {
+				order
+			} else {
+				// No more orders in the order pool, see if we are allowed to
+				// fall back to the system transaction pool.
+				if self.disable_system_pool {
+					return ControlFlow::Break(payload);
+				}
+
+				match system_pool_txs.next() {
+					Some(tx) => Order::Transaction(tx.to_consensus()),
+					None => return ControlFlow::Break(payload),
+				}
 			};
 
 			let order_hash = order.hash();

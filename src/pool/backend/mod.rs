@@ -6,7 +6,6 @@ use {
 	crate::{alloy, prelude::*, reth},
 	alloy::primitives::{B256, TxHash},
 	dashmap::{DashMap, DashSet},
-	jsonrpsee::Methods,
 	reth::{
 		ethereum::primitives::SignedTransaction,
 		node::builder::{FullNodeComponents, rpc::RpcContext},
@@ -18,6 +17,8 @@ use {
 mod select;
 mod setup;
 mod status;
+
+pub use setup::ComponentBuilderPoolInstaller;
 
 /// Implements an order pool that handles mempool operations for transactions
 /// and bundles.

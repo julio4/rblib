@@ -53,7 +53,7 @@ async fn empty_pipeline_builds_empty_payload<P: TestablePlatform>() {
 async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
 		.with_step(GatherBestTransactions)
-		.with_step(OrderByPriorityFee)
+		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
@@ -82,7 +82,10 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 async fn all_transactions_included<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
-		(AppendOneTransactionFromPool::default(), OrderByPriorityFee),
+		(
+			AppendOneTransactionFromPool::default(),
+			OrderByPriorityFee::default(),
+		),
 	);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
@@ -133,8 +136,8 @@ async fn reth_minimal_integration_example() {
 		Loop,
 		(
 			AppendOneTransactionFromPool::default(),
-			OrderByPriorityFee,
-			OrderByTotalProfit,
+			OrderByPriorityFee::default(),
+			OrderByCoinbaseProfit::default(),
 			RemoveRevertedTransactions,
 		),
 	);

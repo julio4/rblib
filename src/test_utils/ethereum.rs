@@ -3,7 +3,7 @@ use {
 	crate::{alloy, prelude::*, reth},
 	alloy::{
 		eips::{BlockNumberOrTag, eip7685::RequestsOrHash},
-		primitives::{Address, B256},
+		primitives::B256,
 		providers::Provider,
 		rpc::types::Block,
 	},
@@ -68,7 +68,7 @@ impl ConsensusDriver<Ethereum> for EthConsensusDriver {
 		let payload_attributes = EthPayloadAttributes {
 			timestamp: target_timestamp,
 			prev_randao: B256::random(),
-			suggested_fee_recipient: Address::random(),
+			suggested_fee_recipient: TEST_COINBASE,
 			withdrawals: Some(vec![]),
 			parent_beacon_block_root: Some(B256::ZERO),
 		};

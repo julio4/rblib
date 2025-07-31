@@ -18,7 +18,7 @@ async fn empty_payload_when_all_txs_revert_loop<P: TestablePlatform>() {
 		Loop,
 		(
 			AppendOneTransactionFromPool::default(),
-			OrderByPriorityFee,
+			OrderByPriorityFee::default(),
 			RemoveRevertedTransactions,
 		),
 	);
@@ -52,7 +52,7 @@ async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 		Loop,
 		(
 			AppendOneTransactionFromPool::default(),
-			OrderByPriorityFee,
+			OrderByPriorityFee::default(),
 			RemoveRevertedTransactions,
 		),
 	);
@@ -102,7 +102,7 @@ async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 async fn transfers_included_reverts_excluded_flat<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
 		.with_step(GatherBestTransactions)
-		.with_step(OrderByPriorityFee)
+		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions);
 
 	let node = P::create_test_node(pipeline).await.unwrap();

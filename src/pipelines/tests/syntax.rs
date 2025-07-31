@@ -8,7 +8,7 @@ fn only_steps() {
 	let pipeline = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(GatherBestTransactions)
-		.with_step(OrderByPriorityFee)
+		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions);
 
 	println!("{pipeline:#?}");
@@ -20,8 +20,8 @@ fn only_steps_optimism_specific() {
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
 		.with_step(GatherBestTransactions)
-		.with_step(OrderByPriorityFee)
-		.with_step(OrderByTotalProfit)
+		.with_step(OrderByPriorityFee::default())
+		.with_step(OrderByCoinbaseProfit::default())
 		.with_step(RemoveRevertedTransactions)
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
@@ -35,8 +35,8 @@ fn nested_verbose() {
 
 	let nested = Pipeline::<Ethereum>::default()
 		.with_step(AppendOneTransactionFromPool::default())
-		.with_step(OrderByPriorityFee)
-		.with_step(OrderByTotalProfit)
+		.with_step(OrderByPriorityFee::default())
+		.with_step(OrderByCoinbaseProfit::default())
 		.with_step(RemoveRevertedTransactions);
 
 	let top_level = top_level //
@@ -69,8 +69,8 @@ fn nested_many_concise() {
 			Loop,
 			(
 				AppendOneTransactionFromPool::default(),
-				OrderByPriorityFee,
-				OrderByTotalProfit,
+				OrderByPriorityFee::default(),
+				OrderByCoinbaseProfit::default(),
 				RemoveRevertedTransactions,
 			),
 		)
@@ -121,8 +121,8 @@ fn flashblocks_example_closure() {
 					Loop,
 					(
 						AppendOneTransactionFromPool::default(),
-						OrderByPriorityFee,
-						OrderByTotalProfit,
+						OrderByPriorityFee::default(),
+						OrderByCoinbaseProfit::default(),
 						RemoveRevertedTransactions,
 					),
 				)
@@ -173,8 +173,8 @@ fn flashblocks_example_concise() {
 					Loop,
 					(
 						AppendOneTransactionFromPool::default(),
-						OrderByPriorityFee,
-						OrderByTotalProfit,
+						OrderByPriorityFee::default(),
+						OrderByCoinbaseProfit::default(),
 						RemoveRevertedTransactions,
 					)
 						.with_limits(FlashblockLimits(config.clone()))

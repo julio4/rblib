@@ -250,7 +250,7 @@ impl_into_pipeline_steps!(32);
 // This is opt-in through a compile-time feature flag and in practice
 // should never be needed, but it's here just in case.
 #[cfg(feature = "long-pipelines-syntax")]
-impl_into_pipeline_steps!(512);
+impl_into_pipeline_steps!(128);
 
 /// Helper trait that supports the concise pipeline definition syntax.
 pub trait PipelineBuilderExt<P: Platform> {

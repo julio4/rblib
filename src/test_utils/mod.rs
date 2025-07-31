@@ -40,6 +40,10 @@ mod optimism;
 pub use optimism::OptimismConsensusDriver;
 
 pub const ONE_ETH: u128 = 1_000_000_000_000_000_000;
+pub const TEST_COINBASE: crate::alloy::primitives::Address = //
+	crate::alloy::primitives::address!(
+		"0x0000000000000000000000000000000000012345"
+	);
 
 /// This gets invoked before any tests, when the cargo test framework loads the
 /// test library.

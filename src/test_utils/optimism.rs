@@ -81,6 +81,7 @@ where
 			payload_attributes: PayloadAttributes {
 				timestamp: target_timestamp,
 				parent_beacon_block_root: Some(B256::ZERO),
+				suggested_fee_recipient: TEST_COINBASE,
 				withdrawals: Some(vec![]),
 				..Default::default()
 			},

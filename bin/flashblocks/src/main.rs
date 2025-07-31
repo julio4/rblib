@@ -63,7 +63,7 @@ pub fn build_pipeline(
 				Loop,
 				(
 					AppendOneOrder::from_pool(pool),
-					OrderByPriorityFee,
+					OrderByPriorityFee::default(),
 					RemoveRevertedTransactions,
 				),
 			)
@@ -72,7 +72,10 @@ pub fn build_pipeline(
 			.with_prologue(OptimismPrologue)
 			.with_pipeline(
 				Loop,
-				(AppendOneOrder::from_pool(pool), OrderByPriorityFee),
+				(
+					AppendOneOrder::from_pool(pool),
+					OrderByPriorityFee::default(),
+				),
 			)
 	};
 

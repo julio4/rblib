@@ -11,7 +11,7 @@ use {
 	},
 };
 
-/// This step will sort the transactions in the payload by their effective
+/// This step will sort the checkpoints in the payload by their effective
 /// priority fee. During the sorting the transactions will preserve their
 /// sender, nonce dependencies.
 pub struct OrderByPriorityFee;
@@ -57,7 +57,7 @@ impl<P: Platform> Step<P> for OrderByPriorityFee {
 		assert_eq!(
 			ordered_prefix.depth(),
 			payload.depth(),
-			"payload length should not change after reordering transactions"
+			"payload length should not change priority fee ordering",
 		);
 
 		// return the payload with the transactions in the correct order

@@ -1,10 +1,13 @@
-use crate::{
-	alloy::{
-		consensus::Transaction,
-		primitives::{Address, U256},
+use {
+	crate::{
+		alloy::{
+			consensus::Transaction,
+			primitives::{Address, U256},
+		},
+		prelude::*,
+		reth::{errors::ProviderError, revm::DatabaseRef},
 	},
-	prelude::*,
-	reth::{errors::ProviderError, revm::DatabaseRef},
+	itertools::Itertools,
 };
 
 /// Quality of Life extensions for the `Checkpoint` type.
@@ -36,7 +39,7 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 
 	/// Returns `true` if this checkpoint was created by applying EIP-4844 blob
 	/// transaction, `false` otherwise.
-	fn is_blob(&self) -> bool;
+	fn has_blobs(&self) -> bool;
 
 	/// Returns a span that includes all checkpoints from the beginning of the
 	/// block payload we're building to the current checkpoint.
@@ -81,6 +84,9 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 
 	/// Returns the nonce of a given account at this checkpoint.
 	fn nonce_of(&self, address: Address) -> Result<u64, ProviderError>;
+
+	/// Returns the lowst nonce for each signer in this checkpoint.
+	fn nonces(&self) -> Vec<(Address, u64)>;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -105,7 +111,7 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 		self.result().map_or(0, |result| result.gas_used())
 	}
 
-	/// Returns the effective tip for this transaction.
+	/// Returns the sum of effective tips for transactions in this checkpoint.
 	fn effective_tip_per_gas(&self) -> u128 {
 		self
 			.transactions()
@@ -114,8 +120,8 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 			.sum()
 	}
 
-	/// If this checkpoint was created by applying an EIP-4844 blob transaction,
-	/// returns the blob gas used, `None` otherwise.
+	/// If this checkpoint has EIP-4844 blob transactions,
+	/// returns the sum of all blob gas used, `None` otherwise.
 	fn blob_gas_used(&self) -> Option<u64> {
 		self
 			.transactions()
@@ -126,7 +132,7 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 
 	/// Returns `true` if this checkpoint was created by applying an EIP-4844 blob
 	/// transaction, `false` otherwise.
-	fn is_blob(&self) -> bool {
+	fn has_blobs(&self) -> bool {
 		self.blob_gas_used().is_some()
 	}
 
@@ -170,5 +176,18 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 				.map(|basic| basic.nonce)
 				.unwrap_or_default(),
 		)
+	}
+
+	/// Returns the lowst nonce for each signer in this checkpoint.
+	fn nonces(&self) -> Vec<(Address, u64)> {
+		self
+			.transactions()
+			.iter()
+			.chunk_by(|tx| tx.signer())
+			.into_iter()
+			.map(|(signer, txs)| {
+				(signer, txs.map(|tx| tx.nonce()).min().unwrap_or(0))
+			})
+			.collect()
 	}
 }

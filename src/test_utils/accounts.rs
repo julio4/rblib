@@ -94,6 +94,10 @@ impl FundedAccounts {
 	pub fn by_address(address: Address) -> Option<PrivateKeySigner> {
 		Self::signers().find(|signer| signer.address() == address)
 	}
+
+	pub const fn len() -> usize {
+		Self::FUNDED_PRIVATE_KEYS.len()
+	}
 }
 
 /// A Helper trait used to extend various test and mock types with

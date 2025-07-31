@@ -224,26 +224,33 @@ impl<P: Platform, F: FnOnce(Pipeline<P>) -> Pipeline<P>>
 	}
 }
 
-impl<P: Platform> IntoPipeline<P, ()> for Pipeline<P> {
+impl<P: Platform> IntoPipeline<P, Variant<0>> for Pipeline<P> {
 	fn into_pipeline(self) -> Pipeline<P> {
 		self
 	}
 }
 
-impl<P: Platform, S0: Step<P>> IntoPipeline<P, ()> for (S0,) {
+impl<P: Platform, S0: Step<P>> IntoPipeline<P, Variant<0>> for (S0,) {
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self.0)
 	}
 }
 
-impl<P: Platform, S0: Step<P>> IntoPipeline<P, u8> for S0 {
+impl<P: Platform, S0: Step<P>> IntoPipeline<P, Variant<1>> for S0 {
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self)
 	}
 }
 
 // Generate implementations for tuples of steps up to 32 elements
+#[cfg(not(feature = "long-pipelines-syntax"))]
 impl_into_pipeline_steps!(32);
+
+// Generate implementations for tuples of steps up to 512 elements.
+// This is opt-in through a compile-time feature flag and in practice
+// should never be needed, but it's here just in case.
+#[cfg(feature = "long-pipelines-syntax")]
+impl_into_pipeline_steps!(512);
 
 /// Helper trait that supports the concise pipeline definition syntax.
 pub trait PipelineBuilderExt<P: Platform> {
@@ -253,7 +260,7 @@ pub trait PipelineBuilderExt<P: Platform> {
 	fn with_name(self, name: impl Into<String>) -> Pipeline<P>;
 }
 
-impl<P: Platform, T: IntoPipeline<P, ()>> PipelineBuilderExt<P> for T {
+impl<P: Platform, T: IntoPipeline<P, Variant<0>>> PipelineBuilderExt<P> for T {
 	fn with_prologue(self, step: impl Step<P>) -> Pipeline<P> {
 		self.into_pipeline().with_prologue(step)
 	}

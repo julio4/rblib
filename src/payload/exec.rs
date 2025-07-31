@@ -300,7 +300,7 @@ pub trait IntoExecutable<P: Platform, S = ()> {
 
 /// Transactions can be converted into an executable as long as they have a
 /// valid recoverable signature.
-impl<P: Platform> IntoExecutable<P, ()> for types::Transaction<P> {
+impl<P: Platform> IntoExecutable<P, Variant<0>> for types::Transaction<P> {
 	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
 		SignedTransaction::try_into_recovered(self)
 			.map(Executable::Transaction)
@@ -311,7 +311,9 @@ impl<P: Platform> IntoExecutable<P, ()> for types::Transaction<P> {
 /// Transactions from the transaction pool can be converted infalliably into
 /// an executable because the transaction pool discards transactions
 /// that have invalid signatures.
-impl<P: Platform> IntoExecutable<P, u32> for types::PooledTransaction<P> {
+impl<P: Platform> IntoExecutable<P, Variant<1>>
+	for types::PooledTransaction<P>
+{
 	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
 		Ok(Executable::Transaction(self.into_consensus()))
 	}
@@ -319,7 +321,9 @@ impl<P: Platform> IntoExecutable<P, u32> for types::PooledTransaction<P> {
 
 /// Signature recovered individual transactions are always infalliably
 /// convertable into an executable.
-impl<P: Platform> IntoExecutable<P, u8> for Recovered<types::Transaction<P>> {
+impl<P: Platform> IntoExecutable<P, Variant<2>>
+	for Recovered<types::Transaction<P>>
+{
 	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
 		Ok(Executable::Transaction(self))
 	}
@@ -327,16 +331,35 @@ impl<P: Platform> IntoExecutable<P, u8> for Recovered<types::Transaction<P>> {
 
 /// Bundles are also convertible into an executable infalliably.
 /// Signature recovery is part of the bundle assembly logic.
-impl<P: Platform> IntoExecutable<P, u16> for types::Bundle<P> {
+impl<P: Platform> IntoExecutable<P, Variant<3>> for types::Bundle<P> {
 	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
 		Ok(Executable::Bundle(self))
 	}
 }
 
 /// Already converted executables
-impl<P: Platform> IntoExecutable<P, u64> for Executable<P> {
+impl<P: Platform> IntoExecutable<P, Variant<4>> for Executable<P> {
 	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
 		Ok(self)
+	}
+}
+
+/// Another checkpoints contents
+impl<P: Platform> IntoExecutable<P, Variant<5>> for Checkpoint<P> {
+	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
+		(&self).try_into_executable()
+	}
+}
+
+impl<P: Platform> IntoExecutable<P, Variant<6>> for &Checkpoint<P> {
+	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
+		if let Some(bundle) = self.as_bundle() {
+			Ok(Executable::Bundle(bundle.clone()))
+		} else if let Some(tx) = self.as_transaction() {
+			Ok(Executable::Transaction(tx.clone()))
+		} else {
+			Err(RecoveryError::new())
+		}
 	}
 }
 

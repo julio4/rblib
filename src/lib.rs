@@ -5,6 +5,7 @@ mod platform;
 
 // RBLib Core Public API Prelude
 pub mod prelude {
+	pub(crate) use super::Variant;
 	pub use super::{payload::*, pipelines::*, platform::*};
 }
 
@@ -108,3 +109,7 @@ pub mod alloy {
 }
 
 pub use uuid;
+
+/// Used internally as a sentinel type for generic parameters.
+#[doc(hidden)]
+pub enum Variant<const U: usize = 0> {}

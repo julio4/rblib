@@ -2,10 +2,14 @@ use {
 	crate::{
 		alloy::{
 			consensus::Transaction,
-			primitives::{Address, U256},
+			primitives::{Address, B256, U256},
 		},
 		prelude::*,
-		reth::{errors::ProviderError, revm::DatabaseRef},
+		reth::{
+			errors::ProviderError,
+			ethereum::primitives::SignedTransaction,
+			revm::DatabaseRef,
+		},
 	},
 	itertools::Itertools,
 };
@@ -46,8 +50,8 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	fn history(&self) -> Span<P>;
 
 	/// Returns a span that includes all mutable history of this checkpoint,
-	/// which is all checkpoints from the last barrier checkpoint to this
-	/// checkpoint, or the entire history if there is no barrier checkpoint.
+	/// which is all preceeding checkpoints from the last barrier, or the entire
+	/// history if there is no barrier checkpoint.
 	fn history_mut(&self) -> Span<P> {
 		let history = self.history();
 		let immutable_prefix = history
@@ -85,8 +89,15 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// Returns the nonce of a given account at this checkpoint.
 	fn nonce_of(&self, address: Address) -> Result<u64, ProviderError>;
 
-	/// Returns the lowst nonce for each signer in this checkpoint.
+	/// Returns all nonces for each signer in this checkpoint.
 	fn nonces(&self) -> Vec<(Address, u64)>;
+
+	/// Returns a list of all unique signers in this checkpoint.
+	fn signers(&self) -> Vec<Address>;
+
+	/// For checkpoints that are not barriers, returns the transaction or bundle
+	/// hash.
+	fn hash(&self) -> Option<B256>;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -178,16 +189,32 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 		)
 	}
 
-	/// Returns the lowst nonce for each signer in this checkpoint.
+	/// Returns all nonces for each signer in this checkpoint.
 	fn nonces(&self) -> Vec<(Address, u64)> {
 		self
 			.transactions()
 			.iter()
-			.chunk_by(|tx| tx.signer())
-			.into_iter()
-			.map(|(signer, txs)| {
-				(signer, txs.map(|tx| tx.nonce()).min().unwrap_or(0))
-			})
+			.map(|tx| (tx.signer(), tx.nonce()))
 			.collect()
+	}
+
+	/// Returns a list of all signers in this checkpoint.
+	fn signers(&self) -> Vec<Address> {
+		self
+			.transactions()
+			.iter()
+			.map(|tx| tx.signer())
+			.unique()
+			.collect()
+	}
+
+	/// For checkpoints that are not barriers, returns the transaction or bundle
+	/// hash.
+	fn hash(&self) -> Option<B256> {
+		if let Some(tx) = self.as_transaction() {
+			Some(*tx.tx_hash())
+		} else {
+			self.as_bundle().map(|bundle| bundle.hash())
+		}
 	}
 }

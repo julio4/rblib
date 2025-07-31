@@ -1,12 +1,10 @@
 use {
 	crate::{
-		alloy::{consensus::Transaction, primitives::Address},
+		alloy::primitives::{Address, B256},
 		prelude::*,
-		reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
 	},
-	itertools::Itertools,
 	std::{
-		collections::{BTreeMap, VecDeque, btree_map::Entry},
+		collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 		sync::Arc,
 	},
 };
@@ -14,6 +12,10 @@ use {
 /// This step will sort the checkpoints in the payload by their effective
 /// priority fee. During the sorting the transactions will preserve their
 /// sender, nonce dependencies.
+///
+/// Sorting happens only for the mutable part of the payload, i.e. after
+/// the last barrier checkpoint. Anything prior to the last barrier
+/// checkpoint is considered immutable and will not be reordered.
 pub struct OrderByPriorityFee;
 impl<P: Platform> Step<P> for OrderByPriorityFee {
 	async fn step(
@@ -22,135 +24,198 @@ impl<P: Platform> Step<P> for OrderByPriorityFee {
 		_ctx: StepContext<P>,
 	) -> ControlFlow<P> {
 		// create a span that contains all mutable checkpoints in the payload.
+		// We're guaranteed that all checkpoints in this span are executables,
+		// because the mutable history begins after the last barrier checkpoint.
 		let history = payload.history_mut();
 
-		// Get the correct order of transactions in the payload
-		let ordered = TxsQueue::from(&history).ordered(payload.block().base_fee());
+		// Find the correct order of orders in the payload.
+		let ordered = SortedOrders::from(&history).into_iter();
 
-		// Get the current order of transactions in the payload
-		let existing = history.transactions();
-
-		// find the position of the first transaction that is not in the correct
-		// order
-		let Some(first_misordered) = existing
+		// find the position of the first checkpoint that is not in the correct
+		// order.
+		let Some(first_out_of_order) = history
+			.iter()
 			.zip(ordered.clone())
-			.position(|(a, b)| a.tx_hash() != b.tx_hash())
+			.position(|(a, b)| a.hash() != b.hash())
 		else {
-			// all transactions in the payload are already in the correct order
+			// all checkpoints in the payload are already in the correct order
 			return ControlFlow::Ok(payload);
 		};
 
-		// we will need to reapply transactions in the correct order skipping the
-		// correctly ordered prefix.
+		// we will need to reconstruct the payload in the correct order skipping
+		// the correctly ordered prefix.
 		let mut ordered_prefix = history
-			.at(first_misordered)
+			.at(first_out_of_order)
 			.cloned()
-			.expect("first_misordered is valid index");
+			.expect("must be an valid index");
 
-		for tx in ordered.skip(first_misordered) {
-			ordered_prefix = match ordered_prefix.apply(tx.clone()) {
+		for item in ordered.skip(first_out_of_order) {
+			ordered_prefix = match ordered_prefix.apply(item) {
 				Ok(checkpoint) => checkpoint,
 				Err(e) => return e.into(),
-			}
+			};
 		}
-
 		assert_eq!(
 			ordered_prefix.depth(),
 			payload.depth(),
-			"payload length should not change priority fee ordering",
+			"payload length should not change after priority fee ordering"
 		);
 
-		// return the payload with the transactions in the correct order
 		ControlFlow::Ok(ordered_prefix)
 	}
 }
 
-/// This type takes a list of transactions and groups them by their signer
-/// address, and then sorts them by their nonce within each group. This gives us
-/// access to the transactions that are eligible to be included for each signer.
-///
-/// We're using a btree map here to keep tx order stable across loop iterations,
-/// when there are ties in effective priority fee.
-struct TxsQueue<'a, P: Platform>(
-	BTreeMap<Address, VecDeque<&'a Recovered<types::Transaction<P>>>>,
-);
+struct SortedOrders<'a, P: Platform> {
+	/// A map of all signers and the set of orders they have transactions in.
+	by_signer: HashMap<Address, HashSet<B256>>,
 
-impl<'a, P: Platform> From<&'a Span<P>> for TxsQueue<'a, P> {
+	/// a map of all orders, sorted by their effective priority fee.
+	by_fee: BTreeMap<u128, BTreeSet<B256>>,
+
+	/// A map of all signers the the nonces they have used in sorted order.
+	nonces: HashMap<Address, BTreeSet<u64>>,
+
+	/// A map of all checkpoints, keyed by their hash.
+	all_orders: HashMap<B256, &'a Checkpoint<P>>,
+}
+
+impl<'a, P: Platform> From<&'a Span<P>> for SortedOrders<'a, P> {
 	fn from(span: &'a Span<P>) -> Self {
-		Self(
-			span
-				.iter()
-				.flat_map(|checkpoint| checkpoint.transactions())
-				.map(|tx| (tx.signer(), tx))
-				.into_group_map()
-				.into_iter()
-				.map(|(signer, mut txs)| {
-					// sort transactions of the same sender by their nonce
-					txs.sort_by_key(|tx| tx.nonce());
-					(signer, txs.into_iter().collect())
-				})
-				.collect(),
-		)
+		let executables = span.iter().filter(|checkpoint| !checkpoint.is_barrier());
+		let all_orders: HashMap<B256, &'a Checkpoint<P>> = executables
+			.map(|checkpoint| (checkpoint.hash().unwrap(), checkpoint))
+			.collect();
+
+		let by_signer: HashMap<Address, HashSet<B256>> = all_orders
+			.iter()
+			.flat_map(|(hash, checkpoint)| {
+				checkpoint
+					.transactions()
+					.iter()
+					.map(move |tx| (tx.signer(), *hash))
+			})
+			.fold(HashMap::new(), |mut acc, (signer, hash)| {
+				acc.entry(signer).or_default().insert(hash);
+				acc
+			});
+
+		let by_fee: BTreeMap<u128, BTreeSet<B256>> = all_orders
+			.iter()
+			.map(|(hash, checkpoint)| (checkpoint.effective_tip_per_gas(), *hash))
+			.fold(BTreeMap::new(), |mut acc, (fee, hash)| {
+				acc.entry(fee).or_default().insert(hash);
+				acc
+			});
+
+		let nonces: HashMap<Address, BTreeSet<u64>> = all_orders
+			.values()
+			.flat_map(|order| order.nonces())
+			.fold(HashMap::new(), |mut acc, (signer, nonce)| {
+				acc.entry(signer).or_default().insert(nonce);
+				acc
+			});
+
+		Self {
+			by_signer,
+			by_fee,
+			nonces,
+			all_orders,
+		}
 	}
 }
 
-impl<'a, P: Platform> TxsQueue<'a, P> {
-	/// Returns an iterator that yields all transactions that are eligible to be
-	/// included according to sender nonce dependencies.
-	pub fn eligible(
-		&self,
-	) -> impl Iterator<Item = &'a Recovered<types::Transaction<P>>> {
-		self.0.iter().filter_map(|(_, txs)| txs.front()).copied()
+impl<'a, P: Platform> IntoIterator for SortedOrders<'a, P> {
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+	type Item = &'a Checkpoint<P>;
+
+	fn into_iter(mut self) -> Self::IntoIter {
+		let mut ordered = Vec::with_capacity(self.all_orders.len());
+
+		while let Some(order) = self.pop_best() {
+			ordered.push(order);
+		}
+
+		ordered.into_iter()
 	}
+}
 
-	/// Returns the next eligible transaction for a given sender, and removes it
-	/// from the queue. Returns `None` if there are no more transactions in the
-	/// queue for this sender.
-	pub fn pop_by_signer(
-		&mut self,
-		signer: Address,
-	) -> Option<&'a Recovered<types::Transaction<P>>> {
-		if let Entry::Occupied(mut txs) = self.0.entry(signer) {
-			let tx = txs.get_mut().pop_front().expect("should have been removed");
+impl<'a, P: Platform> SortedOrders<'a, P> {
+	pub fn pop_best(&mut self) -> Option<&'a Checkpoint<P>> {
+		let mut skip = 0;
 
-			if txs.get().is_empty() {
-				txs.remove();
+		let order = 'order: loop {
+			// get the next order with the highest effective priority fee
+			let order = *self
+				.nth_order_by_fee(skip)
+				.and_then(|order| self.all_orders.get(&order))?;
+
+			for (signer, nonce) in order.nonces() {
+				// if there is another order for the same signer with a lower nonce,
+				// we cannot use this order yet before the lower nonce is included.
+				if *self.nonces.get(&signer)?.iter().next()? < nonce {
+					// skip this order
+					skip += 1;
+					continue 'order;
+				}
 			}
 
-			return Some(tx);
+			// this is the best order we can use right now
+			break order;
+		};
+
+		self.remove_order(order);
+		Some(order)
+	}
+
+	fn remove_order(&mut self, order: &Checkpoint<P>) {
+		// remove nonces entries
+		for (signer, nonce) in order.nonces() {
+			if let Some(nonces) = self.nonces.get_mut(&signer) {
+				nonces.remove(&nonce);
+				if nonces.is_empty() {
+					self.nonces.remove(&signer);
+				}
+			}
+		}
+
+		let order_hash = order.hash().expect("order is not barrier");
+		let fee = order.effective_tip_per_gas();
+
+		// remove by_fee entry
+		if let Some(orders) = self.by_fee.get_mut(&fee) {
+			orders.remove(&order_hash);
+			if orders.is_empty() {
+				self.by_fee.remove(&fee);
+			}
+		}
+
+		// remove by_signer entry
+		for signer in order.signers() {
+			if let Some(orders) = self.by_signer.get_mut(&signer) {
+				orders.remove(&order_hash);
+				if orders.is_empty() {
+					self.by_signer.remove(&signer);
+				}
+			}
+		}
+
+		// remove from all_orders
+		self.all_orders.remove(&order_hash);
+	}
+
+	fn nth_order_by_fee(&self, skip: usize) -> Option<B256> {
+		let mut skip = skip;
+
+		for orders in self.by_fee.values().rev() {
+			if skip < orders.len() {
+				let order_hash = orders.iter().nth(skip)?;
+				return Some(*order_hash);
+			}
+
+			skip = skip.checked_sub(orders.len())?;
 		}
 
 		None
-	}
-
-	/// Returns the next eligible transaction with the highest effective
-	/// priority fee, and removes it from the queue. Returns `None` if there are
-	/// no more transactions in the queue.
-	pub fn pop_best(
-		&mut self,
-		base_fee: u64,
-	) -> Option<&'a Recovered<types::Transaction<P>>> {
-		let best_signer = self
-			.eligible()
-			.max_by_key(|tx| tx.effective_tip_per_gas(base_fee))
-			.map(Recovered::signer)?;
-
-		self.pop_by_signer(best_signer)
-	}
-
-	/// Returns all transactions in the correct priority fee order respecting
-	/// nonce dependencies.
-	pub fn ordered(
-		mut self,
-		base_fee: u64,
-	) -> impl Iterator<Item = &'a Recovered<types::Transaction<P>>> + Clone {
-		let mut output = Vec::new();
-
-		while let Some(tx) = self.pop_best(base_fee) {
-			output.push(tx);
-		}
-
-		output.into_iter()
 	}
 }
 
@@ -158,7 +223,10 @@ impl<'a, P: Platform> TxsQueue<'a, P> {
 mod tests {
 	use {
 		super::*,
-		crate::{alloy::network::TransactionBuilder, test_utils::*},
+		crate::{
+			alloy::{consensus::Transaction, network::TransactionBuilder},
+			test_utils::*,
+		},
 	};
 
 	async fn test_ordering<P: TestablePlatform>(

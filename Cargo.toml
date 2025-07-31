@@ -71,6 +71,8 @@ test-utils = [
   "ctor",
 ]
 
+long-pipelines-syntax = []
+
 [dependencies]
 # internal dependencies
 pipelines-macros = { path = "src/pipelines/macros" }

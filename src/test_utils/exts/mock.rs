@@ -100,7 +100,7 @@ pub trait BlockContextMocked<P: Platform, Marker = ()> {
 	fn mocked() -> (BlockContext<P>, impl traits::ProviderBounds<P>);
 }
 
-impl<P: Platform> BlockContextMocked<P, u8> for BlockContext<P>
+impl<P: Platform> BlockContextMocked<P, Variant<0>> for BlockContext<P>
 where
 	P: Platform<
 		NodeTypes: NodeTypes<
@@ -138,7 +138,7 @@ where
 }
 
 #[cfg(feature = "optimism")]
-impl<P: Platform> BlockContextMocked<P, u16> for BlockContext<P>
+impl<P: Platform> BlockContextMocked<P, Variant<1>> for BlockContext<P>
 where
 	P: Platform<
 		NodeTypes: NodeTypes<

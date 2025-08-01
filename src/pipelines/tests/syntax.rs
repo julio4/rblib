@@ -34,7 +34,7 @@ fn nested_verbose() {
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
 	let nested = Pipeline::<Ethereum>::default()
-		.with_step(AppendOneTransactionFromPool::default())
+		.with_step(AppendOneOrder::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(OrderByCoinbaseProfit::default())
 		.with_step(RemoveRevertedTransactions);
@@ -49,7 +49,7 @@ fn nested_verbose() {
 fn nested_one_concise() {
 	let top_level = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
-		.with_pipeline(Loop, (AppendOneTransactionFromPool::default(),));
+		.with_pipeline(Loop, (AppendOneOrder::default(),));
 
 	println!("{top_level:#?}");
 }
@@ -68,7 +68,7 @@ fn nested_many_concise() {
 		.with_pipeline(
 			Loop,
 			(
-				AppendOneTransactionFromPool::default(),
+				AppendOneOrder::default(),
 				OrderByPriorityFee::default(),
 				OrderByCoinbaseProfit::default(),
 				RemoveRevertedTransactions,
@@ -120,7 +120,7 @@ fn flashblocks_example_closure() {
 				.with_pipeline(
 					Loop,
 					(
-						AppendOneTransactionFromPool::default(),
+						AppendOneOrder::default(),
 						OrderByPriorityFee::default(),
 						OrderByCoinbaseProfit::default(),
 						RemoveRevertedTransactions,
@@ -172,7 +172,7 @@ fn flashblocks_example_concise() {
 				.with_pipeline(
 					Loop,
 					(
-						AppendOneTransactionFromPool::default(),
+						AppendOneOrder::default(),
 						OrderByPriorityFee::default(),
 						OrderByCoinbaseProfit::default(),
 						RemoveRevertedTransactions,

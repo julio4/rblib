@@ -34,6 +34,12 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 		self.history().gas_used()
 	}
 
+	/// Returns the cumulative blob gas used by all checkpoints in the history of
+	/// this checkpoint, including this checkpoint itself.
+	fn cumulative_blob_gas_used(&self) -> u64 {
+		self.history().blob_gas_used()
+	}
+
 	/// Returns the effective tip for this transaction.
 	fn effective_tip_per_gas(&self) -> u128;
 

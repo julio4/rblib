@@ -82,7 +82,7 @@ fn main() {
         .with_pipeline(
             Loop,
             (
-                AppendOneTransactionFromPool::default(),
+                AppendOneOrder::default(),
                 PriorityFeeOrdering,
                 TotalProfitOrdering,
                 RevertProtection,

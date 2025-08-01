@@ -82,10 +82,7 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 async fn all_transactions_included<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
-		(
-			AppendOneTransactionFromPool::default(),
-			OrderByPriorityFee::default(),
-		),
+		(AppendOneOrder::default(), OrderByPriorityFee::default()),
 	);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
@@ -135,7 +132,7 @@ async fn reth_minimal_integration_example() {
 	let pipeline = Pipeline::<Ethereum>::default().with_pipeline(
 		Loop,
 		(
-			AppendOneTransactionFromPool::default(),
+			AppendOneOrder::default(),
 			OrderByPriorityFee::default(),
 			OrderByCoinbaseProfit::default(),
 			RemoveRevertedTransactions,

@@ -29,8 +29,9 @@ pub trait OrderScore<P: Platform>:
 }
 
 /// A generic implementation of a step that will order checkpoints based on a
-/// scoring strategy. During the sorting the transactions will preserve their
-/// sender, nonce dependencies.
+/// scoring function. During the sorting transactions will preserve their
+/// sender/nonce dependencies. Transactions within one bundle will remain in
+/// the same order to each other, but the order of bundles may change.
 ///
 /// Sorting happens only for the mutable part of the payload, i.e. after
 /// the last barrier checkpoint. Anything prior to the last barrier
@@ -51,7 +52,12 @@ impl<P: Platform, S: OrderScore<P>> Step<P> for OrderBy<P, S> {
 		// Find the correct order of orders in the payload.
 		let ordered = match SortedOrders::<P, S>::try_from(&history) {
 			Ok(ordered) => ordered.into_iter(),
-			Err(e) => return PayloadBuilderError::other(e).into(),
+			// when the step started running, the payload had no nonce conflicts and
+			// all orders were able to construct valid checkpoints. After reordering
+			// we should not have any nonce conflicts. This error might happen only
+			// when the scoring function fails to compute the score for some
+			// checkpoint.
+			Err(e) => return e.into(),
 		};
 
 		// find the position of the first checkpoint that is not in the correct
@@ -65,8 +71,8 @@ impl<P: Platform, S: OrderScore<P>> Step<P> for OrderBy<P, S> {
 			return ControlFlow::Ok(payload);
 		};
 
-		// we will need to reconstruct the payload in the correct order skipping
-		// the correctly ordered prefix.
+		// reconstruct the suffix of the payload on top of the correctly ordered
+		// prefix.
 		let mut ordered_prefix = history
 			.at(first_out_of_order)
 			.cloned()

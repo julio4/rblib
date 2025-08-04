@@ -165,6 +165,28 @@ impl Not for Eligibility {
 	}
 }
 
+impl Eligibility {
+	/// Returns `Some(f())` if the eligibility is `Eligible`, otherwise returns
+	/// `None`.
+	pub fn then<T, F: FnOnce() -> T>(self, f: F) -> Option<T> {
+		if self == Eligibility::Eligible {
+			Some(f())
+		} else {
+			None
+		}
+	}
+
+	/// Returns `Some(t)` if the eligibility is `Eligible`, otherwise returns
+	/// `None`.
+	pub fn then_some<T>(self, t: T) -> Option<T> {
+		if self == Eligibility::Eligible {
+			Some(t)
+		} else {
+			None
+		}
+	}
+}
+
 /// A bundle of transactions that adheres to the [Flashbots specification].
 /// see: <https://docs.flashbots.net/flashbots-auction/searchers/advanced/rpc-endpoint#eth_sendbundle>
 ///

@@ -110,7 +110,7 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 
 		if self
 			.max_block_number
-			.is_some_and(|max_bn| max_bn < block.parent().number())
+			.is_some_and(|max_bn| max_bn < block.number())
 		{
 			// this bundle will never be eligible for inclusion anymore
 			return Eligibility::PermanentlyIneligible;
@@ -118,7 +118,7 @@ impl Bundle<FlashBlocks> for FlashBlocksBundle {
 
 		if self
 			.min_block_number
-			.is_some_and(|min_bn| min_bn > block.parent().number())
+			.is_some_and(|min_bn| min_bn > block.number())
 		{
 			// this bundle is not eligible yet
 			return Eligibility::TemporarilyIneligible;

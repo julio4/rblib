@@ -1,5 +1,8 @@
 use {
-	crate::{FlashBlocks, tests::random_valid_bundle},
+	crate::{
+		FlashBlocks,
+		tests::{assert_has_sequencer_tx, random_valid_bundle},
+	},
 	rblib::{
 		alloy::{consensus::Transaction, primitives::U256},
 		pool::{BundleResult, BundlesApiClient},
@@ -28,6 +31,7 @@ async fn one_valid_tx_included() -> eyre::Result<()> {
 	debug!("Built block: {block:#?}");
 
 	assert_eq!(block.number(), 1);
+	assert_has_sequencer_tx!(&block);
 	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 bundle tx
 	assert_eq!(block.tx(1).unwrap().value(), U256::from(1_000_000));
 
@@ -53,6 +57,7 @@ async fn two_valid_txs_included() -> eyre::Result<()> {
 	debug!("Built block: {block:#?}");
 
 	assert_eq!(block.number(), 1);
+	assert_has_sequencer_tx!(&block);
 	assert_eq!(block.tx_count(), 3); // sequencer deposit tx + 2 bundle txs
 	assert_eq!(block.tx(1).unwrap().value(), U256::from(1_000_000));
 	assert_eq!(block.tx(2).unwrap().value(), U256::from(1_000_001));
@@ -62,5 +67,37 @@ async fn two_valid_txs_included() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn min_block_timestamp_constraint() -> eyre::Result<()> {
-	todo!()
+	let node = FlashBlocks::test_node().await?;
+
+	let mut bundle_with_one_tx = random_valid_bundle(1);
+	bundle_with_one_tx.min_block_number = Some(3);
+	let bundle_hash = bundle_with_one_tx.hash();
+	let txhash = bundle_with_one_tx.transactions()[0].tx_hash();
+
+	let result = BundlesApiClient::<FlashBlocks>::send_bundle(
+		&node.rpc_client().await?,
+		bundle_with_one_tx,
+	)
+	.await?;
+
+	assert_eq!(result, BundleResult { bundle_hash });
+
+	let block = node.next_block().await?; // block 1
+	assert_eq!(block.number(), 1);
+	assert_eq!(block.tx_count(), 1);
+	assert_has_sequencer_tx!(&block);
+
+	let block = node.next_block().await?; // block 2
+	assert_eq!(block.number(), 2);
+	assert_eq!(block.tx_count(), 1);
+	assert_has_sequencer_tx!(&block);
+
+	let block = node.next_block().await?; // block 3
+	assert_eq!(block.number(), 3);
+	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 bundle tx
+	assert_has_sequencer_tx!(&block);
+
+	assert!(block.includes(txhash));
+
+	Ok(())
 }

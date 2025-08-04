@@ -126,12 +126,12 @@ macro_rules! assert_is_sequencer_tx {
 macro_rules! assert_has_sequencer_tx {
 	($block:expr) => {
 		assert!(
-			rblib::test_utils::BlockResponseExt::tx_count($block) > 1,
+			rblib::test_utils::BlockResponseExt::tx_count($block) >= 1,
 			"Block should have one transaction"
 		);
 		let sequencer_tx =
 			rblib::test_utils::BlockResponseExt::tx($block, 0).unwrap();
-		assert_is_sequencer_tx!(sequencer_tx);
+		$crate::tests::assert_is_sequencer_tx!(sequencer_tx);
 	};
 }
 

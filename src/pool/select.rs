@@ -2,15 +2,20 @@ use super::*;
 
 /// Orders query and retrieval
 impl<P: Platform> OrderPool<P> {
-	pub fn best_orders(&self) -> impl Iterator<Item = Order<P>> {
-		self.inner.orders.iter().map(|entry| entry.value().clone())
-	}
-
 	pub fn best_orders_for_block<'a>(
 		&'a self,
-		_block: &BlockContext<P>,
+		block: &'a BlockContext<P>,
 	) -> impl Iterator<Item = Order<P>> + 'a {
-		self.best_orders()
+		self
+			.inner
+			.orders
+			.iter()
+			.filter_map(|entry| match entry.value() {
+				t @ Order::Transaction(_) => Some(t.clone()),
+				b @ Order::Bundle(bundle) => {
+					bundle.is_eligible(block).then(|| b.clone())
+				}
+			})
 	}
 }
 
@@ -31,7 +36,7 @@ impl<'o, P: Platform> PoolsDemux<'o, P> {
 	pub fn new<S: traits::PoolBounds<P>>(
 		system_pool: Option<&S>,
 		order_pool: Option<&'o OrderPool<P>>,
-		block: &BlockContext<P>,
+		block: &'o BlockContext<P>,
 	) -> Self {
 		Self {
 			system_pool_iter: system_pool.map(|pool| {

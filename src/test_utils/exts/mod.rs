@@ -23,7 +23,7 @@ pub use mock::*;
 
 pub trait BlockResponseExt<T: TransactionResponse> {
 	fn tx(&self, index: usize) -> Option<&T>;
-	fn includes(&self, txs: &impl AsTxs) -> bool;
+	fn includes(&self, txs: impl IntoTxs) -> bool;
 	fn tx_count(&self) -> usize;
 	fn is_empty(&self) -> bool {
 		self.tx_count() == 0
@@ -35,8 +35,8 @@ where
 	T: TransactionResponse,
 	B: BlockResponse<Transaction = T>,
 {
-	fn includes(&self, txs: &impl AsTxs) -> bool {
-		txs.as_txs().into_iter().all(|txhash| {
+	fn includes(&self, txs: impl IntoTxs) -> bool {
+		txs.into_txs().into_iter().all(|txhash| {
 			self
 				.transactions()
 				.txns()
@@ -57,19 +57,31 @@ where
 	}
 }
 
-pub trait AsTxs {
-	fn as_txs(&self) -> Vec<TxHash>;
+pub trait IntoTxs {
+	fn into_txs(self) -> Vec<TxHash>;
 }
 
-impl AsTxs for TxHash {
-	fn as_txs(&self) -> Vec<TxHash> {
+impl IntoTxs for TxHash {
+	fn into_txs(self) -> Vec<TxHash> {
+		vec![self]
+	}
+}
+
+impl IntoTxs for &TxHash {
+	fn into_txs(self) -> Vec<TxHash> {
 		vec![*self]
 	}
 }
 
-impl AsTxs for Vec<TxHash> {
-	fn as_txs(&self) -> Vec<TxHash> {
-		self.clone()
+impl IntoTxs for Vec<TxHash> {
+	fn into_txs(self) -> Vec<TxHash> {
+		self
+	}
+}
+
+impl IntoTxs for &[TxHash] {
+	fn into_txs(self) -> Vec<TxHash> {
+		self.to_vec()
 	}
 }
 

@@ -8,6 +8,7 @@ use {
 		reth::{
 			errors::ProviderError,
 			ethereum::primitives::SignedTransaction,
+			primitives::Recovered,
 			revm::DatabaseRef,
 		},
 	},
@@ -104,6 +105,16 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// For checkpoints that are not barriers, returns the transaction or bundle
 	/// hash.
 	fn hash(&self) -> Option<B256>;
+
+	/// Returns `true` if this checkpoint has any transactions with non-success
+	/// execution outcome.
+	fn has_failures(&self) -> bool;
+
+	/// Returns an iterator over all transactions in this checkpoint that did not
+	/// have a successful execution outcome.
+	fn failed_txs(
+		&self,
+	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>>;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -222,5 +233,25 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 		} else {
 			self.as_bundle().map(|bundle| bundle.hash())
 		}
+	}
+
+	/// Returns `true` if this checkpoint has any transactions with non-success
+	/// execution outcome.
+	fn has_failures(&self) -> bool {
+		self.failed_txs().next().is_some()
+	}
+
+	/// Returns an iterator over all transactions in this checkpoint that did not
+	/// have a successful execution outcome.
+	fn failed_txs(
+		&self,
+	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
+		self.result().into_iter().flat_map(|result| {
+			result
+				.transactions()
+				.iter()
+				.zip(result.results())
+				.filter_map(|(tx, res)| (!res.is_success()).then_some(tx))
+		})
 	}
 }

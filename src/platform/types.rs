@@ -115,6 +115,8 @@ pub type BlockResponse<P: PlatformWithRpcTypes> =
 pub type TransactionRequest<P: PlatformWithRpcTypes> =
 	<RpcTypes<P> as AlloyNetwork>::TransactionRequest;
 
+/// Extracts the EIP-2718 transaction envelope type for the platform.
+/// This type is convertable to `types::transaction<P>`.
 pub type TxEnvelope<P: PlatformWithRpcTypes> =
 	<RpcTypes<P> as AlloyNetwork>::TxEnvelope;
 

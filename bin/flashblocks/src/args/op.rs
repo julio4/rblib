@@ -21,9 +21,9 @@ pub struct OpRbuilderArgs {
 	)]
 	pub chain_block_time: u64,
 
-	/// Whether to enable revert protection by default
-	#[arg(long = "builder.enable-revert-protection", default_value = "false")]
-	pub enable_revert_protection: bool,
+	/// Whether to enable revert protection
+	#[arg(long = "builder.revert-protection", default_value = "true")]
+	pub revert_protection: bool,
 
 	/// Builder secret key for signing last transaction in block
 	#[arg(long = "rollup.builder-secret-key", env = "BUILDER_SECRET_KEY")]

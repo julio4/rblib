@@ -283,7 +283,14 @@ impl<P: Platform> Executable<P> {
 		}
 	}
 
-	/// Returns hash of the transaction or the bundle.
+	pub const fn is_transaction(&self) -> bool {
+		matches!(self, Self::Transaction(_))
+	}
+
+	pub const fn is_bundle(&self) -> bool {
+		matches!(self, Self::Bundle(_))
+	}
+
 	pub fn hash(&self) -> B256 {
 		match self {
 			Self::Transaction(tx) => *tx.tx_hash(),
@@ -360,6 +367,16 @@ impl<P: Platform> IntoExecutable<P, Variant<6>> for &Checkpoint<P> {
 		} else {
 			Err(RecoveryError::new())
 		}
+	}
+}
+
+/// From EIP-2718 transaction envelope to executable.
+impl<P: PlatformWithRpcTypes> IntoExecutable<P, Variant<7>>
+	for types::TxEnvelope<P>
+{
+	fn try_into_executable(self) -> Result<Executable<P>, RecoveryError> {
+		let tx: types::Transaction<P> = self.into();
+		tx.try_into_executable()
 	}
 }
 

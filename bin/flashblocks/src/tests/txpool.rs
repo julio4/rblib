@@ -29,10 +29,7 @@ async fn non_bundle_tx_included_in_block() -> eyre::Result<()> {
 
 	assert_eq!(block.number(), 1);
 	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 user tx
-	assert!(
-		block.includes(&txhash),
-		"Block should include the transaction"
-	);
+	assert!(block.includes(txhash));
 
 	let transactions = block.transactions.into_transactions_vec();
 

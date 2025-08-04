@@ -56,7 +56,7 @@ pub fn build_pipeline(
 	cli_args: &OpRbuilderArgs,
 	pool: &OrderPool<FlashBlocks>,
 ) -> Pipeline<FlashBlocks> {
-	let mut pipeline = if cli_args.enable_revert_protection {
+	let mut pipeline = if cli_args.revert_protection {
 		Pipeline::<FlashBlocks>::default()
 			.with_prologue(OptimismPrologue)
 			.with_pipeline(

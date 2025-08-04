@@ -11,6 +11,10 @@ use {
 	reth::primitives::Recovered,
 };
 
+mod bundle;
+
+pub use bundle::BundleExt;
+
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionBuilderError<P: PlatformWithRpcTypes> {
 	#[error("Failed to build transaction: {0:?}")]

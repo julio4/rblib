@@ -1,10 +1,7 @@
 use {
 	super::*,
 	crate::{alloy, prelude::*, reth},
-	alloy::{
-		eips::{Decodable2718, Encodable2718},
-		network::TransactionBuilder,
-	},
+	alloy::network::TransactionBuilder,
 	reth::payload::builder::PayloadBuilderError,
 	std::sync::Arc,
 	tokio::sync::{
@@ -56,8 +53,8 @@ pub(crate) use fake_step;
 pub struct OneStep<P: PlatformWithRpcTypes> {
 	pipeline: Pipeline<P>,
 	pool_txs: Vec<BoxedTxBuilderFn<P>>,
-	payload_input: Vec<BarrierOrTxFn<P>>,
-	payload_tx: UnboundedSender<BarrierOrTx<P>>,
+	payload_input: Vec<InputPayloadItemFn<P>>,
+	payload_tx: UnboundedSender<InputPayloadItem<P>>,
 	ok_rx: UnboundedReceiver<Checkpoint<P>>,
 	fail_rx: UnboundedReceiver<PayloadBuilderError>,
 	break_rx: UnboundedReceiver<Checkpoint<P>>,
@@ -114,14 +111,21 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 	) -> Self {
 		self
 			.payload_input
-			.push(BarrierOrTxFn::Tx(Box::new(builder)));
+			.push(InputPayloadItemFn::Tx(Box::new(builder)));
+		self
+	}
+
+	/// Adds a new bundle to the input payload of the step.
+	#[must_use]
+	pub fn with_payload_bundle(mut self, bundle: types::Bundle<P>) -> Self {
+		self.payload_input.push(InputPayloadItemFn::Bundle(bundle));
 		self
 	}
 
 	/// Adds a barrier to the input payload of the step at the current position.
 	#[must_use]
 	pub fn with_payload_barrier(mut self) -> Self {
-		self.payload_input.push(BarrierOrTxFn::Barrier);
+		self.payload_input.push(InputPayloadItemFn::Barrier);
 		self
 	}
 
@@ -147,10 +151,10 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 		let input_txs = self
 			.payload_input
 			.into_iter()
-			.map(|input| -> eyre::Result<BarrierOrTx<P>> {
+			.map(|input| -> eyre::Result<InputPayloadItem<P>> {
 				Ok(match input {
-					BarrierOrTxFn::Barrier => BarrierOrTx::Barrier,
-					BarrierOrTxFn::Tx(mut builder) => BarrierOrTx::Tx(
+					InputPayloadItemFn::Barrier => InputPayloadItem::Barrier,
+					InputPayloadItemFn::Tx(mut builder) => InputPayloadItem::Tx(
 						builder(
 							local_node
 								.build_tx()
@@ -159,6 +163,9 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 						)
 						.build_with_known_signer()?,
 					),
+					InputPayloadItemFn::Bundle(bundle) => {
+						InputPayloadItem::Bundle(bundle)
+					}
 				})
 			})
 			.collect::<Result<Vec<_>, _>>()?;
@@ -196,11 +203,11 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 }
 
 struct PopulatePayload<P: PlatformWithRpcTypes> {
-	receiver: Mutex<UnboundedReceiver<BarrierOrTx<P>>>,
+	receiver: Mutex<UnboundedReceiver<InputPayloadItem<P>>>,
 }
 
 impl<P: PlatformWithRpcTypes> PopulatePayload<P> {
-	pub fn new() -> (Self, UnboundedSender<BarrierOrTx<P>>) {
+	pub fn new() -> (Self, UnboundedSender<InputPayloadItem<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(
 			Self {
@@ -220,15 +227,12 @@ impl<P: PlatformWithRpcTypes> Step<P> for PopulatePayload<P> {
 		let mut payload = payload;
 		while let Ok(input) = self.receiver.lock().await.try_recv() {
 			payload = match input {
-				BarrierOrTx::Barrier => payload.barrier(),
-				BarrierOrTx::Tx(tx) => {
-					// unfortunatelly encoding and decoding with 2718 is the only generic
-					// way to handle transaction types across different platforms and
-					// networks and SDKs that we are working with.
-					let encoded = tx.encoded_2718();
-					let decoded = types::Transaction::<P>::decode_2718(&mut &encoded[..])
-						.expect("Failed to decode transaction");
-					payload.apply(decoded).expect("Failed to apply transaction")
+				InputPayloadItem::Barrier => payload.barrier(),
+				InputPayloadItem::Tx(tx) => {
+					payload.apply(tx).expect("Failed to apply transaction")
+				}
+				InputPayloadItem::Bundle(bundle) => {
+					payload.apply(bundle).expect("Failed to apply bundle")
 				}
 			};
 		}
@@ -304,14 +308,16 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 	}
 }
 
-enum BarrierOrTxFn<P: PlatformWithRpcTypes> {
+enum InputPayloadItemFn<P: PlatformWithRpcTypes> {
 	Barrier,
 	Tx(BoxedTxBuilderFn<P>),
+	Bundle(types::Bundle<P>),
 }
 
-enum BarrierOrTx<P: PlatformWithRpcTypes> {
+enum InputPayloadItem<P: PlatformWithRpcTypes> {
 	Barrier,
 	Tx(types::TxEnvelope<P>),
+	Bundle(types::Bundle<P>),
 }
 
 type BoxedTxBuilderFn<P> =

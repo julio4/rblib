@@ -79,6 +79,12 @@ impl IntoTxs for Vec<TxHash> {
 	}
 }
 
+impl IntoTxs for &Vec<TxHash> {
+	fn into_txs(self) -> Vec<TxHash> {
+		self.clone()
+	}
+}
+
 impl IntoTxs for &[TxHash] {
 	fn into_txs(self) -> Vec<TxHash> {
 		self.to_vec()

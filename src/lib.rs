@@ -19,10 +19,6 @@ pub mod steps;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 
-#[cfg(all(feature = "jemalloc", unix))]
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 // Reexport reth version that is used by rblib as a convenience for downstream
 // users. Those exports should be enough to get started with a simple node.
 pub mod reth {

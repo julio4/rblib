@@ -59,7 +59,7 @@ impl<P: Platform> Iterator for PoolsDemux<'_, P> {
 
 	// todo: refine this logic
 	fn next(&mut self) -> Option<Self::Item> {
-		// for now precedence is given to the order pool, if it has orders
+		// for now precedence is given to the order pool
 		if let Some(order_pool_iter) = self.order_pool_iter.as_mut()
 			&& let Some(order) = order_pool_iter.next()
 		{

@@ -46,20 +46,29 @@ impl<P: Platform> OrderPool<P> {
 	}
 
 	/// Invoked when an order was proposed by the pool through thr `best_orders()`
-	/// and there was an attempt to include it in a payload.
+	/// and there was an attempt to include it in a payload. Once an order was
+	/// proposed once by the pool, it will be removed from the orders list and
+	/// will not be proposed again.
 	pub fn report_inclusion_attempt(
 		&self,
 		_order_hash: B256,
 		_block: &BlockContext<P>,
 	) {
+		// todo
 	}
 
 	/// Signals to the order pool that a block has been committed to the chain.
 	/// This will remove all orders that had any of their transactions included
 	/// in the payload.
 	pub fn report_committed_block(&self, block: &SealedBlock<types::Block<P>>) {
+		// remove all orders that had any of their transactions included in the
+		// payload
 		for tx in block.body().transactions() {
 			self.remove_any_with(*tx.tx_hash());
 		}
+
+		// remove all orders that became permanently ineligible
+		// after this block was committed to the chain.
+		self.remove_invalidated_orders(block.sealed_header());
 	}
 }

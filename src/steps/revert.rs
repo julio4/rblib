@@ -56,9 +56,11 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 				if !has_failures(&new_checkpoint) {
 					// if the transaction was applied and did not revert or halt, we can
 					// extend the safe prefix with it and try next remaining checkpoints.
+					// otherwise discard this checkpoint and leave the prefix as is.
 					prefix = new_checkpoint;
-					continue 'next_order;
 				}
+
+				continue 'next_order;
 			}
 
 			// If the checkpoint is a bundle, we need to check if we can remove any of

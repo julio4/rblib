@@ -16,6 +16,7 @@ use {
 };
 
 mod host;
+mod maintain;
 mod report;
 mod rpc;
 mod setup;

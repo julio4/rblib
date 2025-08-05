@@ -84,17 +84,17 @@ async fn min_block_timestamp_constraint() -> eyre::Result<()> {
 
 	let block = node.next_block().await?; // block 1
 	assert_eq!(block.number(), 1);
-	assert_eq!(block.tx_count(), 1);
+	assert_eq!(block.tx_count(), 1); // only sequencer tx
 	assert_has_sequencer_tx!(&block);
 
 	let block = node.next_block().await?; // block 2
 	assert_eq!(block.number(), 2);
-	assert_eq!(block.tx_count(), 1);
+	assert_eq!(block.tx_count(), 1); // only sequencer tx
 	assert_has_sequencer_tx!(&block);
 
 	let block = node.next_block().await?; // block 3
 	assert_eq!(block.number(), 3);
-	assert_eq!(block.tx_count(), 2); // sequencer deposit tx + 1 bundle tx
+	assert_eq!(block.tx_count(), 2); // sequencer tx + 1 bundle tx
 	assert_has_sequencer_tx!(&block);
 
 	assert!(block.includes(txhash));

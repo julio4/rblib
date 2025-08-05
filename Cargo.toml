@@ -8,21 +8,23 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.86"
+rust-version = "1.87"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/flashbots/rblib"
 repository = "https://github.com/flashbots/rblib"
+authors = ["Flashbots <info@flashbots.net>", "Karim Agha <karim@flashbots.net>"]
 exclude = [".github/"]
 
 [package]
 name = "rblib"
-description = "SDK for building ethereum compatible block builders"
+description = "Modular SDK for building ethereum block builders."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
+authors.workspace = true
 exclude.workspace = true
 
 [lib]

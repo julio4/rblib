@@ -7,7 +7,7 @@ use {
 fn only_steps() {
 	let pipeline = Pipeline::<Ethereum>::default()
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
-		.with_step(GatherBestTransactions)
+		.with_step(AppendManyOrders::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions);
 
@@ -19,7 +19,7 @@ fn only_steps() {
 fn only_steps_optimism_specific() {
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
-		.with_step(GatherBestTransactions)
+		.with_step(AppendManyOrders::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(OrderByCoinbaseProfit::default())
 		.with_step(RemoveRevertedTransactions)

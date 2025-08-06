@@ -408,20 +408,17 @@ impl<P: Platform> Eq for Checkpoint<P> {}
 impl<P: Platform> Debug for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Checkpoint")
-			.field("depth", &self.depth() as &dyn Debug)
-			.field(
-				"block",
-				&format!("{} + 1", self.block().parent().hash()) as &dyn Debug,
-			)
+			.field("depth", &self.depth())
+			.field("block", &format!("{} + 1", self.block().parent().hash()))
 			.field(
 				"txs",
 				&self
 					.transactions()
 					.iter()
 					.map(|tx| tx.tx_hash())
-					.collect::<Vec<_>>() as &dyn Debug,
+					.collect::<Vec<_>>(),
 			)
-			.field("result", &self.result() as &dyn Debug)
+			.field("result", &self.result())
 			.finish()
 	}
 }

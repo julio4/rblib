@@ -93,6 +93,9 @@ pub trait Platform:
 	where
 		P: traits::PlatformExecBounds<Self>;
 
+	/// Prepares platform-specific block environment containing all the
+	/// information needed to build a new block that cannot be derived from the
+	/// parent block header alone.
 	fn next_block_environment_context<P>(
 		chainspec: &types::ChainSpec<P>,
 		parent: &types::Header<P>,
@@ -101,10 +104,13 @@ pub trait Platform:
 	where
 		P: traits::PlatformExecBounds<Self>;
 
+	/// Given a payload checkpoint and access to the node state, this method
+	/// builds a new payload that is ready to be handed back to the CL client as
+	/// a response to the `ForkchoiceUpdated` request.
 	fn build_payload<P, Provider>(
 		payload: Checkpoint<P>,
 		provider: &Provider,
-	) -> Result<types::BuiltPayload<P>, reth::payload::builder::PayloadBuilderError>
+	) -> Result<types::BuiltPayload<P>, PayloadBuilderError>
 	where
 		P: traits::PlatformExecBounds<Self>,
 		Provider: traits::ProviderBounds<Self>;

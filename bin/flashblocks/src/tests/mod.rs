@@ -4,6 +4,7 @@ use {
 		build_pipeline,
 		bundle::FlashBlocksBundle,
 		platform::FlashBlocks,
+		rpc::TransactionStatusRpc,
 	},
 	rand::{Rng, rng},
 	rblib::{
@@ -78,6 +79,7 @@ impl TestNodeFactory<FlashBlocks> for FlashBlocks {
 			let pool = OrderPool::<FlashBlocks>::default();
 			let pipeline = build_pipeline(&cli_args, &pool);
 			let opnode = OpNode::new(cli_args.rollup_args.clone());
+			let tx_status_rpc = TransactionStatusRpc::new(&pipeline);
 
 			builder
 				.with_types::<OpNode>()
@@ -90,7 +92,11 @@ impl TestNodeFactory<FlashBlocks> for FlashBlocks {
 				.with_add_ons(opnode
 						.add_ons_builder::<types::RpcTypes<FlashBlocks>>()
 						.build::<_, OpEngineValidatorBuilder, OpEngineApiBuilder<OpEngineValidatorBuilder>>())
-				.extend_rpc_modules(move |mut rpc_ctx| pool.attach_rpc(&mut rpc_ctx))
+				.extend_rpc_modules(move |mut rpc_ctx| {
+					pool.attach_rpc(&mut rpc_ctx)?; 
+					tx_status_rpc.attach_rpc(&mut rpc_ctx)?;
+					Ok(())
+				})
 		})
 		.await
 	}

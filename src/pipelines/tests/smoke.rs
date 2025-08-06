@@ -52,7 +52,7 @@ async fn empty_pipeline_builds_empty_payload<P: TestablePlatform>() {
 #[rblib_test(Ethereum, Optimism)]
 async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
-		.with_step(GatherBestTransactions)
+		.with_step(AppendManyOrders::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions);
 

@@ -12,11 +12,7 @@
 
 use {
 	crate::{
-		pipelines::{
-			exec::navi::StepNavigator,
-			service::ServiceContext,
-			step::WrappedStep,
-		},
+		pipelines::{exec::navi::StepNavigator, service::ServiceContext},
 		prelude::*,
 		reth::payload::builder::PayloadBuilderError,
 	},
@@ -31,7 +27,7 @@ use {
 	tracing::{debug, trace},
 };
 
-mod navi;
+pub(super) mod navi;
 
 type PipelineOutput<P: Platform> =
 	Result<types::BuiltPayload<P>, ClonablePayloadBuilderError>;
@@ -72,17 +68,12 @@ impl<
 			cursor: Cursor::<P>::Initializing({
 				let block = block.clone();
 				let pipeline = Arc::clone(&pipeline);
-				let limits = match pipeline.limits() {
-					Some(limits) => limits.create(&block, None),
-					None => P::DefaultLimits::default().create(&block, None),
-				};
-				let context = Arc::new(StepContext::new(block, &service, limits));
-
+				let service = Arc::clone(&service);
 				async move {
 					pipeline
-						.for_each_step(&|step: Arc<WrappedStep<P>>| {
-							let context = Arc::clone(&context);
-							async move { step.before_job(context).await }
+						.for_each_step(&|step_navi: StepNavigator<P>| {
+							let context = StepContext::new(&block, &service, &step_navi);
+							async move { step_navi.step().before_job(context).await }
 						})
 						.await
 				}
@@ -105,20 +96,13 @@ impl<
 > PipelineExecutor<P, Provider, Pool>
 {
 	fn create_step_context(&self, step: &StepPath) -> StepContext<P> {
-		let block = self.context.block.clone();
 		let pipeline = Arc::clone(&self.context.pipeline);
 		let step = step.navigator(&pipeline).expect(
 			"Invalid step path. This is a bug in the pipeline executor \
 			 implementation.",
 		);
 
-		// either inherit limits from the parent step or use the default limits
-		// of the underlying platform.
-		let limits = match step.pipeline().limits() {
-			Some(limits) => limits.create(&block, None),
-			None => P::DefaultLimits::default().create(&block, None),
-		};
-		StepContext::new(block, &self.context.service, limits)
+		StepContext::new(&self.context.block, &self.context.service, &step)
 	}
 
 	/// This method creates a future that encapsulates the execution an an async
@@ -237,10 +221,10 @@ impl<
 			// if any of them failes we fail the pipeline execution, othwerwise
 			// we return the output of the pipeline.
 			pipeline
-				.for_each_step(&|step: Arc<WrappedStep<P>>| {
+				.for_each_step(&|step_navi: StepNavigator<P>| {
 					let output = Arc::clone(&output);
 					async move {
-						step.after_job(output).await.map_err(|e| {
+						step_navi.step().after_job(output).await.map_err(|e| {
 							ClonablePayloadBuilderError(PayloadBuilderError::other(
 								WrappedErrorMessage(e.to_string()),
 							))

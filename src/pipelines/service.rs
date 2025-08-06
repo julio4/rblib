@@ -55,7 +55,6 @@ where
 		let service = ServiceContext {
 			pool,
 			provider: ctx.provider().clone(),
-			evm_config: Plat::evm_config::<Plat>(ctx.chain_spec()),
 			node_config: ctx.config().clone(),
 		};
 
@@ -83,7 +82,6 @@ where
 {
 	pool: Pool,
 	provider: Provider,
-	evm_config: Plat::EvmConfig,
 	node_config: NodeConfig<types::ChainSpec<Plat>>,
 }
 
@@ -99,10 +97,6 @@ where
 
 	pub const fn pool(&self) -> &Pool {
 		&self.pool
-	}
-
-	pub const fn evm_config(&self) -> &Plat::EvmConfig {
-		&self.evm_config
 	}
 
 	pub const fn node_config(&self) -> &NodeConfig<types::ChainSpec<Plat>> {

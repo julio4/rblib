@@ -56,7 +56,7 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 	/// terminated immediately and no steps will be executed.
 	fn before_job(
 		self: Arc<Self>,
-		_: Arc<StepContext<P>>,
+		_: StepContext<P>,
 	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
 		async { Ok(()) }
 	}
@@ -159,7 +159,7 @@ type WrappedStepFn<P: Platform> = Box<
 type WrappedBeforeJobFn<P: Platform> = Box<
 	dyn Fn(
 		Arc<dyn Any + Send + Sync>,
-		Arc<StepContext<P>>,
+		StepContext<P>,
 	) -> Pin<
 		Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
 	>,
@@ -214,7 +214,7 @@ impl<P: Platform> WrappedStep<P> {
 			) as WrappedStepFn<P>,
 			before_job_fn: Box::new(
 				|step: Arc<dyn Any + Send + Sync>,
-				 ctx: Arc<StepContext<P>>|
+				 ctx: StepContext<P>|
 				 -> Pin<
 					Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
 				> {
@@ -251,7 +251,7 @@ impl<P: Platform> WrappedStep<P> {
 	/// This is invoked once per pipeline run before any steps are executed.
 	pub async fn before_job(
 		&self,
-		ctx: Arc<StepContext<P>>,
+		ctx: StepContext<P>,
 	) -> Result<(), PayloadBuilderError> {
 		let local_step = Arc::clone(&self.instance);
 		(self.before_job_fn)(local_step, ctx).await

@@ -19,14 +19,15 @@ mod host;
 mod maintain;
 mod report;
 mod rpc;
+mod select;
 mod setup;
-
-pub mod select;
+mod steps;
 
 // Order Pool public API
 pub use {
 	rpc::{BundleResult, BundlesApiClient},
 	setup::HostNodeInstaller,
+	steps::{AppendManyOrders, AppendOneOrder},
 };
 
 #[derive(Debug, Clone)]

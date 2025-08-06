@@ -1,9 +1,14 @@
 use {
+	super::{
+		events::EventsBus,
+		exec::navi::StepNavigator,
+		service::ServiceContext,
+	},
 	crate::{
-		pipelines::service::ServiceContext,
 		prelude::*,
 		reth::{primitives::SealedHeader, providers::StateProvider},
 	},
+	core::any::Any,
 	pool::TransactionPool,
 };
 
@@ -13,24 +18,35 @@ pub struct StepContext<Plat: Platform> {
 	block: BlockContext<Plat>,
 	pool: TransactionPool<Plat>,
 	limits: Limits,
+	events_bus: EventsBus<Plat>,
 }
 
 impl<P: Platform> StepContext<P> {
-	pub fn new<Pool, Provider>(
-		block: BlockContext<P>,
+	pub(crate) fn new<Pool, Provider>(
+		block: &BlockContext<P>,
 		service: &ServiceContext<P, Provider, Pool>,
-		limits: Limits,
+		step: &StepNavigator<P>,
 	) -> Self
 	where
 		Pool: traits::PoolBounds<P>,
 		Provider: traits::ProviderBounds<P>,
 	{
+		let block = block.clone();
 		let pool = TransactionPool::new(service.pool().clone());
+		let events_bus = step.root_pipeline().events.clone();
+
+		// either inherit limits from the enclosing pipeline or use the default
+		// limits of the underlying platform if not explicitly specified.
+		let limits = match step.pipeline().limits() {
+			Some(limits) => limits.create(&block, None),
+			None => P::DefaultLimits::default().create(&block, None),
+		};
 
 		Self {
 			block,
 			pool,
 			limits,
+			events_bus,
 		}
 	}
 
@@ -58,10 +74,16 @@ impl<P: Platform> StepContext<P> {
 		&self.pool
 	}
 
+	/// Payload limits for the scope of the step.
 	pub const fn limits(&self) -> &Limits {
 		&self.limits
 	}
-}
 
-#[cfg(any(test, feature = "test-utils"))]
-impl<P: Platform> StepContext<P> {}
+	/// Broadcasts an event to all subscribers.
+	pub fn emit<E>(&self, event: E)
+	where
+		E: Clone + Any + Send + Sync + 'static,
+	{
+		self.events_bus.publish(event);
+	}
+}

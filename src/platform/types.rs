@@ -105,6 +105,10 @@ pub type TransactionExecutionResult<P: Platform> =
 pub type RpcTypes<P: PlatformWithRpcTypes> =
 	<P as PlatformWithRpcTypes>::RpcTypes;
 
+/// Extracts the type that represents a transaction receipt over RPC.
+pub type ReceiptResponse<P: PlatformWithRpcTypes> =
+	<RpcTypes<P> as AlloyNetwork>::ReceiptResponse;
+
 /// Extracts the type that allows interactions with RPC calls that return
 /// blocks.
 pub type BlockResponse<P: PlatformWithRpcTypes> =

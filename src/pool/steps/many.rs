@@ -1,32 +1,27 @@
 use {
-	crate::{
-		alloy,
-		pool::{OrderPool, select::PoolsDemux},
-		prelude::*,
-		reth,
-	},
+	super::{OrderPool, select::PoolsDemux},
+	crate::{alloy, prelude::*, reth},
 	alloy::{consensus::Transaction, primitives::B256},
 	dashmap::DashSet,
 	reth::ethereum::primitives::SignedTransaction,
-	std::{collections::HashSet, sync::Arc, time::Instant},
-	tracing::debug,
+	std::{collections::HashSet, sync::Arc},
 };
 
-/// This step will append one new order from the enabled pools to the end of the
-/// current payload. Currently, it supports transactions and bundles and queries
-/// the reth node transaction pool and optionally an instance of `OrderPool`.
+/// This step will append many new orders from the enabled pools to the end of
+/// the current payload. Currently, it supports transactions and bundles and
+/// queries the reth node transaction pool and optionally an instance of
+/// `OrderPool`.
 ///
-/// It will only append a new order if the current payload remains within the
-/// payload limits of the pipeline after the order is applied.
+/// It will append new orders until either the payload limit, or the pool is
+/// exhausted.
 ///
-/// If there are no more orders in the pool to append or the payload limit is
-/// reached, it will return `ControlFlow::Break` with the unmodified input
-/// payload.
-///
-/// This step is most useful in `Loop` pipelines, where it can be used to
-/// append new orders to the payload in each iteration of the loop until
-/// all pools are exhausted or the payload limits are reached.
-pub struct AppendOneOrder<P: Platform> {
+/// Unlike [`AppendOneOrder`], this step will not return `ControlFlow::Break`
+/// when the pool is exhausted or payload limits are reached. Instead, it will
+/// return `ControlFlow::Ok` with the modified payload.
+pub struct AppendManyOrders<P: Platform> {
+	/// An optional instance of the `OrderPool` that supports bundles.
+	/// If this is `None`, only the system transaction pool that supports only
+	/// loose transactions will be used.
 	order_pool: Option<OrderPool<P>>,
 
 	/// Keeps track of the transactions that were added to the payload in this
@@ -47,48 +42,40 @@ pub struct AppendOneOrder<P: Platform> {
 	/// This list is cleared at the end of each payload job.
 	attempted: DashSet<B256>,
 
-	/// If true, bundles that do not fit within the gas limit will be attempted
-	/// to be included by removing some of their optional transactions. Default
-	/// is false.
-	partial_orders: bool,
-
 	/// When enabled, this step will also pull orders from the system transaction
 	/// pool that is running within the Reth node. By default this is enabled.
 	enable_system_pool: bool,
+
+	/// Specifies the maximum number of new orders that will be added to the
+	/// payload in one run of this step.
+	max_new_orders: Option<usize>,
+
+	/// Specifies the maximum number of new transactions that will be added to
+	/// the payload across all new orders in one run of this step.
+	max_new_transactions: Option<usize>,
 }
 
-impl<P: Platform> Default for AppendOneOrder<P> {
+impl<P: Platform> Default for AppendManyOrders<P> {
 	/// The default configuration for this step will only pull orders from the
 	/// system transaction pool hosted by Reth.
 	fn default() -> Self {
 		Self {
 			order_pool: None,
 			attempted: DashSet::new(),
-			partial_orders: false,
 			enable_system_pool: true,
+			max_new_orders: None,
+			max_new_transactions: None,
 		}
 	}
 }
 
-impl<P: Platform> AppendOneOrder<P> {
+impl<P: Platform> AppendManyOrders<P> {
 	/// Attaches this step a an `OrderPool` that supports bundles.
 	pub fn from_pool(pool: &OrderPool<P>) -> Self {
 		Self {
 			order_pool: Some(pool.clone()),
-			attempted: DashSet::new(),
-			partial_orders: false,
-			enable_system_pool: true,
+			..Default::default()
 		}
-	}
-
-	/// For bundles that do not fit within the gas limit, attempt to include them
-	/// by removing some of their optional transactions.
-	///
-	/// TODO: Implement this feature.
-	#[must_use]
-	pub fn allow_partial_orders(mut self) -> Self {
-		self.partial_orders = true;
-		self
 	}
 
 	/// No transactions from the transaction pool running within the Reth node
@@ -98,12 +85,31 @@ impl<P: Platform> AppendOneOrder<P> {
 		self.enable_system_pool = false;
 		self
 	}
+
+	/// Specifies the maximum number of new orders that will be added to the
+	/// payload in one run of this step.
+	#[must_use]
+	pub fn with_max_new_orders(mut self, max_new_orders: usize) -> Self {
+		self.max_new_orders = Some(max_new_orders);
+		self
+	}
+
+	/// Specifies the maximum number of new transactions that will be added to
+	/// the payload across all new orders in one run of this step.
+	#[must_use]
+	pub fn with_max_new_transactions(
+		mut self,
+		max_new_transactions: usize,
+	) -> Self {
+		self.max_new_transactions = Some(max_new_transactions);
+		self
+	}
 }
 
-impl<P: Platform> Step<P> for AppendOneOrder<P> {
+impl<P: Platform> Step<P> for AppendManyOrders<P> {
 	async fn before_job(
 		self: Arc<Self>,
-		_: Arc<StepContext<P>>,
+		_: StepContext<P>,
 	) -> Result<(), PayloadBuilderError> {
 		// Clear the list of attempted orders for this payload job.
 		self.attempted.clear();
@@ -115,25 +121,11 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
+		let mut payload = payload;
+
 		if payload.cumulative_gas_used() >= ctx.limits().gas_limit {
-			// We've already reached the gas limit.
-			return ControlFlow::Break(payload);
-		}
-
-		let existing_txs: HashSet<_> = payload
-			.history()
-			.transactions()
-			.map(|tx| tx.tx_hash())
-			.copied()
-			.collect();
-
-		if let Some(n_limit) = ctx.limits().max_transactions {
-			if existing_txs.len() >= n_limit {
-				// We've reached the maximum number of txs in the block.
-				// This is not a standard ethereum limit, but it may be configured
-				// by the [`Limits`] trait implementation.
-				return ControlFlow::Break(payload);
-			}
+			// If the payload already at capacity, we can stop here.
+			return ControlFlow::Ok(payload);
 		}
 
 		// Create an iterator that will demultiplex orders coming from the
@@ -144,23 +136,45 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 			ctx.block(),
 		);
 
+		let mut orders_added = 0;
+		let mut transactions_added = 0;
+
+		// the maximum number of new transactions that can be added to the
+		// payload in this step. This will be None if no limits are set on
+		// the number of new transactions and typical payload limits apply.
+		let max_new_transactions =
+			[self.max_new_transactions, ctx.limits().max_transactions]
+				.into_iter()
+				.flatten()
+				.min();
+
 		loop {
-			// check if we have reached the deadline
-			if let Some(deadline) = ctx.limits().deadline {
-				if deadline <= Instant::now() {
-					// stop the loop and return the current payload
-					debug!(
-						"Payload building deadline reached for {}",
-						ctx.block().payload_id()
-					);
-					return ControlFlow::Break(payload);
-				}
+			if let Some(max_orders) = self.max_new_orders
+				&& orders_added >= max_orders
+			{
+				// We've reached the maximum number of new orders to add to the payload.
+				return ControlFlow::Ok(payload);
 			}
+
+			if let Some(max_new_transactions) = max_new_transactions
+				&& transactions_added >= max_new_transactions
+			{
+				// We've reached the maximum number of new transactions to add to the
+				// payload.
+				return ControlFlow::Ok(payload);
+			}
+
+			let existing_txs: HashSet<_> = payload
+				.history()
+				.transactions()
+				.map(|tx| tx.tx_hash())
+				.copied()
+				.collect();
 
 			// pull next order
 			let Some(order) = orders.next() else {
 				// No more orders in the pool to add to the payload.
-				return ControlFlow::Break(payload);
+				return ControlFlow::Ok(payload);
 			};
 
 			let order_hash = order.hash();
@@ -181,6 +195,14 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 			// mark this order as attempted to avoid adding it again for the same
 			// payload job.
 			self.attempted.insert(order_hash);
+
+			if let Some(tx_count_limit) = max_new_transactions {
+				if order.transactions().len() + transactions_added > tx_count_limit {
+					// This order has too many transactions to fit in the remaining
+					// transaction limit for this step, skip it.
+					continue;
+				}
+			}
 
 			// check if any of the transactions in the order are already in the
 			// payload
@@ -207,16 +229,6 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 					// capacity for blobs in this payload.
 					continue;
 				}
-			}
-
-			if let Some((blob_gas, blob_limits)) =
-				ctx.limits().blob_params.map(|p| (order_blob_gas, p))
-				&& (blob_gas + payload.history().blob_gas_used()
-					> blob_limits.max_blob_gas_per_block())
-			{
-				// we can't fit this order into the payload, because we are at
-				// capacity for blobs in this payload.
-				continue;
 			}
 
 			let executable = match order.try_into_executable() {
@@ -252,11 +264,14 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 
 			if new_payload.cumulative_gas_used() > ctx.limits().gas_limit {
 				// Including this order would exceed the gas limit for the payload.
-				// TODO: check if partial orders are allowed and try without optionals.
 				continue;
 			}
 
-			return ControlFlow::Ok(new_payload);
+			orders_added += 1;
+			transactions_added += new_payload.transactions().len();
+
+			// all good, extend the payload with the new checkpoint
+			payload = new_payload;
 		}
 	}
 }

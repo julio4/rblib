@@ -93,4 +93,11 @@ impl Limits {
 			deadline: self.deadline.min(other.deadline),
 		}
 	}
+
+	/// Returns `true` if there is a deadline set and it has been reached.
+	pub fn deadline_reached(&self) -> bool {
+		self
+			.deadline
+			.is_some_and(|deadline| deadline <= Instant::now())
+	}
 }

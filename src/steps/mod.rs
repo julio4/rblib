@@ -4,11 +4,15 @@
 //! implementing different builders.
 
 mod builder;
-mod order;
-mod pool;
+mod ordering;
 mod revert;
 
-pub use {builder::*, order::*, pool::*, revert::*};
+pub use {
+	crate::pool::{AppendManyOrders, AppendOneOrder},
+	builder::*,
+	ordering::*,
+	revert::*,
+};
 
 #[cfg(feature = "optimism")]
 mod optimism;

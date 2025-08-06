@@ -1,5 +1,8 @@
 use {
-	crate::args::{Cli, CliExt, OpRbuilderArgs},
+	crate::{
+		args::{Cli, CliExt, OpRbuilderArgs},
+		rpc::TransactionStatusRpc,
+	},
 	rblib::{
 		pool::*,
 		prelude::*,
@@ -15,6 +18,7 @@ use {
 mod args;
 mod bundle;
 mod platform;
+mod rpc;
 
 #[cfg(test)]
 mod tests;
@@ -27,6 +31,7 @@ fn main() -> eyre::Result<()> {
 			let pool = OrderPool::<FlashBlocks>::default();
 			let pipeline = build_pipeline(&cli_args, &pool);
 			let opnode = OpNode::new(cli_args.rollup_args.clone());
+			let tx_status_rpc = TransactionStatusRpc::new(&pipeline);
 
 			let handle = builder
 				.with_types::<OpNode>()
@@ -41,7 +46,11 @@ fn main() -> eyre::Result<()> {
 						.add_ons_builder::<types::RpcTypes<FlashBlocks>>()
 						.build::<_, OpEngineValidatorBuilder, OpEngineApiBuilder<OpEngineValidatorBuilder>>(),
 				)
-				.extend_rpc_modules(move |mut rpc_ctx| pool.attach_rpc(&mut rpc_ctx))
+				.extend_rpc_modules(move |mut rpc_ctx| { 
+					pool.attach_rpc(&mut rpc_ctx)?; 
+					tx_status_rpc.attach_rpc(&mut rpc_ctx)?;
+					Ok(())
+				})
 				.launch()
 				.await?;
 

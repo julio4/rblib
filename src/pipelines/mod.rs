@@ -4,13 +4,20 @@
 
 use {
 	crate::{prelude::*, reth::builder::components::PayloadServiceBuilder},
-	core::{any::type_name_of_val, fmt::Display},
+	core::{
+		any::{Any, type_name_of_val},
+		fmt::Display,
+	},
+	events::EventsBus,
+	exec::navi::{StepNavigator, StepPath},
+	futures::Stream,
 	pipelines_macros::impl_into_pipeline_steps,
 	std::sync::Arc,
 	step::WrappedStep,
 };
 
 mod context;
+mod events;
 mod exec;
 mod job;
 mod service;
@@ -38,6 +45,7 @@ pub struct Pipeline<P: Platform> {
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Box<dyn LimitsFactory<P>>>,
 	name: Option<String>,
+	events: EventsBus<P>,
 }
 
 impl<P: Platform> Default for Pipeline<P> {
@@ -49,11 +57,12 @@ impl<P: Platform> Default for Pipeline<P> {
 			steps: Vec::new(),
 			limits: None,
 			name: None,
+			events: EventsBus::default(),
 		}
 	}
 }
 
-/// Public API
+/// Pipeline Building Public API
 impl<P: Platform> Pipeline<P> {
 	/// Creates a new empty pipeline with a name.
 	pub fn named(name: impl Into<String>) -> Self {
@@ -115,7 +124,10 @@ impl<P: Platform> Pipeline<P> {
 		this.limits = Some(Box::new(limits) as Box<dyn LimitsFactory<P>>);
 		this
 	}
+}
 
+/// Reth node integration
+impl<P: Platform> Pipeline<P> {
 	/// Converts the pipeline into a payload builder service instance that
 	/// can be used when constructing a reth node.
 	pub fn into_service<Node, Pool, EvmConfig>(
@@ -128,10 +140,28 @@ impl<P: Platform> Pipeline<P> {
 	{
 		service::PipelineServiceBuilder::new(self)
 	}
+}
 
+/// Observability
+impl<P: Platform> Pipeline<P> {
 	/// Returns true if the pipieline has no steps, prologue or epilogue.
 	pub fn is_empty(&self) -> bool {
 		self.prologue.is_none() && self.epilogue.is_none() && self.steps.is_empty()
+	}
+
+	/// An optional name of the pipeline.
+	///
+	/// This is used mostly for debug printing and logging purposes.
+	pub fn name(&self) -> Option<&str> {
+		self.name.as_deref()
+	}
+
+	/// Subscribes to events emitted by steps in the pipeline.
+	pub fn subscribe<E>(&self) -> impl Stream<Item = E>
+	where
+		E: Clone + Any + Send + Sync + 'static,
+	{
+		futures::stream::empty()
 	}
 }
 
@@ -153,41 +183,68 @@ impl<P: Platform> Pipeline<P> {
 		self.limits.as_deref()
 	}
 
-	/// An optional name of the pipeline.
-	///
-	/// This is used mostly for debug printing and logging purposes.
-	pub fn name(&self) -> Option<&str> {
-		self.name.as_deref()
-	}
-
 	/// Executes the provided async function for each step in the pipeline once.
 	///
 	/// This is used for performing initialization or cleanup tasks for each step.
-	pub(crate) async fn for_each_step<F, R, E>(&self, f: &F) -> Result<(), E>
+	pub(crate) async fn for_each_step<'a, F, R, E>(
+		&'a self,
+		f: &F,
+	) -> Result<(), E>
 	where
-		F: Fn(Arc<WrappedStep<P>>) -> R,
+		F: Fn(StepNavigator<'a, P>) -> R,
 		R: Future<Output = Result<(), E>> + Send,
 	{
-		if let Some(prologue) = &self.prologue {
-			f(Arc::clone(prologue)).await?;
-		}
+		async fn for_each_step_inner<'a, P, F, R, E>(
+			root: &'a Pipeline<P>,
+			pipeline: &'a Pipeline<P>,
+			path: StepPath,
+			f: &F,
+		) -> Result<(), E>
+		where
+			P: Platform,
+			F: Fn(StepNavigator<'a, P>) -> R,
+			R: Future<Output = Result<(), E>> + Send,
+		{
+			if pipeline.prologue.is_some() {
+				let path = path.clone().concat(StepPath::prologue());
+				let navi = path.navigator(root).expect(
+					"Invalid step path. This is a bug in the pipeline executor \
+					 implementation.",
+				);
+				f(navi).await?;
+			}
 
-		for step in &self.steps {
-			match step {
-				StepOrPipeline::Step(wrapped_step) => {
-					f(Arc::clone(wrapped_step)).await?;
-				}
-				StepOrPipeline::Pipeline(_, pipeline) => {
-					Box::pin(pipeline.for_each_step(f)).await?;
+			for (ix, step) in pipeline.steps.iter().enumerate() {
+				let path = path.clone().concat(StepPath::step(ix));
+				match step {
+					StepOrPipeline::Step(_) => {
+						let navi = path.navigator(root).expect(
+							"Invalid step path. This is a bug in the pipeline executor \
+							 implementation.",
+						);
+						f(navi).await?;
+					}
+					StepOrPipeline::Pipeline(_, pipeline) => {
+						Box::pin(for_each_step_inner(root, pipeline, path, f)).await?;
+					}
 				}
 			}
+
+			if pipeline.epilogue.is_some() {
+				let path = path.clone().concat(StepPath::epilogue());
+				let navi = path.navigator(root).expect(
+					"Invalid step path. This is a bug in the pipeline executor \
+					 implementation.",
+				);
+				f(navi).await?;
+			}
+			Ok(())
 		}
 
-		if let Some(epilogue) = &self.epilogue {
-			f(Arc::clone(epilogue)).await?;
-		}
-
-		Ok(())
+		// SAFETY: The empty step path is never used directly, during the traversal
+		// inside `for_each_step_inner` path components are concatenated to it.
+		let empty_path = unsafe { StepPath::empty() };
+		for_each_step_inner(self, self, empty_path, f).await
 	}
 }
 
@@ -202,8 +259,8 @@ impl<P: Platform> core::fmt::Debug for StepOrPipeline<P> {
 			StepOrPipeline::Step(step) => step.fmt(f),
 			StepOrPipeline::Pipeline(behavior, pipeline) => f
 				.debug_tuple("Pipeline")
-				.field(behavior as &dyn core::fmt::Debug)
-				.field(pipeline as &dyn core::fmt::Debug)
+				.field(behavior)
+				.field(pipeline)
 				.finish(),
 		}
 	}
@@ -297,21 +354,15 @@ impl<P: Platform> Display for Pipeline<P> {
 impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Pipeline")
-			.field("name", &self.name() as &dyn core::fmt::Debug)
-			.field(
-				"prologue",
-				&self.prologue.as_ref().map(|p| p.name()) as &dyn core::fmt::Debug,
-			)
-			.field(
-				"epilogue",
-				&self.epilogue.as_ref().map(|e| e.name()) as &dyn core::fmt::Debug,
-			)
-			.field("steps", &self.steps as &dyn core::fmt::Debug)
+			.field("name", &self.name())
+			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
+			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
+			.field("steps", &self.steps)
 			.field(
 				"limits",
-				&self.limits.as_ref().map(|l| type_name_of_val(&l))
-					as &dyn core::fmt::Debug,
+				&self.limits.as_ref().map(|l| type_name_of_val(&l)),
 			)
+			.field("events", &self.events)
 			.finish()
 	}
 }

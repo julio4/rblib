@@ -107,13 +107,6 @@ impl StepPath {
 		self.0.last().copied().expect("StepPath cannot be empty")
 	}
 
-	/// Appends a new path to the current path.
-	fn concat(self, other: Self) -> Self {
-		let mut new_path = self.0;
-		new_path.extend(other.0);
-		Self(new_path)
-	}
-
 	/// Returns a step path without the current root index.
 	///
 	/// This is useful when doing recursive navigation down through the pipeline.
@@ -126,25 +119,6 @@ impl StepPath {
 		} else {
 			Some(StepPath(self.0[1..].into()))
 		}
-	}
-
-	/// Returns a step path that points to the prologue step.
-	fn prologue() -> Self {
-		Self(smallvec![PROLOGUE_INDEX])
-	}
-
-	fn epilogue() -> Self {
-		Self(smallvec![EPILOGUE_INDEX])
-	}
-
-	/// Returns a new step path that points to the first non-prologue and
-	/// non-epilogue step.
-	fn step0() -> Self {
-		Self::step(0)
-	}
-
-	fn step(step_index: usize) -> Self {
-		Self(smallvec![step_index + STEP0_INDEX])
 	}
 
 	/// Returns a step path without the current leaf index.
@@ -177,6 +151,53 @@ impl StepPath {
 		let mut new_path = self.0;
 		*new_path.last_mut().expect("StepPath cannot be empty") = new_leaf;
 		Self(new_path)
+	}
+}
+
+/// Manual navigation (internal use only)
+///
+/// None of those methods do any checks on the validity of the path.
+impl StepPath {
+	/// Returns a step path that points to the prologue step.
+	pub(crate) fn prologue() -> Self {
+		Self(smallvec![PROLOGUE_INDEX])
+	}
+
+	/// Returns a leaf step path pointing at the epilogue step.
+	pub(crate) fn epilogue() -> Self {
+		Self(smallvec![EPILOGUE_INDEX])
+	}
+
+	/// Returns a new step path that points to the first non-prologue and
+	/// non-epilogue step.
+	pub(crate) fn step0() -> Self {
+		Self::step(0)
+	}
+
+	/// Returns a leaf step path pointing at a step with the given index.
+	pub(crate) fn step(step_index: usize) -> Self {
+		Self(smallvec![step_index + STEP0_INDEX])
+	}
+
+	/// Appends a new path to the current path.
+	pub(crate) fn concat(self, other: Self) -> Self {
+		let mut new_path = self.0;
+		new_path.extend(other.0);
+		Self(new_path)
+	}
+
+	/// Creates an empty step path. This is an invalid state and public APIs
+	/// should never be able to construct an empty `StepPath`.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure that the returned empty step
+	/// path is never used directly, but rather used as a placeholder for
+	/// constructing valid paths.
+	///
+	/// Empty step paths are used as a placeholder when traversing a pipeline.
+	pub(crate) unsafe fn empty() -> Self {
+		Self(smallvec![])
 	}
 }
 
@@ -236,9 +257,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// currently pointing to.
 	pub fn step(&self) -> &Arc<WrappedStep<P>> {
 		let step_index = self.0.leaf();
-		let enclosing_pipeline = self.1.last().expect(
-			"StepNavigator should always have at least one enclosing pipeline",
-		);
+		let enclosing_pipeline = self.pipeline();
 
 		if self.is_prologue() {
 			enclosing_pipeline
@@ -263,9 +282,18 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 		}
 	}
 
-	/// Returns a reference to the pipeline that contains the current step.
+	/// Returns a reference to the immediate enclosing pipeline that contains the
+	/// current step.
 	pub fn pipeline(&self) -> &'a Pipeline<P> {
 		self.1.last().expect(
+			"StepNavigator should always have at least one enclosing pipeline",
+		)
+	}
+
+	/// Returns a reference to the top-level pipeline that contains the
+	/// current step.
+	pub fn root_pipeline(&self) -> &'a Pipeline<P> {
+		self.1.first().expect(
 			"StepNavigator should always have at least one enclosing pipeline",
 		)
 	}
@@ -285,9 +313,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 			return self.after_prologue();
 		}
 
-		let enclosing_pipeline = self.1.last().expect(
-			"StepNavigator should always have at least one enclosing pipeline",
-		);
+		let enclosing_pipeline = self.pipeline();
 
 		// we are in a regular step.
 		assert!(
@@ -422,11 +448,7 @@ impl<P: Platform> StepNavigator<'_, P> {
 	/// The next step could be either the epilogue of the current pipeline,
 	/// or the next step in the parent pipeline.
 	fn after_loop(self) -> Option<Self> {
-		let enclosing_pipeline = self.1.last().expect(
-			"StepNavigator should always have at least one enclosing pipeline",
-		);
-
-		if enclosing_pipeline.epilogue().is_some() {
+		if self.pipeline().epilogue().is_some() {
 			// we've reached the epilogue of this pipeline, regardless of the
 			// looping behavior, we should go to the next step in the parent pipeline.
 			Some(Self(self.0.replace_leaf(EPILOGUE_INDEX), self.1.clone()))
@@ -437,11 +459,7 @@ impl<P: Platform> StepNavigator<'_, P> {
 
 	/// Finds the next step to run afer the prologue of the current pipeline.
 	fn after_prologue(self) -> Option<Self> {
-		let enclosing_pipeline = self.1.last().expect(
-			"StepNavigator should always have at least one enclosing pipeline",
-		);
-
-		if enclosing_pipeline.steps().is_empty() {
+		if self.pipeline().steps().is_empty() {
 			// no steps, go to epilogue.
 			self.after_loop()
 		} else {

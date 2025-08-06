@@ -1,6 +1,8 @@
 use {
-	crate::{prelude::*, reth},
-	reth::ethereum::primitives::SignedTransaction,
+	crate::{alloy, prelude::*, reth},
+	alloy::primitives::TxHash,
+	derive_more::Deref,
+	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
 	std::sync::Arc,
 };
 
@@ -16,7 +18,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
-		_: StepContext<P>,
+		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
 		if payload.is_empty() {
 			// if there are no transactions in the payload, so no reverts
@@ -47,16 +49,22 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 			// If the checkpoint is an individual transaction, then standard revert
 			// protection rules apply to it.
 			if let Some(tx) = checkpoint.as_transaction().cloned() {
-				let Ok(new_checkpoint) = prefix.apply(tx) else {
+				let Ok(new_checkpoint) = prefix.apply(tx.clone()) else {
 					// if the transaction cannot be applied because of consensus rules, we
-					// skip it and move on to the next one.
+					// skip it emit an event and move on to the next one.
+					ctx.emit(TransactionDropped::<P>(tx));
 					continue 'next_order;
 				};
 
-				if !has_failures(&new_checkpoint) {
-					// if the transaction was applied and did not revert or halt, we can
-					// extend the safe prefix with it and try next remaining checkpoints.
-					// otherwise discard this checkpoint and leave the prefix as is.
+				if has_failures(&new_checkpoint) {
+					// if the transaction did not have a successful outcome, we omit it
+					// from the payload by keeping the safe prefix unmodified and emit an
+					// event about it.
+					ctx.emit(TransactionDropped::<P>(tx));
+				} else {
+					// if the transaction was applied and had successful outcome, we can
+					// extend the safe prefix with it and try the next checkpoint in the
+					// remaining list.
 					prefix = new_checkpoint;
 				}
 
@@ -65,41 +73,41 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 
 			// If the checkpoint is a bundle, we need to check if we can remove any of
 			// its optional transactions that have reverted.
-			if let Some(bundle) = checkpoint.as_bundle() {
-				let mut bundle = bundle.clone();
-
-				// as long as the bundle has reverted transactions that can be removed,
-				// we will try to apply it to the prefix.
+			if let Some(mut bundle) = checkpoint.as_bundle().cloned() {
 				loop {
 					let Ok(new_checkpoint) = prefix.apply(bundle.clone()) else {
 						// Bundle cannot be applied anymore. It became invalid due to some
 						// previously removed transactions.
+						ctx.emit(BundleDropped::<P>(bundle));
 						continue 'next_order;
 					};
 
-					if !has_failures(&new_checkpoint) {
-						// the bundle was applied successfully and does not have any reverts
-						// that can be removed from it. Move on to the next order.
-						prefix = new_checkpoint;
-						continue 'next_order;
-					}
+					// the bundle created a valid checkpoint, check if there are any
+					// optional transactions that reverted and can be removed while
+					// maintaining the bundle's validity.
 
 					let optional_failed_txs = new_checkpoint
 						.failed_txs()
-						.filter(|tx| bundle.is_optional(*tx.tx_hash()))
+						.filter_map(|tx| {
+							bundle.is_optional(*tx.tx_hash()).then_some(*tx.tx_hash())
+						})
 						.collect::<Vec<_>>();
 
 					if optional_failed_txs.is_empty() {
-						// there is nothing we can safely remove from the bundle, but it is
-						// still valid and can be applied.
+						// nothing to remove, extend the prefix with the new checkpoint
 						prefix = new_checkpoint;
 						continue 'next_order;
 					}
+
+					ctx.emit(BundlePartiallyDropped::<P> {
+						bundle: bundle.clone(),
+						removed: optional_failed_txs.clone(),
+					});
 
 					// try with a version of the bundle that has all optional reverting
 					// transactions removed
 					for tx in optional_failed_txs {
-						bundle = bundle.without_transaction(*tx.tx_hash());
+						bundle = bundle.without_transaction(tx);
 					}
 				}
 			}
@@ -133,6 +141,27 @@ fn has_failures<P: Platform>(checkpoint: &Checkpoint<P>) -> bool {
 	}
 
 	false
+}
+
+/// Event emitted by this step when a transaction is dropped from the payload
+/// because it had a non-successful execution outcome.
+#[derive(Clone, Deref)]
+pub struct TransactionDropped<P: Platform>(
+	pub Recovered<types::Transaction<P>>,
+);
+
+/// Event emitted by this step when a bundle in its entirety is dropped
+/// from the payload.
+#[derive(Clone, Deref)]
+pub struct BundleDropped<P: Platform>(pub types::Bundle<P>);
+
+/// Event emitted by this step when a bundle has some of its optional
+/// transactions dropped from the payload because they had a non-successful
+/// execution outcome.
+#[derive(Clone)]
+pub struct BundlePartiallyDropped<P: Platform> {
+	pub bundle: types::Bundle<P>,
+	pub removed: Vec<TxHash>,
 }
 
 #[cfg(test)]

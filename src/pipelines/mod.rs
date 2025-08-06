@@ -45,7 +45,7 @@ pub struct Pipeline<P: Platform> {
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Box<dyn LimitsFactory<P>>>,
 	name: Option<String>,
-	events: EventsBus<P>,
+	events: Arc<EventsBus<P>>,
 }
 
 impl<P: Platform> Default for Pipeline<P> {
@@ -57,7 +57,7 @@ impl<P: Platform> Default for Pipeline<P> {
 			steps: Vec::new(),
 			limits: None,
 			name: None,
-			events: EventsBus::default(),
+			events: Arc::default(),
 		}
 	}
 }
@@ -157,11 +157,11 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// Subscribes to events emitted by steps in the pipeline.
-	pub fn subscribe<E>(&self) -> impl Stream<Item = E>
+	pub fn subscribe<E>(&self) -> impl Stream<Item = E> + Send + Sync + 'static
 	where
 		E: Clone + Any + Send + Sync + 'static,
 	{
-		futures::stream::empty()
+		self.events.subscribe::<E>()
 	}
 }
 

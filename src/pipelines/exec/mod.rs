@@ -215,6 +215,9 @@ impl<
 	) -> Pin<Box<dyn Future<Output = PipelineOutput<P>> + Send>> {
 		let output = Arc::new(output.map_err(Into::into));
 		let pipeline = Arc::clone(&self.context.pipeline);
+		let block = self.context.block.clone();
+		let pipeline = Arc::clone(&pipeline);
+		let service = Arc::clone(&self.context.service);
 
 		async move {
 			// invoke the `after_job` method of each step in the pipeline
@@ -223,8 +226,11 @@ impl<
 			pipeline
 				.for_each_step(&|step_navi: StepNavigator<P>| {
 					let output = Arc::clone(&output);
+					let block = block.clone();
+					let service = Arc::clone(&service);
 					async move {
-						step_navi.step().after_job(output).await.map_err(|e| {
+						let ctx = StepContext::new(&block, &service, &step_navi);
+						step_navi.step().after_job(ctx, output).await.map_err(|e| {
 							ClonablePayloadBuilderError(PayloadBuilderError::other(
 								WrappedErrorMessage(e.to_string()),
 							))

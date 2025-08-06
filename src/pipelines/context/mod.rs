@@ -10,6 +10,7 @@ use {
 	},
 	core::any::Any,
 	pool::TransactionPool,
+	std::sync::Arc,
 };
 
 mod pool;
@@ -18,7 +19,7 @@ pub struct StepContext<Plat: Platform> {
 	block: BlockContext<Plat>,
 	pool: TransactionPool<Plat>,
 	limits: Limits,
-	events_bus: EventsBus<Plat>,
+	events_bus: Arc<EventsBus<Plat>>,
 }
 
 impl<P: Platform> StepContext<P> {
@@ -33,7 +34,7 @@ impl<P: Platform> StepContext<P> {
 	{
 		let block = block.clone();
 		let pool = TransactionPool::new(service.pool().clone());
-		let events_bus = step.root_pipeline().events.clone();
+		let events_bus = Arc::clone(&step.root_pipeline().events);
 
 		// either inherit limits from the enclosing pipeline or use the default
 		// limits of the underlying platform if not explicitly specified.

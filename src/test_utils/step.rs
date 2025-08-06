@@ -2,6 +2,8 @@ use {
 	super::*,
 	crate::{alloy, prelude::*, reth},
 	alloy::network::TransactionBuilder,
+	core::any::Any,
+	futures::Stream,
 	reth::payload::builder::PayloadBuilderError,
 	std::sync::Arc,
 	tokio::sync::{
@@ -142,6 +144,14 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 	) -> Self {
 		self.pool_txs.push(Box::new(builder));
 		self
+	}
+
+	/// Subscribes to events of type `E` emitted by the step.
+	pub fn subscribe<E>(&self) -> impl Stream<Item = E> + Send + Sync + 'static
+	where
+		E: Clone + Any + Send + Sync + 'static,
+	{
+		self.pipeline.subscribe::<E>()
 	}
 
 	/// Runs a single invocation of the step with the prepared environment and
@@ -299,6 +309,7 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 
 	async fn after_job(
 		self: Arc<Self>,
+		_: StepContext<P>,
 		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		if let Err(e) = result.as_ref() {

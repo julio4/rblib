@@ -90,8 +90,9 @@ derive_more = { version = "2.0", features = ["deref", "from", "into"] }
 smallvec = "1.15"
 dashmap = "6.1"
 uuid = "1.17"
-futures = { version = "0.3" }
-tokio = { version = "1.46" }
+futures = "0.3"
+tokio = "1.47"
+tokio-stream = "0.1.17"
 serde = "1.0"
 jsonrpsee = "0.25.1"
 parking_lot = "0.12"

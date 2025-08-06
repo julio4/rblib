@@ -69,6 +69,7 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 	/// and will not produce a valid payload.
 	fn after_job(
 		self: Arc<Self>,
+		_: StepContext<P>,
 		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
 		async { Ok(()) }
@@ -170,6 +171,7 @@ type WrappedBeforeJobFn<P: Platform> = Box<
 type WrappedAfterJobFn<P: Platform> = Box<
 	dyn Fn(
 		Arc<dyn Any + Send + Sync>,
+		StepContext<P>,
 		Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Pin<
 		Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
@@ -224,12 +226,13 @@ impl<P: Platform> WrappedStep<P> {
 			) as WrappedBeforeJobFn<P>,
 			after_job_fn: Box::new(
 				|step: Arc<dyn Any + Send + Sync>,
+				 ctx: StepContext<P>,
 				 result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>|
 				 -> Pin<
 					Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
 				> {
 					let step = step.downcast::<S>().expect("Invalid step type");
-					step.after_job(result).boxed()
+					step.after_job(ctx, result).boxed()
 				},
 			) as WrappedAfterJobFn<P>,
 			name: type_name::<S>(),
@@ -260,10 +263,11 @@ impl<P: Platform> WrappedStep<P> {
 	/// This is invoked once after the pipeline run has been completed.
 	pub async fn after_job(
 		&self,
+		ctx: StepContext<P>,
 		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		let local_step = Arc::clone(&self.instance);
-		(self.after_job_fn)(local_step, result).await
+		(self.after_job_fn)(local_step, ctx, result).await
 	}
 
 	/// Returns the name of the type that implements this step.

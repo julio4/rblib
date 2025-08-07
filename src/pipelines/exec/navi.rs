@@ -531,7 +531,6 @@ mod test {
 	fake_step!(Step4);
 
 	fake_step!(StepA);
-	fake_step!(StepB);
 	fake_step!(StepC);
 
 	fake_step!(StepX);

@@ -21,7 +21,7 @@ use {
 ///   rejecting them before they are sent to the order pool.
 /// - simulation of bundles against the state of the chain at the RPC level.
 /// - garbage collection of orders that have transactions that were included in
-/// 	a committed block.
+///   a committed block.
 #[derive(Default)]
 pub struct HostNode<P: Platform> {
 	instances: OnceLock<Instances<P>>,

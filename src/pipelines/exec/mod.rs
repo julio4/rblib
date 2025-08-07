@@ -17,7 +17,6 @@ use {
 		reth::payload::builder::PayloadBuilderError,
 	},
 	core::{
-		fmt::{Debug, Display},
 		pin::Pin,
 		task::{Context, Poll},
 	},
@@ -30,7 +29,7 @@ use {
 pub(super) mod navi;
 
 type PipelineOutput<P: Platform> =
-	Result<types::BuiltPayload<P>, ClonablePayloadBuilderError>;
+	Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>;
 
 /// This type is responsible for executing a single run of a pipeline.
 ///
@@ -55,12 +54,15 @@ impl<
 	Pool: traits::PoolBounds<P>,
 > PipelineExecutor<P, Provider, Pool>
 {
-	/// Begins the execution of a pipeline for a new block.
+	/// Begins the execution of a pipeline for a new block/payload job.
 	pub fn run(
 		pipeline: Arc<Pipeline<P>>,
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
+		// Emit a system event for this new payload job.
+		pipeline.events.publish(PayloadJobStarted(block.clone()));
+
 		// Initially set the execution cursor to initializing state, that will call
 		// all `before_job` methods of the steps in the pipeline.
 
@@ -155,8 +157,7 @@ impl<
 			// poll.
 			ControlFlow::Fail(payload_builder_error) => {
 				return Cursor::Finalizing(
-					self
-						.finalize(Err(ClonablePayloadBuilderError(payload_builder_error))),
+					self.finalize(Err(Arc::new(payload_builder_error))),
 				);
 			}
 
@@ -172,7 +173,7 @@ impl<
 			return Cursor::Finalizing(
 				self.finalize(
 					P::build_payload(input, self.context.service.provider())
-						.map_err(ClonablePayloadBuilderError),
+						.map_err(Arc::new),
 				),
 			);
 		};
@@ -199,7 +200,7 @@ impl<
 						self.context.block.start(),
 						self.context.service.provider(),
 					)
-					.map_err(ClonablePayloadBuilderError),
+					.map_err(Arc::new),
 				),
 			);
 		};
@@ -213,7 +214,7 @@ impl<
 		&self,
 		output: PipelineOutput<P>,
 	) -> Pin<Box<dyn Future<Output = PipelineOutput<P>> + Send>> {
-		let output = Arc::new(output.map_err(Into::into));
+		let output = Arc::new(output.map_err(|e| clone_payload_error_lossy(&e)));
 		let pipeline = Arc::clone(&self.context.pipeline);
 		let block = self.context.block.clone();
 		let pipeline = Arc::clone(&pipeline);
@@ -230,18 +231,18 @@ impl<
 					let service = Arc::clone(&service);
 					async move {
 						let ctx = StepContext::new(&block, &service, &step_navi);
-						step_navi.step().after_job(ctx, output).await.map_err(|e| {
-							ClonablePayloadBuilderError(PayloadBuilderError::other(
-								WrappedErrorMessage(e.to_string()),
-							))
-						})
+						step_navi
+							.step()
+							.after_job(ctx, output)
+							.await
+							.map_err(Arc::new)
 					}
 				})
 				.await?;
 
 			Arc::into_inner(output)
-				.expect("unexpected strong reference count")
-				.map_err(ClonablePayloadBuilderError)
+				.expect("unexpected > 1 strong reference count")
+				.map_err(Arc::new)
 		}
 		.boxed()
 	}
@@ -275,9 +276,8 @@ where
 						// If the initialization failed, we immediately finalize the
 						// pipeline with the error that occurred during initialization
 						// and not attempt to run any steps.
-						executor.cursor = Cursor::Finalizing(
-							executor.finalize(Err(ClonablePayloadBuilderError(error))),
-						);
+						executor.cursor =
+							Cursor::Finalizing(executor.finalize(Err(error.into())));
 					}
 				}
 				trace!("{} initializing completed", executor.context.pipeline);
@@ -296,8 +296,24 @@ where
 					executor.context.pipeline
 				);
 
-				// all execution of this pipeline has completed, This resolves the
-				// executor future with the final output of the pipeline.
+				// Execution of this pipeline has completed, This resolves the
+				// executor future with the final output of the pipeline and emit
+				// an appropriate system event.
+
+				let payload_id = executor.context.block.payload_id();
+				let events_bus = &executor.context.pipeline.events;
+
+				match &output {
+					Ok(built_payload) => events_bus.publish(PayloadJobCompleted::<P> {
+						payload_id,
+						built_payload: built_payload.clone(),
+					}),
+					Err(error) => events_bus.publish(PayloadJobFailed {
+						payload_id,
+						error: error.clone(),
+					}),
+				}
+
 				return Poll::Ready(output);
 			}
 
@@ -395,20 +411,7 @@ enum Cursor<P: Platform> {
 	PreparingStep,
 }
 
-/// This is a hack to allow cloning of the `PayloadBuilderError`.
-/// Because the same result of this future is cached and reuesed
-/// in the `PayloadJob`, we need to be able to clone the error so
-/// we can use it with `futures::Shared`
-#[derive(Debug)]
-pub(super) struct ClonablePayloadBuilderError(PayloadBuilderError);
-
-impl Clone for ClonablePayloadBuilderError {
-	fn clone(&self) -> Self {
-		Self(clone_payload_error(&self.0))
-	}
-}
-
-pub(crate) fn clone_payload_error(
+pub(crate) fn clone_payload_error_lossy(
 	error: &PayloadBuilderError,
 ) -> PayloadBuilderError {
 	match error {
@@ -421,44 +424,12 @@ pub(crate) fn clone_payload_error(
 		PayloadBuilderError::ChannelClosed => PayloadBuilderError::ChannelClosed,
 		PayloadBuilderError::MissingPayload => PayloadBuilderError::MissingPayload,
 		PayloadBuilderError::Internal(reth_error) => {
-			PayloadBuilderError::other(WrappedErrorMessage(reth_error.to_string()))
+			PayloadBuilderError::Other(reth_error.to_string().into())
 		}
 
 		PayloadBuilderError::EvmExecutionError(error)
 		| PayloadBuilderError::Other(error) => {
-			PayloadBuilderError::other(WrappedErrorMessage(error.to_string()))
+			PayloadBuilderError::Other(error.to_string().into())
 		}
 	}
 }
-
-impl From<Box<dyn core::error::Error>> for ClonablePayloadBuilderError {
-	fn from(error: Box<dyn core::error::Error>) -> Self {
-		Self(PayloadBuilderError::other(WrappedErrorMessage(
-			error.to_string(),
-		)))
-	}
-}
-
-impl From<PayloadBuilderError> for ClonablePayloadBuilderError {
-	fn from(error: PayloadBuilderError) -> Self {
-		Self(error)
-	}
-}
-
-impl From<ClonablePayloadBuilderError> for PayloadBuilderError {
-	fn from(error: ClonablePayloadBuilderError) -> Self {
-		error.0
-	}
-}
-struct WrappedErrorMessage(String);
-impl Display for WrappedErrorMessage {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
-	}
-}
-impl Debug for WrappedErrorMessage {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
-	}
-}
-impl std::error::Error for WrappedErrorMessage {}

@@ -1,10 +1,7 @@
 use {
 	super::traits,
 	crate::{
-		pipelines::{
-			exec::{ClonablePayloadBuilderError, PipelineExecutor},
-			service::ServiceContext,
-		},
+		pipelines::{exec::PipelineExecutor, service::ServiceContext},
 		prelude::*,
 		reth::{
 			api::PayloadBuilderAttributes,
@@ -166,7 +163,7 @@ where
 	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
-	Ready(Result<types::BuiltPayload<P>, ClonablePayloadBuilderError>),
+	Ready(Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>),
 	Future(Shared<PipelineExecutor<P, Provider, Pool>>),
 }
 
@@ -195,7 +192,9 @@ where
 		let this = self.get_mut();
 		match this.state {
 			// we already have a result from previous polls, return a clone of it
-			ExecutorFutureState::Ready(ref result) => Poll::Ready(result.clone()),
+			ExecutorFutureState::Ready(ref result) => {
+				Poll::Ready(result.clone().map_err(|e| clone_payload_error_lossy(&e)))
+			}
 
 			// we are still in progress. keep polling the inner executor future.
 			ExecutorFutureState::Future(ref mut executor) => {
@@ -204,7 +203,9 @@ where
 						// got a result. All future polls will return the result directly
 						// without polling the executor again.
 						this.state = ExecutorFutureState::Ready(result.clone());
-						Poll::Ready(result)
+						Poll::Ready(
+							result.clone().map_err(|e| clone_payload_error_lossy(&e)),
+						)
 					}
 					Poll::Pending => Poll::Pending,
 				}

@@ -46,6 +46,43 @@ macro_rules! fake_step {
 
 pub(crate) use fake_step;
 
+/// A step that always return `ControlFlow::Break` with the input payload.
+pub struct AlwaysBreakStep;
+impl<P: Platform> Step<P> for AlwaysBreakStep {
+	async fn step(
+		self: Arc<Self>,
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
+		ControlFlow::Break(payload)
+	}
+}
+
+/// A step that always returns `ControlFlow::Ok` with the input payload.
+pub struct AlwaysOkStep;
+impl<P: Platform> Step<P> for AlwaysOkStep {
+	async fn step(
+		self: Arc<Self>,
+		payload: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
+		ControlFlow::Ok(payload)
+	}
+}
+
+/// A step that always returns `ControlFlow::Fail` with
+/// `PayloadBuilderError::Other`.
+pub struct AlwaysFailStep;
+impl<P: Platform> Step<P> for AlwaysFailStep {
+	async fn step(
+		self: Arc<Self>,
+		_: Checkpoint<P>,
+		_: StepContext<P>,
+	) -> ControlFlow<P> {
+		ControlFlow::Fail(PayloadBuilderError::Other("always fail".into()))
+	}
+}
+
 /// This test util is used in unit tests for testing a single step in isolation.
 ///
 /// It allows to run a single step with a predefined list of transactions in the
@@ -313,7 +350,7 @@ impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		if let Err(e) = result.as_ref() {
-			self.fail_sender.send(clone_payload_error(e)).unwrap();
+			self.fail_sender.send(clone_payload_error_lossy(e)).unwrap();
 		}
 		Ok(())
 	}
@@ -338,42 +375,9 @@ type BoxedTxBuilderFn<P> =
 mod tests {
 	use super::*;
 
-	struct AlwaysBreak;
-	impl<P: Platform> Step<P> for AlwaysBreak {
-		async fn step(
-			self: Arc<Self>,
-			payload: Checkpoint<P>,
-			_: StepContext<P>,
-		) -> ControlFlow<P> {
-			ControlFlow::Break(payload)
-		}
-	}
-
-	struct AlwaysOk;
-	impl<P: Platform> Step<P> for AlwaysOk {
-		async fn step(
-			self: Arc<Self>,
-			payload: Checkpoint<P>,
-			_: StepContext<P>,
-		) -> ControlFlow<P> {
-			ControlFlow::Ok(payload)
-		}
-	}
-
-	struct AlwaysFail;
-	impl<P: Platform> Step<P> for AlwaysFail {
-		async fn step(
-			self: Arc<Self>,
-			_: Checkpoint<P>,
-			_: StepContext<P>,
-		) -> ControlFlow<P> {
-			ControlFlow::Fail(PayloadBuilderError::ChannelClosed)
-		}
-	}
-
 	#[tokio::test]
 	async fn break_is_recorded() {
-		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysBreak)
+		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysBreakStep)
 			.run()
 			.await
 			.unwrap();
@@ -382,7 +386,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn ok_is_recorded() {
-		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysOk)
+		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysOkStep)
 			.run()
 			.await
 			.unwrap();
@@ -391,7 +395,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn fail_is_recorded() {
-		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysFail)
+		let step = OneStep::<crate::platform::Ethereum>::new(AlwaysFailStep)
 			.run()
 			.await
 			.unwrap();

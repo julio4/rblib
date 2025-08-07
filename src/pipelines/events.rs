@@ -44,6 +44,16 @@ impl<P: Platform> EventsBus<P> {
 	where
 		E: Clone + Any + Send + Sync + 'static,
 	{
+		let key = TypeId::of::<E>();
+
+		// the most likely case is that the sender already exists, so we
+		// avoid using `.entry()` here to avoid taking a write lock on the map.
+		if let Some(sender) = self.publishers.get(&key) {
+			return sender;
+		}
+
+		// otherwise, we create a new sender for this event type, insert it into the
+		// map and immediately downgrade the lock to a read lock.
 		self
 			.publishers
 			.entry(TypeId::of::<E>())
@@ -52,9 +62,42 @@ impl<P: Platform> EventsBus<P> {
 	}
 }
 
+/// System events emitted by the pipeline itself.
+pub mod system_events {
+	use {
+		super::*,
+		derive_more::{Deref, From, Into},
+		reth_payload_builder::PayloadId,
+	};
+
+	/// System event emitted when a new payload job is started.
+	#[derive(Debug, Clone, From, Into, Deref)]
+	pub struct PayloadJobStarted<P: Platform>(pub BlockContext<P>);
+
+	/// System event emitted when a payload job has successfully built a payload.
+	#[derive(Debug, Clone)]
+	pub struct PayloadJobCompleted<P: Platform> {
+		pub payload_id: PayloadId,
+		pub built_payload: types::BuiltPayload<P>,
+	}
+
+	/// System event emitted when a payload job has failed to build a payload.
+	#[derive(Debug, Clone)]
+	pub struct PayloadJobFailed {
+		pub payload_id: PayloadId,
+		pub error: Arc<PayloadBuilderError>,
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use {super::*, crate::test_utils::*, futures::StreamExt};
+	use {
+		super::*,
+		crate::{alloy, reth, test_utils::*},
+		alloy::consensus::BlockHeader,
+		futures::StreamExt,
+		reth::node::builder::BuiltPayload,
+	};
 
 	#[derive(Clone, Debug, PartialEq, Eq)]
 	struct StringEvent(String);
@@ -180,5 +223,69 @@ mod tests {
 		assert_eq!(uint32_subs.next().await, Some(UInt32Event(101)));
 		assert_eq!(uint32_subs.next().await, Some(UInt32Event(200)));
 		assert!(uint32_subs.next().await.is_none());
+	}
+
+	#[rblib_test(Ethereum, Optimism)]
+	async fn system_events_are_emitted_on_success<P: TestablePlatform>() {
+		let step = OneStep::<P>::new(AlwaysOkStep);
+
+		let mut started_sub = step.subscribe::<PayloadJobStarted<P>>();
+		let mut completed_sub = step.subscribe::<PayloadJobCompleted<P>>();
+		let mut failed_sub = step.subscribe::<PayloadJobFailed>();
+
+		let output = step.run().await.unwrap();
+		let ControlFlow::Ok(checkpoint) = output else {
+			panic!("Expected ControlFlow::Ok, got: {output:?}");
+		};
+
+		let started_event = started_sub.next().await;
+		assert!(started_event.is_some());
+		let started_event = started_event.unwrap();
+
+		assert_eq!(started_event.payload_id(), checkpoint.block().payload_id());
+		assert_eq!(started_event.parent(), checkpoint.block().parent());
+		assert_eq!(started_event.number(), checkpoint.block().number());
+
+		let completed_event = completed_sub.next().await;
+		assert!(completed_event.is_some());
+		let completed_event = completed_event.unwrap();
+
+		assert_eq!(completed_event.payload_id, checkpoint.block().payload_id());
+		assert_eq!(
+			completed_event.built_payload.block().header().parent_hash(),
+			checkpoint.block().parent().hash()
+		);
+
+		assert!(failed_sub.next().await.is_none());
+	}
+
+	#[rblib_test(Ethereum, Optimism)]
+	async fn system_events_are_emitted_on_fail<P: TestablePlatform>() {
+		let step = OneStep::<P>::new(AlwaysFailStep);
+
+		let mut started_sub = step.subscribe::<PayloadJobStarted<P>>();
+		let mut completed_sub = step.subscribe::<PayloadJobCompleted<P>>();
+		let mut failed_sub = step.subscribe::<PayloadJobFailed>();
+
+		let output = step.run().await.unwrap();
+		let ControlFlow::Fail(error) = output else {
+			panic!("Expected ControlFlow::Fail, got: {output:?}");
+		};
+
+		let started_event = started_sub.next().await;
+		assert!(started_event.is_some());
+		let started_event = started_event.unwrap();
+		assert_eq!(started_event.number(), 1);
+
+		let payload_id = started_event.payload_id();
+
+		let failed_event = failed_sub.next().await;
+		assert!(failed_event.is_some());
+		let failed_event = failed_event.unwrap();
+
+		assert_eq!(failed_event.payload_id, payload_id);
+		assert_eq!(failed_event.error.to_string(), error.to_string());
+
+		assert!(completed_sub.next().await.is_none());
 	}
 }

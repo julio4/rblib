@@ -30,6 +30,7 @@ mod tests;
 pub use {
 	Behavior::{Loop, Once},
 	context::StepContext,
+	events::system_events::*,
 	step::{ControlFlow, PayloadBuilderError, Step},
 };
 
@@ -448,4 +449,4 @@ pub mod traits {
 
 // internal utilities
 #[cfg(any(test, feature = "test-utils"))]
-pub(crate) use exec::clone_payload_error;
+pub(crate) use exec::clone_payload_error_lossy;

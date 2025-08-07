@@ -30,7 +30,7 @@ pub use {
 	node::{ConsensusDriver, LocalNode},
 	platform::{TestNodeFactory, TestablePlatform},
 	rblib_tests_macros::{if_platform, rblib_test},
-	step::OneStep,
+	step::{AlwaysBreakStep, AlwaysFailStep, AlwaysOkStep, OneStep},
 };
 
 #[cfg(feature = "optimism")]

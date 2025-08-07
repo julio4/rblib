@@ -27,7 +27,13 @@ mod steps;
 pub use {
 	rpc::{BundleResult, BundlesApiClient},
 	setup::HostNodeInstaller,
-	steps::{AppendManyOrders, AppendOneOrder},
+	steps::{
+		AppendManyOrders,
+		AppendOneOrder,
+		OrderInclusionAttempt,
+		OrderInclusionFailure,
+		OrderInclusionSuccess,
+	},
 };
 
 #[derive(Debug, Clone)]

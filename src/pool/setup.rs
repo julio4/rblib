@@ -40,6 +40,10 @@ impl<P: Platform> OrderPool<P> {
 
 		Ok(())
 	}
+
+	pub fn subscribe_to_events(&self, pipeline: &Pipeline<P>) {
+		tokio::spawn(self.start_pipeline_events_listener(pipeline));
+	}
 }
 
 /// In the current implementation of the `OrderPool`, we use the default node

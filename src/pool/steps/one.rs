@@ -1,6 +1,6 @@
 use {
-	super::{OrderPool, select::PoolsDemux},
-	crate::{alloy, prelude::*, reth},
+	super::{select::PoolsDemux, *},
+	crate::{alloy, reth},
 	alloy::{consensus::Transaction, primitives::B256},
 	dashmap::DashSet,
 	reth::ethereum::primitives::SignedTransaction,
@@ -145,18 +145,16 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 
 			let order_hash = order.hash();
 
-			// tell the order pool that there was an inclusion attempt for this
-			// order, this will help the pool make better decisions in future
-			// `best_orders()` calls.
-			if let Some(pool) = self.order_pool.as_ref() {
-				pool.report_inclusion_attempt(order_hash, ctx.block());
-			}
-
 			if self.attempted.contains(&order_hash) {
 				// This order was already attempted to be added to the payload for this
 				// payload job.
 				continue;
 			}
+
+			// tell the order pool that there was an inclusion attempt for this
+			// order, this will help the pool make better decisions in future
+			// `best_orders()` calls.
+			ctx.emit(OrderInclusionAttempt(order_hash, ctx.block().payload_id()));
 
 			// mark this order as attempted to avoid adding it again for the same
 			// payload job.
@@ -193,12 +191,11 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 				Ok(executable) => executable,
 				Err(err) => {
 					// Order has transactions that cannot have their signers recovered.
-					if let Some(pool) = self.order_pool.as_ref() {
-						pool.report_execution_error(
-							order_hash,
-							ExecutionError::InvalidSignature(err),
-						);
-					}
+					ctx.emit(OrderInclusionFailure::<P>(
+						order_hash,
+						ExecutionError::InvalidSignature(err).into(),
+						ctx.block().payload_id(),
+					));
 					continue;
 				}
 			};
@@ -213,9 +210,11 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 					// order pool know about this failure so it can make better
 					// decisions in the future when it returns the best orders
 					// iterator.
-					if let Some(pool) = self.order_pool.as_ref() {
-						pool.report_execution_error(order_hash, err);
-					}
+					ctx.emit(OrderInclusionFailure(
+						order_hash,
+						err.into(),
+						ctx.block().payload_id(),
+					));
 					continue;
 				}
 			};
@@ -227,6 +226,7 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 				continue;
 			}
 
+			ctx.emit(OrderInclusionSuccess(order_hash, ctx.block().payload_id()));
 			return ControlFlow::Ok(new_payload);
 		}
 	}

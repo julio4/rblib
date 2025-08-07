@@ -9,6 +9,7 @@ use {
 		reth::{primitives::SealedHeader, providers::StateProvider},
 	},
 	core::any::Any,
+	futures::Stream,
 	pool::TransactionPool,
 	std::sync::Arc,
 };
@@ -86,5 +87,14 @@ impl<P: Platform> StepContext<P> {
 		E: Clone + Any + Send + Sync + 'static,
 	{
 		self.events_bus.publish(event);
+	}
+
+	/// Returns a stream that yields events of type `E` whenever they are emitted
+	/// anywhere.
+	pub fn subscribe<E>(&self) -> impl Stream<Item = E> + Send + Sync + 'static
+	where
+		E: Clone + Any + Send + Sync + 'static,
+	{
+		self.events_bus.subscribe::<E>()
 	}
 }

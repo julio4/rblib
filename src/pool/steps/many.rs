@@ -1,6 +1,6 @@
 use {
-	super::{OrderPool, select::PoolsDemux},
-	crate::{alloy, prelude::*, reth},
+	super::{select::PoolsDemux, *},
+	crate::{alloy, reth},
 	alloy::{consensus::Transaction, primitives::B256},
 	dashmap::DashSet,
 	reth::ethereum::primitives::SignedTransaction,
@@ -182,9 +182,7 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 			// tell the order pool that there was an inclusion attempt for this
 			// order, this will help the pool make better decisions in future
 			// `best_orders()` calls.
-			if let Some(pool) = self.order_pool.as_ref() {
-				pool.report_inclusion_attempt(order_hash, ctx.block());
-			}
+			ctx.emit(OrderInclusionAttempt(order_hash, ctx.block().payload_id()));
 
 			if self.attempted.contains(&order_hash) {
 				// This order was already attempted to be added to the payload for this
@@ -235,12 +233,11 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 				Ok(executable) => executable,
 				Err(err) => {
 					// Order has transactions that cannot have their signers recovered.
-					if let Some(pool) = self.order_pool.as_ref() {
-						pool.report_execution_error(
-							order_hash,
-							ExecutionError::InvalidSignature(err),
-						);
-					}
+					ctx.emit(OrderInclusionFailure::<P>(
+						order_hash,
+						ExecutionError::InvalidSignature(err).into(),
+						ctx.block().payload_id(),
+					));
 					continue;
 				}
 			};
@@ -255,9 +252,11 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 					// order pool know about this failure so it can make better
 					// decisions in the future when it returns the best orders
 					// iterator.
-					if let Some(pool) = self.order_pool.as_ref() {
-						pool.report_execution_error(order_hash, err);
-					}
+					ctx.emit(OrderInclusionFailure(
+						order_hash,
+						err.into(),
+						ctx.block().payload_id(),
+					));
 					continue;
 				}
 			};
@@ -269,6 +268,7 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 
 			orders_added += 1;
 			transactions_added += new_payload.transactions().len();
+			ctx.emit(OrderInclusionSuccess(order_hash, ctx.block().payload_id()));
 
 			// all good, extend the payload with the new checkpoint
 			payload = new_payload;

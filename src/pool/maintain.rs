@@ -3,7 +3,7 @@
 //! This is not a public API, but rather a set of utilities that are used
 //! internally by the order pool to maintain its state and react to events.
 
-use {super::*, std::collections::HashSet};
+use {super::*, futures::StreamExt, std::collections::HashSet};
 
 impl<P: Platform> OrderPool<P> {
 	/// Removes orders that became permanently ineligible after the given block
@@ -31,5 +31,33 @@ impl<P: Platform> OrderPool<P> {
 			.inner
 			.orders
 			.retain(|order_hash, _| !ineligible.contains(order_hash));
+	}
+
+	pub(super) fn start_pipeline_events_listener(
+		&self,
+		pipeline: &Pipeline<P>,
+	) -> impl Future<Output = eyre::Result<()>> + 'static {
+		let mut inclusion = pipeline.subscribe::<OrderInclusionAttempt>();
+		let mut success = pipeline.subscribe::<OrderInclusionSuccess>();
+		let mut failure = pipeline.subscribe::<OrderInclusionFailure<P>>();
+
+		let order_pool = self.clone();
+
+		async move {
+			loop {
+				tokio::select! {
+					Some(OrderInclusionAttempt(order, payload_id)) = inclusion.next() => {
+						tracing::debug!(">--> order inclusion attempt: {order} in payload job {payload_id}");
+					}
+					Some(OrderInclusionSuccess(order, payload_id)) = success.next() => {
+						tracing::debug!(">--> order inclusion success: {order} in payload job {payload_id}");
+					}
+					Some(OrderInclusionFailure(order, err, payload_id)) = failure.next() => {
+						tracing::debug!(">--> order inclusion failure: {order} in payload job {payload_id} - {err}");
+						order_pool.report_execution_error(order, &err);
+					}
+				}
+			}
+		}
 	}
 }

@@ -17,11 +17,10 @@ impl<P: Platform> OrderPool<P> {
 	/// Here we will need to decide whether the execution error permanently
 	/// invalidates the order and it should be removed from the pool, or if it
 	/// can be retried later.
-	#[expect(clippy::needless_pass_by_value)] // <-- todo remove this when implemented
 	pub fn report_execution_error(
 		&self,
 		order_hash: B256,
-		error: ExecutionError<P>,
+		error: &ExecutionError<P>,
 	) {
 		trace!("order marked as invalid: {order_hash} - {error:?}");
 

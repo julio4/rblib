@@ -60,7 +60,7 @@ impl<P: Platform> HostNode<P> {
 			.set(Instances {
 				system_pool,
 				tip_header: RwLock::new(tip_header),
-				order_pool: OrderPool { inner: order_pool },
+				order_pool: order_pool.into(),
 				provider: Box::new(builder_context.provider().clone()),
 			})
 			.map_err(|_| {

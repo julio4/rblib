@@ -41,7 +41,10 @@ impl<P: Platform> OrderPool<P> {
 		Ok(())
 	}
 
-	pub fn subscribe_to_events(&self, pipeline: &Pipeline<P>) {
+	/// Attaches the order pool to a pipeline, allowing it to listen for
+	/// events emitted by the pipeline. Those events help the order pool
+	/// garbage collect orders and offer better order proposals.
+	pub fn attach_pipeline(&self, pipeline: &Pipeline<P>) {
 		tokio::spawn(self.start_pipeline_events_listener(pipeline));
 	}
 }

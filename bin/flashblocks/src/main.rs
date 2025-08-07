@@ -94,7 +94,7 @@ pub fn build_pipeline(
 		pipeline = pipeline.with_epilogue(epilogue).with_limits(limiter);
 	}
 
-	pool.subscribe_to_events(&pipeline);
+	pool.attach_pipeline(&pipeline);
 
 	pipeline
 }

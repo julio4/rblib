@@ -165,3 +165,17 @@ struct OrderPoolInner<P: Platform> {
 	/// Attachment is done by the `attach_pool` method during node components
 	host: Arc<host::HostNode<P>>,
 }
+
+impl<P: Platform> OrderPoolInner<P> {
+	pub fn outer(self: &Arc<Self>) -> OrderPool<P> {
+		OrderPool {
+			inner: Arc::clone(self),
+		}
+	}
+}
+
+impl<P: Platform> From<Arc<OrderPoolInner<P>>> for OrderPool<P> {
+	fn from(inner: Arc<OrderPoolInner<P>>) -> Self {
+		inner.outer()
+	}
+}

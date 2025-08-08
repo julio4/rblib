@@ -13,8 +13,9 @@ use {
 		task::{Context, Poll},
 	},
 	futures::{FutureExt, future::Shared},
+	reth_node_builder::BuiltPayload,
 	std::sync::Arc,
-	tracing::debug,
+	tracing::{debug, warn},
 };
 
 /// This type is responsible for handling one payload generation request.
@@ -48,13 +49,15 @@ where
 		block: BlockContext<P>,
 		service: &Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
+		debug!(
+			"New Payload Job {} with block context: {block:#?}",
+			block.payload_id()
+		);
 		let fut = ExecutorFuture::new(PipelineExecutor::run(
 			Arc::clone(pipeline),
 			block.clone(),
 			Arc::clone(service),
 		));
-
-		debug!("Creating new PayloadJob with block context: {block:#?}");
 
 		Self { block, fut }
 	}
@@ -146,6 +149,7 @@ where
 	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
+	payload_id: PayloadId,
 	state: ExecutorFutureState<P, Provider, Pool>,
 }
 
@@ -175,6 +179,7 @@ where
 {
 	pub fn new(executor: PipelineExecutor<P, Provider, Pool>) -> Self {
 		Self {
+			payload_id: executor.payload_id(),
 			state: ExecutorFutureState::Future(executor.shared()),
 		}
 	}
@@ -204,6 +209,8 @@ where
 					Poll::Ready(result) => {
 						// got a result. All future polls will return the result directly
 						// without polling the executor again.
+						log_payload_job_result::<P>(this.payload_id, &result);
+
 						this.state = ExecutorFutureState::Ready(result.clone());
 						Poll::Ready(
 							result
@@ -230,6 +237,7 @@ where
 {
 	fn clone(&self) -> Self {
 		Self {
+			payload_id: self.payload_id,
 			state: match &self.state {
 				ExecutorFutureState::Ready(result) => {
 					ExecutorFutureState::Ready(result.clone())
@@ -238,6 +246,25 @@ where
 					ExecutorFutureState::Future(future.clone())
 				}
 			},
+		}
+	}
+}
+
+fn log_payload_job_result<P: Platform>(
+	payload_id: PayloadId,
+	result: &Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>,
+) {
+	match &result {
+		Ok(built_payload) => {
+			let built_block = built_payload.block();
+			let fees = built_payload.fees();
+
+			debug!(
+				"Payload job {payload_id} completed: {built_block:#?}, fees: {fees}"
+			);
+		}
+		Err(error) => {
+			warn!("Payload job {payload_id} failed: {error:#?}");
 		}
 	}
 }

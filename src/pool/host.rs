@@ -5,10 +5,14 @@ use {
 	reth::{
 		chainspec::EthChainSpec,
 		node::builder::{BuilderContext, FullNodeTypes, NodeTypes},
-		providers::{CanonStateSubscriptions, StateProviderFactory},
+		providers::{
+			BlockReaderIdExt,
+			CanonStateSubscriptions,
+			StateProviderFactory,
+		},
+		tasks::shutdown::Shutdown,
 		transaction_pool::TransactionPool,
 	},
-	reth_origin::providers::BlockReaderIdExt,
 	std::sync::OnceLock,
 	tracing::debug,
 };
@@ -62,6 +66,7 @@ impl<P: Platform> HostNode<P> {
 				tip_header: RwLock::new(tip_header),
 				order_pool: order_pool.into(),
 				provider: Box::new(builder_context.provider().clone()),
+				shutdown: builder_context.task_executor().on_shutdown_signal().clone(),
 			})
 			.map_err(|_| {
 				eyre::eyre!("There is a host already attached to this instance")
@@ -101,11 +106,13 @@ impl<P: Platform> HostNode<P> {
 impl<P: Platform> HostNode<P> {
 	async fn maintenance_loop(self: Arc<Self>) {
 		let instances = self.instances.get().expect("HostNode must be attached");
-		let mut events = instances.provider.canonical_state_stream();
+		let mut chain_events = instances.provider.canonical_state_stream();
+		let mut shutdown = instances.shutdown.clone();
 
 		loop {
 			tokio::select! {
-				Some(event) = events.next() => {
+				// Changes to the canonical chain, reverts, reorgs, commits, etc.
+				Some(event) = chain_events.next() => {
 					// remove orders that have transactions included in the committed block
 					for block in event.committed().blocks().values() {
 						instances.order_pool.report_committed_block(block);
@@ -113,6 +120,11 @@ impl<P: Platform> HostNode<P> {
 
 					// update the tip header with the latest block header
 					*instances.tip_header.write() = event.tip().sealed_header().clone();
+				}
+
+				// Reth node shutdown signal. Terminate the maintenance loop.
+				() = &mut shutdown => {
+					break;
 				}
 			}
 		}
@@ -137,6 +149,9 @@ struct Instances<P: Platform> {
 	/// The order pool that owns this instance and is attached to the
 	/// host Reth node.
 	order_pool: OrderPool<P>,
+
+	/// A future that resolves when the host node is shutting down.
+	shutdown: Shutdown,
 }
 
 trait Provider:

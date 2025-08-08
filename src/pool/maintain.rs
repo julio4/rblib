@@ -58,7 +58,7 @@ impl<P: Platform> OrderPool<P> {
 						order_pool.report_execution_error(order, &err);
 					}
 					Some(PipelineDropped) = dropped.next() => {
-						tracing::debug!(">--> pipeline dropped, stopping order pool events listener");
+						// Pipeline was dropped, stop this maintenance task
 						return Ok(());
 					}
 				}

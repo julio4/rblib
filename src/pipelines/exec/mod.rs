@@ -22,6 +22,7 @@ use {
 	},
 	futures::FutureExt,
 	navi::StepPath,
+	reth_payload_builder::PayloadId,
 	std::sync::Arc,
 	tracing::{debug, trace},
 };
@@ -87,6 +88,11 @@ impl<
 				service,
 			},
 		}
+	}
+
+	/// Returns the payload id for which we are building a payload.
+	pub fn payload_id(&self) -> PayloadId {
+		self.context.block.payload_id()
 	}
 }
 

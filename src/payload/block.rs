@@ -50,6 +50,14 @@ impl<P: Platform> Clone for BlockContext<P> {
 
 /// Constructors
 impl<P: Platform> BlockContext<P> {
+	/// To create a new block context we need:
+	///  - The parent block header on top of which we are building this block.
+	///  - The payload builder attributes for the next block. This usually comes
+	///    from [`reth_payload_builder::JobGenerator::new_payload_job`] as a
+	///    response to Engine API forkchoiceUpdated requests.
+	///  - The state of the chain at the parent block. This can be acquired from
+	///    `StateProviderFactory::state_by_block_hash(parent)`.
+	///  - The chainspec of the chain we're building for.
 	pub fn new(
 		parent: SealedHeader<types::Header<P>>,
 		attribs: types::PayloadBuilderAttributes<P>,

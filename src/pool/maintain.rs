@@ -40,6 +40,7 @@ impl<P: Platform> OrderPool<P> {
 		let mut inclusion = pipeline.subscribe::<OrderInclusionAttempt>();
 		let mut success = pipeline.subscribe::<OrderInclusionSuccess>();
 		let mut failure = pipeline.subscribe::<OrderInclusionFailure<P>>();
+		let mut dropped = pipeline.subscribe::<PipelineDropped>();
 
 		let order_pool = self.clone();
 
@@ -55,6 +56,10 @@ impl<P: Platform> OrderPool<P> {
 					Some(OrderInclusionFailure(order, err, payload_id)) = failure.next() => {
 						tracing::debug!(">--> order inclusion failure: {order} in payload job {payload_id} - {err}");
 						order_pool.report_execution_error(order, &err);
+					}
+					Some(PipelineDropped) = dropped.next() => {
+						tracing::debug!(">--> pipeline dropped, stopping order pool events listener");
+						return Ok(());
 					}
 				}
 			}

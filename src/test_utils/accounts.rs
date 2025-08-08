@@ -1,15 +1,18 @@
-use crate::{
-	alloy::{
-		genesis::{Genesis, GenesisAccount},
-		primitives::{Address, U256},
-		signers::local::PrivateKeySigner,
+use {
+	crate::{
+		alloy::{
+			genesis::{Genesis, GenesisAccount},
+			primitives::{Address, U256},
+			signers::local::PrivateKeySigner,
+		},
+		reth::{
+			chainspec::ChainSpec,
+			ethereum::EthPrimitives,
+			providers::test_utils::{ExtendedAccount, MockEthProvider},
+		},
+		test_utils::ONE_ETH,
 	},
-	reth::{
-		chainspec::ChainSpec,
-		ethereum::EthPrimitives,
-		providers::test_utils::{ExtendedAccount, MockEthProvider},
-	},
-	test_utils::ONE_ETH,
+	std::sync::Arc,
 };
 
 /// Those accounts are defined in the gensis block of the test local node,
@@ -130,12 +133,28 @@ impl WithFundedAccounts for ChainSpec {
 	}
 }
 
+impl WithFundedAccounts for Arc<ChainSpec> {
+	fn with_funded_accounts(self) -> Self {
+		let mut chainspec = Arc::unwrap_or_clone(self);
+		chainspec.genesis = chainspec.genesis.with_funded_accounts();
+		Arc::new(chainspec)
+	}
+}
+
 #[cfg(feature = "optimism")]
 impl WithFundedAccounts for crate::reth::optimism::chainspec::OpChainSpec {
 	fn with_funded_accounts(self) -> Self {
 		let mut chainspec = self;
 		chainspec.inner.genesis = chainspec.inner.genesis.with_funded_accounts();
 		chainspec
+	}
+}
+
+#[cfg(feature = "optimism")]
+impl WithFundedAccounts for Arc<crate::reth::optimism::chainspec::OpChainSpec> {
+	fn with_funded_accounts(self) -> Self {
+		let chainspec = Arc::unwrap_or_clone(self).with_funded_accounts();
+		Arc::new(chainspec)
 	}
 }
 

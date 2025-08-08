@@ -67,10 +67,9 @@ impl<P: Platform> Default for Pipeline<P> {
 impl<P: Platform> Pipeline<P> {
 	/// Creates a new empty pipeline with a name.
 	pub fn named(name: impl Into<String>) -> Self {
-		Self {
-			name: Some(name.into()),
-			..Default::default()
-		}
+		let mut default = Self::default();
+		default.name = Some(name.into());
+		default
 	}
 
 	/// A step that happens before any transaction is added to the block, executes
@@ -246,6 +245,12 @@ impl<P: Platform> Pipeline<P> {
 		// inside `for_each_step_inner` path components are concatenated to it.
 		let empty_path = unsafe { StepPath::empty() };
 		for_each_step_inner(self, self, empty_path, f).await
+	}
+}
+
+impl<P: Platform> Drop for Pipeline<P> {
+	fn drop(&mut self) {
+		self.events.publish(PipelineDropped);
 	}
 }
 

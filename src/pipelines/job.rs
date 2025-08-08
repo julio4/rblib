@@ -192,9 +192,11 @@ where
 		let this = self.get_mut();
 		match this.state {
 			// we already have a result from previous polls, return a clone of it
-			ExecutorFutureState::Ready(ref result) => {
-				Poll::Ready(result.clone().map_err(|e| clone_payload_error_lossy(&e)))
-			}
+			ExecutorFutureState::Ready(ref result) => Poll::Ready(
+				result
+					.clone()
+					.map_err(|e| super::exec::clone_payload_error_lossy(&e)),
+			),
 
 			// we are still in progress. keep polling the inner executor future.
 			ExecutorFutureState::Future(ref mut executor) => {
@@ -204,7 +206,9 @@ where
 						// without polling the executor again.
 						this.state = ExecutorFutureState::Ready(result.clone());
 						Poll::Ready(
-							result.clone().map_err(|e| clone_payload_error_lossy(&e)),
+							result
+								.clone()
+								.map_err(|e| super::exec::clone_payload_error_lossy(&e)),
 						)
 					}
 					Poll::Pending => Poll::Pending,

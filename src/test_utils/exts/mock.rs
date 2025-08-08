@@ -14,7 +14,7 @@ use {
 		payload::builder::EthPayloadBuilderAttributes,
 		primitives::SealedHeader,
 	},
-	std::sync::{Arc, LazyLock},
+	std::sync::LazyLock,
 };
 
 /// Payload builder attributes typically come from the Consensus Layer with a
@@ -111,11 +111,7 @@ where
 	>,
 {
 	fn mocked() -> (BlockContext<P>, impl traits::ProviderBounds<P>) {
-		let chainspec = LazyLock::force(&DEV).clone();
-		let chainspec = Arc::unwrap_or_clone(chainspec);
-		let chainspec = chainspec.with_funded_accounts();
-		let chainspec = Arc::new(chainspec);
-
+		let chainspec = LazyLock::force(&DEV).clone().with_funded_accounts();
 		let provider = GenesisProviderFactory::<P>::new(chainspec.clone());
 
 		let parent = SealedHeader::new(
@@ -150,10 +146,7 @@ where
 {
 	fn mocked() -> (BlockContext<P>, impl traits::ProviderBounds<P>) {
 		use reth::optimism::{chainspec::OP_DEV, node::OpPayloadBuilderAttributes};
-		let chainspec = LazyLock::force(&OP_DEV).clone();
-		let chainspec = Arc::unwrap_or_clone(chainspec);
-		let chainspec = chainspec.with_funded_accounts();
-		let chainspec = Arc::new(chainspec);
+		let chainspec = LazyLock::force(&OP_DEV).clone().with_funded_accounts();
 		let provider = GenesisProviderFactory::<P>::new(chainspec.clone());
 
 		let parent = SealedHeader::new(

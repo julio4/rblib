@@ -87,6 +87,10 @@ pub mod system_events {
 		pub payload_id: PayloadId,
 		pub error: Arc<PayloadBuilderError>,
 	}
+
+	/// System event emitted when the pipeline instance is dropped.
+	#[derive(Debug, Clone)]
+	pub struct PipelineDropped;
 }
 
 #[cfg(test)]
@@ -232,6 +236,7 @@ mod tests {
 		let mut started_sub = step.subscribe::<PayloadJobStarted<P>>();
 		let mut completed_sub = step.subscribe::<PayloadJobCompleted<P>>();
 		let mut failed_sub = step.subscribe::<PayloadJobFailed>();
+		let mut dropped_sub = step.subscribe::<PipelineDropped>();
 
 		let output = step.run().await.unwrap();
 		let ControlFlow::Ok(checkpoint) = output else {
@@ -257,6 +262,7 @@ mod tests {
 		);
 
 		assert!(failed_sub.next().await.is_none());
+		assert!(dropped_sub.next().await.is_some());
 	}
 
 	#[rblib_test(Ethereum, Optimism)]
@@ -266,6 +272,7 @@ mod tests {
 		let mut started_sub = step.subscribe::<PayloadJobStarted<P>>();
 		let mut completed_sub = step.subscribe::<PayloadJobCompleted<P>>();
 		let mut failed_sub = step.subscribe::<PayloadJobFailed>();
+		let mut dropped_sub = step.subscribe::<PipelineDropped>();
 
 		let output = step.run().await.unwrap();
 		let ControlFlow::Fail(error) = output else {
@@ -287,5 +294,6 @@ mod tests {
 		assert_eq!(failed_event.error.to_string(), error.to_string());
 
 		assert!(completed_sub.next().await.is_none());
+		assert!(dropped_sub.next().await.is_some());
 	}
 }

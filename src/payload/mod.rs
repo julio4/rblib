@@ -12,7 +12,7 @@ pub use {
 	block::{BlockContext, Error as BlockError},
 	checkpoint::{Checkpoint, Error as CheckpointError},
 	exec::{Executable, ExecutionError, ExecutionResult, IntoExecutable},
-	ext::{CheckpointExt, SpanExt},
+	ext::{BlockExt, CheckpointExt, SpanExt},
 	span::{Error as SpanError, Span},
 };
 

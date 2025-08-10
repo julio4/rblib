@@ -2,6 +2,7 @@
 //! definition and turns it into a Reth compatible payload builder.
 
 use {
+	super::metrics,
 	crate::{
 		pipelines::job::PayloadJob,
 		prelude::*,
@@ -56,6 +57,7 @@ where
 			pool,
 			provider: ctx.provider().clone(),
 			node_config: ctx.config().clone(),
+			metrics: metrics::Payload::default(),
 		};
 
 		let (service, builder) = PayloadBuilderService::new(
@@ -83,6 +85,7 @@ where
 	pool: Pool,
 	provider: Provider,
 	node_config: NodeConfig<types::ChainSpec<Plat>>,
+	metrics: metrics::Payload,
 }
 
 impl<Plat, Provider, Pool> ServiceContext<Plat, Provider, Pool>
@@ -105,6 +108,10 @@ where
 
 	pub const fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
 		&self.node_config().chain
+	}
+
+	pub const fn metrics(&self) -> &metrics::Payload {
+		&self.metrics
 	}
 }
 

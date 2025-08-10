@@ -5,10 +5,11 @@
 //! methods that improve the developer experience and reduce boilerplate code
 //! but are not strictly necessary for the core functionality.
 
+mod block;
 mod checkpoint;
 mod span;
 
-pub use {checkpoint::CheckpointExt, span::SpanExt};
+pub use {block::BlockExt, checkpoint::CheckpointExt, span::SpanExt};
 
 mod sealed {
 	/// This pattern is used to prevent external implementations of the extension
@@ -17,4 +18,5 @@ mod sealed {
 
 	impl<P: crate::platform::Platform> Sealed for super::super::Span<P> {}
 	impl<P: crate::platform::Platform> Sealed for super::super::Checkpoint<P> {}
+	impl<P: crate::platform::Platform> Sealed for super::super::BlockContext<P> {}
 }

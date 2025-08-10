@@ -1,12 +1,9 @@
 use {
 	crate::{
-		alloy::consensus::BlockHeader,
 		prelude::*,
 		reth::{
-			api::{ConfigureEvm, PayloadBuilderAttributes},
-			chainspec::EthChainSpec,
+			api::ConfigureEvm,
 			evm::{block::BlockExecutionError, execute::BlockBuilder},
-			payload::PayloadId,
 			primitives::SealedHeader,
 			providers::{StateProvider, StateProviderBox},
 			revm::{State, database::StateProviderDatabase},
@@ -114,22 +111,6 @@ impl<P: Platform> BlockContext<P> {
 		&self.inner.attribs
 	}
 
-	/// Returns the payload ID that was supplied by the CL client
-	/// during the `ForkchoiceUpdated` request inside the payload attributes.
-	pub fn payload_id(&self) -> PayloadId {
-		self.attributes().payload_id()
-	}
-
-	/// Returns the timestamp of the block for which the payload is being built.
-	pub fn timestamp(&self) -> u64 {
-		self.attributes().timestamp()
-	}
-
-	/// Returns the number of the block for which the payload is being built.
-	pub fn number(&self) -> u64 {
-		self.parent().header().number() + 1
-	}
-
 	/// Returns the state provider that provides access to the state of the
 	/// environment rooted at the end of the parent block for which the payload
 	/// is being built.
@@ -161,33 +142,6 @@ impl<P: Platform> BlockContext<P> {
 	/// environment for the block that is being built.
 	pub fn chainspec(&self) -> &Arc<types::ChainSpec<P>> {
 		&self.inner.chainspec
-	}
-
-	/// Returns the base fee for the block under construction.
-	pub fn base_fee(&self) -> u64 {
-		self
-			.parent()
-			.header()
-			.next_block_base_fee(
-				self
-					.chainspec()
-					.base_fee_params_at_timestamp(self.attributes().timestamp()),
-			)
-			.unwrap_or_default()
-	}
-
-	/// Returns the blob fee for the block under construction, if applicable.
-	pub fn blob_fee(&self) -> Option<u128> {
-		self
-			.chainspec()
-			.blob_params_at_timestamp(self.attributes().timestamp())
-			.map(|blob_params| {
-				self
-					.parent()
-					.header()
-					.blob_fee(blob_params)
-					.unwrap_or_default()
-			})
 	}
 }
 

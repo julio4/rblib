@@ -96,6 +96,8 @@ tokio-stream = "0.1.17"
 serde = "1.0"
 jsonrpsee = "0.25.1"
 parking_lot = "0.12"
+metrics = "0.24.0"
+metrics-derive = "0.1"
 
 alloy-origin = { version = "1.0.23", package = "alloy", features = [
   "k256",

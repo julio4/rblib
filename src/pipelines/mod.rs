@@ -20,6 +20,7 @@ mod context;
 mod events;
 mod exec;
 mod job;
+mod metrics;
 mod service;
 mod step;
 

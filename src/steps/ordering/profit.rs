@@ -1,9 +1,8 @@
 use {
 	super::{OrderBy, OrderScore},
-	crate::{alloy, prelude::*, reth},
+	crate::{alloy, prelude::*},
 	alloy::primitives::U256,
 	core::marker::PhantomData,
-	reth::node::builder::PayloadBuilderAttributes,
 	reth_errors::ProviderError,
 };
 
@@ -15,9 +14,7 @@ impl<P: Platform> OrderScore<P> for CoinbaseProfitScore<P> {
 	type Score = U256;
 
 	fn score(checkpoint: &Checkpoint<P>) -> Result<Self::Score, Self::Error> {
-		let fee_recipient =
-			checkpoint.block().attributes().suggested_fee_recipient();
-
+		let fee_recipient = checkpoint.block().coinbase();
 		let current_balance = checkpoint.balance_of(fee_recipient)?;
 
 		let prev_balance = checkpoint

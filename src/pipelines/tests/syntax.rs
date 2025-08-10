@@ -1,6 +1,7 @@
 use {
 	crate::{prelude::*, steps::*, test_utils::*},
 	alloy_origin::signers::local::LocalSigner,
+	tracing::info,
 };
 
 #[test]
@@ -11,12 +12,14 @@ fn only_steps() {
 		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions);
 
-	println!("{pipeline:#?}");
+	info!("{pipeline:#?}");
 }
 
 #[test]
 #[cfg(feature = "optimism")]
 fn only_steps_optimism_specific() {
+	use tracing::info;
+
 	let pipeline = Pipeline::<Optimism>::default()
 		.with_prologue(OptimismPrologue)
 		.with_step(AppendManyOrders::default())
@@ -25,7 +28,7 @@ fn only_steps_optimism_specific() {
 		.with_step(RemoveRevertedTransactions)
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
-	println!("{pipeline:#?}");
+	info!("{pipeline:#?}");
 }
 
 #[test]
@@ -42,7 +45,7 @@ fn nested_verbose() {
 	let top_level = top_level //
 		.with_pipeline(Loop, nested);
 
-	println!("{top_level:#?}");
+	info!("{top_level:#?}");
 }
 
 #[test]
@@ -51,7 +54,7 @@ fn nested_one_concise() {
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_pipeline(Loop, (AppendOneOrder::default(),));
 
-	println!("{top_level:#?}");
+	info!("{top_level:#?}");
 }
 
 #[test]
@@ -76,7 +79,7 @@ fn nested_many_concise() {
 		)
 		.with_step(TestStep2);
 
-	println!("{top_level:#?}");
+	info!("{top_level:#?}");
 }
 
 #[test]
@@ -130,7 +133,7 @@ fn flashblocks_example_closure() {
 		})
 		.with_step(WebSocketEndBlock);
 
-	println!("{pipeline:#?}");
+	info!("{pipeline:#?}");
 }
 
 #[test]
@@ -184,5 +187,5 @@ fn flashblocks_example_concise() {
 		})
 		.with_step(WebSocketEndBlock);
 
-	println!("{pipeline:#?}");
+	info!("{pipeline:#?}");
 }

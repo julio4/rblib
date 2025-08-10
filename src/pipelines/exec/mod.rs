@@ -23,7 +23,7 @@ use {
 	futures::FutureExt,
 	navi::StepPath,
 	reth_payload_builder::PayloadId,
-	std::sync::Arc,
+	std::{sync::Arc, time::Instant},
 	tracing::{debug, trace},
 };
 
@@ -63,6 +63,7 @@ impl<
 	) -> Self {
 		// Emit a system event for this new payload job.
 		pipeline.events.publish(PayloadJobStarted(block.clone()));
+		service.metrics().jobs_started.increment(1);
 
 		// Initially set the execution cursor to initializing state, that will call
 		// all `before_job` methods of the steps in the pipeline.
@@ -82,10 +83,12 @@ impl<
 				}
 				.boxed()
 			}),
+
 			context: ExecContext {
 				pipeline,
 				block,
 				service,
+				started_at: Instant::now(),
 			},
 		}
 	}
@@ -303,21 +306,33 @@ where
 				);
 
 				// Execution of this pipeline has completed, This resolves the
-				// executor future with the final output of the pipeline and emit
-				// an appropriate system event.
+				// executor future with the final output of the pipeline. Also
+				// emit an appropriate system event and record metrics.
 
 				let payload_id = executor.context.block.payload_id();
 				let events_bus = &executor.context.pipeline.events;
+				let metrics = executor.context.service.metrics();
+
+				metrics
+					.job_duration
+					.record(executor.context.started_at.elapsed());
 
 				match &output {
-					Ok(built_payload) => events_bus.publish(PayloadJobCompleted::<P> {
-						payload_id,
-						built_payload: built_payload.clone(),
-					}),
-					Err(error) => events_bus.publish(PayloadJobFailed {
-						payload_id,
-						error: error.clone(),
-					}),
+					Ok(built_payload) => {
+						events_bus.publish(PayloadJobCompleted::<P> {
+							payload_id,
+							built_payload: built_payload.clone(),
+						});
+						metrics.jobs_completed.increment(1);
+						metrics.record_payload::<P>(built_payload, &executor.context.block);
+					}
+					Err(error) => {
+						events_bus.publish(PayloadJobFailed {
+							payload_id,
+							error: error.clone(),
+						});
+						metrics.jobs_failed.increment(1);
+					}
 				}
 
 				return Poll::Ready(output);
@@ -378,6 +393,9 @@ where
 	// The service context that provides access to the transaction pool and state
 	// provider.
 	service: Arc<ServiceContext<P, Provider, Pool>>,
+
+	/// The time when a payload job was created.
+	started_at: Instant,
 }
 
 /// Keeps track of the current pipeline execution progress.

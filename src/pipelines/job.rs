@@ -53,6 +53,7 @@ where
 			"New Payload Job {} with block context: {block:#?}",
 			block.payload_id()
 		);
+
 		let fut = ExecutorFuture::new(PipelineExecutor::run(
 			Arc::clone(pipeline),
 			block.clone(),

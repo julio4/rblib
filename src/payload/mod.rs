@@ -15,6 +15,3 @@ pub use {
 	ext::{BlockExt, CheckpointExt, SpanExt},
 	span::{Error as SpanError, Span},
 };
-
-#[cfg(any(test, feature = "test-utils"))]
-pub mod tests;

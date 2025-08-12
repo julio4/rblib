@@ -4,21 +4,19 @@
 
 use {
 	crate::{prelude::*, reth::builder::components::PayloadServiceBuilder},
-	core::{
-		any::{Any, type_name_of_val},
-		fmt::Display,
-	},
+	core::{any::Any, fmt::Display, panic::Location},
 	events::EventsBus,
-	exec::navi::{StepNavigator, StepPath},
+	exec::navi::StepPath,
 	futures::Stream,
 	pipelines_macros::impl_into_pipeline_steps,
 	std::sync::Arc,
-	step::WrappedStep,
+	step::instance::StepInstance,
 };
 
 mod context;
 mod events;
 mod exec;
+mod iter;
 mod job;
 mod metrics;
 mod service;
@@ -42,24 +40,25 @@ pub enum Behavior {
 }
 
 pub struct Pipeline<P: Platform> {
-	epilogue: Option<Arc<WrappedStep<P>>>,
-	prologue: Option<Arc<WrappedStep<P>>>,
+	epilogue: Option<Arc<StepInstance<P>>>,
+	prologue: Option<Arc<StepInstance<P>>>,
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Box<dyn LimitsFactory<P>>>,
-	name: Option<String>,
+	name: String,
 	events: Arc<EventsBus<P>>,
 }
 
 impl<P: Platform> Default for Pipeline<P> {
 	/// Creates a new empty unnamed pipeline.
+	#[track_caller]
 	fn default() -> Self {
 		Self {
 			epilogue: None,
 			prologue: None,
 			steps: Vec::new(),
 			limits: None,
-			name: None,
 			events: Arc::default(),
+			name: metrics::auto_pipeline_name(Location::caller()),
 		}
 	}
 }
@@ -69,7 +68,7 @@ impl<P: Platform> Pipeline<P> {
 	/// Creates a new empty pipeline with a name.
 	pub fn named(name: impl Into<String>) -> Self {
 		let mut default = Self::default();
-		default.name = Some(name.into());
+		default.name = name.into();
 		default
 	}
 
@@ -78,7 +77,7 @@ impl<P: Platform> Pipeline<P> {
 	#[must_use]
 	pub fn with_prologue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
-		this.prologue = Some(Arc::new(WrappedStep::new(step)));
+		this.prologue = Some(Arc::new(StepInstance::new(step)));
 		this
 	}
 
@@ -87,7 +86,7 @@ impl<P: Platform> Pipeline<P> {
 	#[must_use]
 	pub fn with_epilogue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
-		this.epilogue = Some(Arc::new(WrappedStep::new(step)));
+		this.epilogue = Some(Arc::new(StepInstance::new(step)));
 		this
 	}
 
@@ -99,12 +98,13 @@ impl<P: Platform> Pipeline<P> {
 		let mut this = self;
 		this
 			.steps
-			.push(StepOrPipeline::Step(Arc::new(WrappedStep::new(step))));
+			.push(StepOrPipeline::Step(Arc::new(StepInstance::new(step))));
 		this
 	}
 
 	/// Adds a nested pipeline to the current pipeline.
 	#[must_use]
+	#[track_caller]
 	pub fn with_pipeline<T>(
 		self,
 		behavior: Behavior,
@@ -153,8 +153,8 @@ impl<P: Platform> Pipeline<P> {
 	/// An optional name of the pipeline.
 	///
 	/// This is used mostly for debug printing and logging purposes.
-	pub fn name(&self) -> Option<&str> {
-		self.name.as_deref()
+	pub const fn name(&self) -> &str {
+		self.name.as_str()
 	}
 
 	/// Subscribes to events emitted by steps in the pipeline.
@@ -168,11 +168,11 @@ impl<P: Platform> Pipeline<P> {
 
 /// Internal API
 impl<P: Platform> Pipeline<P> {
-	pub(crate) fn prologue(&self) -> Option<&Arc<WrappedStep<P>>> {
+	pub(crate) fn prologue(&self) -> Option<&Arc<StepInstance<P>>> {
 		self.prologue.as_ref()
 	}
 
-	pub(crate) fn epilogue(&self) -> Option<&Arc<WrappedStep<P>>> {
+	pub(crate) fn epilogue(&self) -> Option<&Arc<StepInstance<P>>> {
 		self.epilogue.as_ref()
 	}
 
@@ -184,68 +184,11 @@ impl<P: Platform> Pipeline<P> {
 		self.limits.as_deref()
 	}
 
-	/// Executes the provided async function for each step in the pipeline once.
-	///
-	/// This is used for performing initialization or cleanup tasks for each step.
-	pub(crate) async fn for_each_step<'a, F, R, E>(
-		&'a self,
-		f: &F,
-	) -> Result<(), E>
-	where
-		F: Fn(StepNavigator<'a, P>) -> R,
-		R: Future<Output = Result<(), E>> + Send,
-	{
-		async fn for_each_step_inner<'a, P, F, R, E>(
-			root: &'a Pipeline<P>,
-			pipeline: &'a Pipeline<P>,
-			path: StepPath,
-			f: &F,
-		) -> Result<(), E>
-		where
-			P: Platform,
-			F: Fn(StepNavigator<'a, P>) -> R,
-			R: Future<Output = Result<(), E>> + Send,
-		{
-			if pipeline.prologue.is_some() {
-				let path = path.clone().concat(StepPath::prologue());
-				let navi = path.navigator(root).expect(
-					"Invalid step path. This is a bug in the pipeline executor \
-					 implementation.",
-				);
-				f(navi).await?;
-			}
-
-			for (ix, step) in pipeline.steps.iter().enumerate() {
-				let path = path.clone().concat(StepPath::step(ix));
-				match step {
-					StepOrPipeline::Step(_) => {
-						let navi = path.navigator(root).expect(
-							"Invalid step path. This is a bug in the pipeline executor \
-							 implementation.",
-						);
-						f(navi).await?;
-					}
-					StepOrPipeline::Pipeline(_, pipeline) => {
-						Box::pin(for_each_step_inner(root, pipeline, path, f)).await?;
-					}
-				}
-			}
-
-			if pipeline.epilogue.is_some() {
-				let path = path.clone().concat(StepPath::epilogue());
-				let navi = path.navigator(root).expect(
-					"Invalid step path. This is a bug in the pipeline executor \
-					 implementation.",
-				);
-				f(navi).await?;
-			}
-			Ok(())
-		}
-
-		// SAFETY: The empty step path is never used directly, during the traversal
-		// inside `for_each_step_inner` path components are concatenated to it.
-		let empty_path = unsafe { StepPath::empty() };
-		for_each_step_inner(self, self, empty_path, f).await
+	/// Iterates over all steps in this and all nested pipelines, for each step
+	/// yields its `StepPath`. Instances of `StepPath` can be used to access the
+	/// step instance through [`StepPath::navigator`].
+	pub(crate) fn iter_steps(&self) -> iter::StepPathIter<'_, P> {
+		iter::StepPathIter::new(self)
 	}
 }
 
@@ -256,7 +199,7 @@ impl<P: Platform> Drop for Pipeline<P> {
 }
 
 pub(crate) enum StepOrPipeline<P: Platform> {
-	Step(Arc<WrappedStep<P>>),
+	Step(Arc<StepInstance<P>>),
 	Pipeline(Behavior, Pipeline<P>),
 }
 
@@ -276,31 +219,35 @@ impl<P: Platform> core::fmt::Debug for StepOrPipeline<P> {
 /// This trait is used to enable various syntatic sugar for defining nested
 /// pipelines
 pub trait IntoPipeline<P: Platform, Marker = ()> {
+	#[track_caller]
 	fn into_pipeline(self) -> Pipeline<P>;
 }
 
-struct Sentinel;
 impl<P: Platform, F: FnOnce(Pipeline<P>) -> Pipeline<P>>
-	IntoPipeline<P, Sentinel> for F
+	IntoPipeline<P, Variant<0>> for F
 {
+	#[track_caller]
 	fn into_pipeline(self) -> Pipeline<P> {
 		self(Pipeline::<P>::default())
 	}
 }
 
 impl<P: Platform> IntoPipeline<P, Variant<0>> for Pipeline<P> {
+	#[track_caller]
 	fn into_pipeline(self) -> Pipeline<P> {
 		self
 	}
 }
 
 impl<P: Platform, S0: Step<P>> IntoPipeline<P, Variant<0>> for (S0,) {
+	#[track_caller]
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self.0)
 	}
 }
 
 impl<P: Platform, S0: Step<P>> IntoPipeline<P, Variant<1>> for S0 {
+	#[track_caller]
 	fn into_pipeline(self) -> Pipeline<P> {
 		Pipeline::default().with_step(self)
 	}
@@ -325,21 +272,25 @@ pub trait PipelineBuilderExt<P: Platform> {
 }
 
 impl<P: Platform, T: IntoPipeline<P, Variant<0>>> PipelineBuilderExt<P> for T {
+	#[track_caller]
 	fn with_prologue(self, step: impl Step<P>) -> Pipeline<P> {
 		self.into_pipeline().with_prologue(step)
 	}
 
+	#[track_caller]
 	fn with_epilogue(self, step: impl Step<P>) -> Pipeline<P> {
 		self.into_pipeline().with_epilogue(step)
 	}
 
+	#[track_caller]
 	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P> {
 		self.into_pipeline().with_limits(limits)
 	}
 
+	#[track_caller]
 	fn with_name(self, name: impl Into<String>) -> Pipeline<P> {
 		let mut pipeline = self.into_pipeline();
-		pipeline.name = Some(name.into());
+		pipeline.name = name.into();
 		pipeline
 	}
 }
@@ -348,11 +299,8 @@ impl<P: Platform> Display for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		write!(
 			f,
-			"Pipeline({}{} steps)",
-			match self.name() {
-				Some(name) => format!("name={name}, "),
-				None => String::new(),
-			},
+			"Pipeline(name={}, {} steps)",
+			self.name,
 			self.steps.len()
 		)
 	}
@@ -365,12 +313,8 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
 			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
 			.field("steps", &self.steps)
-			.field(
-				"limits",
-				&self.limits.as_ref().map(|l| type_name_of_val(&l)),
-			)
-			.field("events", &self.events)
-			.finish()
+			.field("limits", &self.limits.is_some())
+			.finish_non_exhaustive()
 	}
 }
 

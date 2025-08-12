@@ -136,10 +136,10 @@ fn flashblocks_example_closure() {
 	info!("{pipeline:#?}");
 }
 
-#[test]
+#[tokio::test]
 #[allow(dead_code)]
 #[cfg(feature = "optimism")]
-fn flashblocks_example_concise() {
+async fn flashblocks_example_concise() {
 	use core::time::Duration;
 
 	#[derive(Debug, Clone)]

@@ -1,6 +1,7 @@
 use {
 	crate::{alloy, prelude::*, reth},
 	alloy::consensus::BlockHeader,
+	core::panic::Location,
 	metrics::{Counter, Histogram},
 	metrics_derive::Metrics,
 	reth::node::builder::BuiltPayload,
@@ -89,4 +90,17 @@ impl Payload {
 			.tx_count_total
 			.increment(payload.block().transaction_count() as u64);
 	}
+}
+
+/// Automatically generates a name for a pipeline based on the location where it
+/// is instantiated. This is used to provide unique names for pipelines and
+/// automatically generate metrics for them.
+pub(super) fn auto_pipeline_name(caller: &Location) -> String {
+	let file = std::path::Path::new(caller.file())
+		.file_name()
+		.unwrap()
+		.to_str()
+		.unwrap();
+	let file = file.trim_end_matches(".rs");
+	format!("{}_{}", file, caller.line())
 }

@@ -11,17 +11,14 @@
 //! [`BlockBuilder::apply_pre_execution_changes`] applied to its state.
 
 use {
-	crate::{
-		pipelines::{exec::navi::StepNavigator, service::ServiceContext},
-		prelude::*,
-		reth::payload::builder::PayloadBuilderError,
-	},
+	super::service::ServiceContext,
+	crate::{prelude::*, reth::payload::builder::PayloadBuilderError},
 	core::{
 		pin::Pin,
 		task::{Context, Poll},
 	},
 	futures::FutureExt,
-	navi::StepPath,
+	navi::{StepNavigator, StepPath},
 	reth_payload_builder::PayloadId,
 	std::{sync::Arc, time::Instant},
 	tracing::{debug, trace},
@@ -74,12 +71,15 @@ impl<
 				let pipeline = Arc::clone(&pipeline);
 				let service = Arc::clone(&service);
 				async move {
-					pipeline
-						.for_each_step(&|step_navi: StepNavigator<P>| {
-							let context = StepContext::new(&block, &service, &step_navi);
-							async move { step_navi.step().before_job(context).await }
-						})
-						.await
+					for step in pipeline.iter_steps() {
+						let navi = step.navigator(&pipeline).expect(
+							"Invalid step path. This is a bug in the pipeline executor \
+							 implementation.",
+						);
+						let context = StepContext::new(&block, &service, &navi);
+						navi.step().before_job(context).await?;
+					}
+					Ok(())
 				}
 				.boxed()
 			}),
@@ -233,21 +233,14 @@ impl<
 			// invoke the `after_job` method of each step in the pipeline
 			// if any of them failes we fail the pipeline execution, othwerwise
 			// we return the output of the pipeline.
-			pipeline
-				.for_each_step(&|step_navi: StepNavigator<P>| {
-					let output = Arc::clone(&output);
-					let block = block.clone();
-					let service = Arc::clone(&service);
-					async move {
-						let ctx = StepContext::new(&block, &service, &step_navi);
-						step_navi
-							.step()
-							.after_job(ctx, output)
-							.await
-							.map_err(Arc::new)
-					}
-				})
-				.await?;
+			for step in pipeline.iter_steps() {
+				let navi = step.navigator(&pipeline).expect(
+					"Invalid step path. This is a bug in the pipeline executor \
+					 implementation.",
+				);
+				let ctx = StepContext::new(&block, &service, &navi);
+				navi.step().after_job(ctx, output.clone()).await?;
+			}
 
 			Arc::into_inner(output)
 				.expect("unexpected > 1 strong reference count")

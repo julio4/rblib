@@ -59,6 +59,7 @@ fn generate_tuple_impl(n: usize) -> proc_macro2::TokenStream {
 
 	quote! {
 			impl<P: Platform, #(#step_params: Step<P>),*> IntoPipeline<P, Variant<0>> for (#(#step_params),*) {
+					#[track_caller]
 					fn into_pipeline(self) -> Pipeline<P> {
 							let (#(#step_vars),*) = self;
 							#with_step_calls

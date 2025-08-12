@@ -19,6 +19,7 @@ pub use bundle::BundleExt;
 pub enum TransactionBuilderError<P: PlatformWithRpcTypes> {
 	#[error("Failed to build transaction: {0:?}")]
 	Build(#[from] UnbuiltTransactionError<types::RpcTypes<P>>),
+
 	#[error("Failed to sign transaction: {0:?}")]
 	Sign(#[from] alloy::signers::Error),
 }

@@ -66,7 +66,7 @@ pub fn build_pipeline(
 	pool: &OrderPool<FlashBlocks>,
 ) -> Pipeline<FlashBlocks> {
 	let mut pipeline = if cli_args.revert_protection {
-		Pipeline::<FlashBlocks>::default()
+		Pipeline::<FlashBlocks>::named("standard")
 			.with_prologue(OptimismPrologue)
 			.with_pipeline(
 				Loop,
@@ -77,7 +77,7 @@ pub fn build_pipeline(
 				),
 			)
 	} else {
-		Pipeline::<FlashBlocks>::default()
+		Pipeline::<FlashBlocks>::named("standard")
 			.with_prologue(OptimismPrologue)
 			.with_pipeline(
 				Loop,

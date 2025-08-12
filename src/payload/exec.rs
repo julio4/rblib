@@ -84,9 +84,9 @@ impl<P: Platform> Executable<P> {
 		}
 	}
 
-	/// Executes a single transactions and returns the ourcome of the transaction
-	/// execution along with all state changes. This output is used to create a
-	/// state checkpoint.
+	/// Executes a single transaction and returns the outcome of the execution
+	/// along with all state changes. This output is used to create a state
+	/// checkpoint.
 	///
 	/// Notes:
 	/// - Transactions that are invalid and cause EVM failures will not produce an

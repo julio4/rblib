@@ -2,9 +2,8 @@
 //! definition and turns it into a Reth compatible payload builder.
 
 use {
-	super::metrics,
+	super::{job::PayloadJob, metrics},
 	crate::{
-		pipelines::job::PayloadJob,
 		prelude::*,
 		reth::{
 			api::PayloadBuilderAttributes,
@@ -32,6 +31,21 @@ pub(super) struct PipelineServiceBuilder<P: Platform> {
 
 impl<P: Platform> PipelineServiceBuilder<P> {
 	pub fn new(pipeline: Pipeline<P>) -> Self {
+		// assign metrics names to each step in the pipeline.
+		// This will be used to automatically generate runtime observability data
+		// during pipeline runs.
+		for step in pipeline.iter_steps() {
+			let navi = step.navigator(&pipeline).expect(
+				"Invalid step path. This is a bug in the pipeline executor \
+				 implementation.",
+			);
+			navi.step().init_metrics(&format!(
+				"{}_step_{}",
+				pipeline.name(),
+				navi.path()
+			));
+		}
+
 		Self { pipeline }
 	}
 }

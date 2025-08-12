@@ -1,4 +1,8 @@
 use {
+	core::{
+		sync::atomic::{AtomicU32, AtomicU64, Ordering},
+		time::Duration,
+	},
 	metrics::{Counter, Histogram},
 	metrics_derive::Metrics,
 };
@@ -8,6 +12,10 @@ use {
 pub struct Metrics {
 	/// The total number of times this step's `step` method has been invoked.
 	pub invoked_total: Counter,
+
+	/// The total number of times this step's `step` method has been invoked per
+	/// payload job.
+	pub invoked_per_job: Histogram,
 
 	/// The total number of times this step's `before_job` method has been
 	/// invoked.
@@ -55,4 +63,47 @@ pub struct Metrics {
 	/// The cumulative number of milliseconds spent executing this step's `step`
 	/// method across all runs.
 	pub exec_duration_total_millis: Counter,
+
+	/// The duration of time spent executing this step's `step` method per
+	/// payload job.
+	pub exec_duration_per_job: Histogram,
+}
+
+/// Tracks metrics aggregates per job. Those counters get reset before each new
+/// payload job.
+#[derive(Default, Debug)]
+pub struct PerJobCounters {
+	/// The number of times this step was invoked during the last job.
+	pub invoked: AtomicU32,
+
+	/// The duration of time spent executing this step's `step` method during the
+	/// last job in milliseconds.
+	pub exec_duration_micros: AtomicU64,
+}
+
+impl PerJobCounters {
+	/// Called at the end of a payload job
+	pub fn reset(&self) {
+		self.invoked.store(0, Ordering::Relaxed);
+		self.exec_duration_micros.store(0, Ordering::Relaxed);
+	}
+
+	pub fn increment_exec_time(&self, duration: Duration) {
+		#[allow(clippy::cast_possible_truncation)]
+		self
+			.exec_duration_micros
+			.fetch_add(duration.as_micros() as u64, Ordering::Relaxed);
+	}
+
+	pub fn increment_invocation(&self) {
+		self.invoked.fetch_add(1, Ordering::Relaxed);
+	}
+
+	pub fn exec_duration(&self) -> Duration {
+		Duration::from_micros(self.exec_duration_micros.load(Ordering::Relaxed))
+	}
+
+	pub fn invoked_count(&self) -> u32 {
+		self.invoked.load(Ordering::Relaxed)
+	}
 }

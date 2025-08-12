@@ -639,8 +639,8 @@
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 6,
+        "w": 7,
         "x": 0,
         "y": 5
       },
@@ -741,9 +741,9 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
+        "h": 6,
+        "w": 8,
+        "x": 7,
         "y": 5
       },
       "id": 3,
@@ -775,105 +775,6 @@
         }
       ],
       "title": "Payload Jobs Success Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "description": "Duration of a payload job from start to completion or failure.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 13
-      },
-      "id": 1,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.2.0-16818804881",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "reth_rblib_payload_job_duration{quantile=\"0.95\"}",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Payload Job Duration",
       "type": "timeseries"
     },
     {
@@ -939,10 +840,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 13
+        "h": 6,
+        "w": 9,
+        "x": 15,
+        "y": 5
       },
       "id": 11,
       "options": {
@@ -980,7 +881,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Fees paid by transactions in produced payloads",
+      "description": "Duration of a payload job from start to completion or failure.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1019,9 +920,6 @@
               "mode": "off"
             }
           },
-          "decimals": 1,
-          "displayName": "Gwei",
-          "fieldMinMax": false,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -1029,19 +927,24 @@
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
-          }
+          },
+          "unit": "s"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 6,
+        "w": 7,
         "x": 0,
-        "y": 21
+        "y": 11
       },
-      "id": 12,
+      "id": 1,
       "options": {
         "legend": {
           "calcs": [],
@@ -1063,13 +966,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_fees_histogram{quantile=\"0.95\"} / 1e9",
+          "expr": "reth_rblib_payload_job_duration{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Fees per Payload (Gwei)",
+      "title": "Payload Job Duration",
       "type": "timeseries"
     },
     {
@@ -1135,10 +1038,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 21
+        "h": 6,
+        "w": 8,
+        "x": 7,
+        "y": 11
       },
       "id": 13,
       "options": {
@@ -1172,313 +1075,101 @@
       "type": "timeseries"
     },
     {
-      "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 29
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
       },
-      "id": 19,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+      "description": "Fees paid by transactions in produced payloads",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
           },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "decimals": 2,
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "sishort"
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 30
-          },
-          "id": 15,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": false
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
             },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
           },
-          "pluginVersion": "12.2.0-16818804881",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "builder",
-              "expr": "reth_engine_rpc_forkchoice_updated_messages",
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "engine_forkchoiceUpdated",
-          "type": "timeseries"
+          "decimals": 1,
+          "displayName": "Gwei",
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
         },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "sishort"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 30
-          },
-          "id": 17,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": false
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.2.0-16818804881",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "builder",
-              "expr": "reth_engine_rpc_new_payload_v3_count",
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "engine_newPayloadV3",
-          "type": "timeseries"
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 9,
+        "x": 15,
+        "y": 11
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
         },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 0,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              },
-              "unit": "sishort"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 59
-          },
-          "id": 16,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": false
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "12.2.0-16818804881",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "builder",
-              "expr": "reth_engine_rpc_get_payload_v3_count",
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "engine_getPayloadV3",
-          "type": "timeseries"
+          "editorMode": "code",
+          "expr": "reth_rblib_payload_fees_histogram{quantile=\"0.95\"} / 1e9",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
         }
       ],
-      "title": "RPC (Cumulative)",
-      "type": "row"
+      "title": "Fees per Payload (Gwei)",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1486,7 +1177,315 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 17
+      },
+      "id": 19,
+      "panels": [],
+      "title": "RPC (Cumulative)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "sishort"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 7,
+        "x": 0,
+        "y": 18
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "reth_engine_rpc_forkchoice_updated_messages",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "engine_forkchoiceUpdated",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "sishort"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 7,
+        "y": 18
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "reth_engine_rpc_new_payload_v3_count",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "engine_newPayloadV3",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "sishort"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 9,
+        "x": 15,
+        "y": 18
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "builder",
+          "expr": "reth_engine_rpc_get_payload_v3_count",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "engine_getPayloadV3",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
       },
       "id": 20,
       "panels": [],
@@ -1519,7 +1518,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "reth_standard_step_1_1_exec_duration_histogram"
+              "options": "{__name__=\"reth_standard_step_1_1_exec_duration_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
             },
             "properties": [
               {
@@ -1531,7 +1530,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"reth_standard_step_1_2_exec_duration_histogram\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
+              "options": "{__name__=\"reth_standard_step_2_exec_duration_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
             },
             "properties": [
               {
@@ -1543,7 +1542,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"reth_standard_step_1_3_exec_duration_histogram\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
+              "options": "{__name__=\"reth_standard_step_3_exec_duration_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
             },
             "properties": [
               {
@@ -1558,7 +1557,7 @@
         "h": 12,
         "w": 6,
         "x": 0,
-        "y": 31
+        "y": 25
       },
       "id": 25,
       "options": {
@@ -1590,7 +1589,7 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "reth_standard_step_1_1_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_1_1_exec_duration_per_job{quantile=\"0.95\"}",
           "format": "time_series",
           "instant": true,
           "legendFormat": "__auto",
@@ -1607,7 +1606,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_standard_step_1_2_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_2_exec_duration_per_job{quantile=\"0.95\"}",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -1620,7 +1619,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_standard_step_1_3_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_3_exec_duration_per_job{quantile=\"0.95\"}",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -1655,7 +1654,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "reth_standard_step_1_1_exec_duration_histogram"
+              "options": "{__name__=\"reth_standard_step_1_1_exec_duration_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
             },
             "properties": [
               {
@@ -1667,7 +1666,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"reth_standard_step_1_2_exec_duration_histogram\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
+              "options": "{__name__=\"reth_standard_step_2_exec_duration_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
             },
             "properties": [
               {
@@ -1679,7 +1678,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"reth_standard_step_1_3_exec_duration_histogram\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
+              "options": "{__name__=\"reth_standard_step_3_exec_duration_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
             },
             "properties": [
               {
@@ -1694,7 +1693,7 @@
         "h": 12,
         "w": 6,
         "x": 6,
-        "y": 31
+        "y": 25
       },
       "id": 27,
       "options": {
@@ -1722,7 +1721,7 @@
         {
           "editorMode": "code",
           "exemplar": false,
-          "expr": "reth_standard_step_1_1_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_1_1_exec_duration_per_job{quantile=\"0.95\"}",
           "format": "time_series",
           "instant": true,
           "legendFormat": "__auto",
@@ -1739,7 +1738,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_standard_step_1_2_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_2_exec_duration_per_job{quantile=\"0.95\"}",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -1752,7 +1751,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_standard_step_1_3_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_3_exec_duration_per_job{quantile=\"0.95\"}",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -1762,6 +1761,202 @@
       ],
       "title": "Pipeline Steps Execution Time",
       "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 25
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
+        {
+          "editorMode": "builder",
+          "expr": "reth_standard_step_1_1_exec_duration_histogram{quantile=\"0.95\"}",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          }
+        }
+      ],
+      "title": "AppendOneOrder Step Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 25
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "reth_standard_step_1_1_exec_duration_per_job{quantile=\"0.95\"}",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          }
+        }
+      ],
+      "title": "AppendOneOrder Per Job Exec Time",
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -1848,7 +2043,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "reth_standard_step_1_2_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_2_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A",
@@ -1858,7 +2053,7 @@
           }
         }
       ],
-      "title": "OrderByPriorityFee Exec Duration",
+      "title": "OrderByPriorityFee Step Duration",
       "type": "timeseries"
     },
     {
@@ -1928,7 +2123,7 @@
         "x": 18,
         "y": 31
       },
-      "id": 24,
+      "id": 29,
       "options": {
         "legend": {
           "calcs": [],
@@ -1946,7 +2141,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "reth_standard_step_1_3_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_2_exec_duration_per_job{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A",
@@ -1956,7 +2151,7 @@
           }
         }
       ],
-      "title": "RemoveRevertedTransactions Exec Duration",
+      "title": "OrderByPriorityFee Per Job Exec Time",
       "type": "timeseries"
     },
     {
@@ -2023,10 +2218,10 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 12,
+        "x": 0,
         "y": 37
       },
-      "id": 22,
+      "id": 26,
       "options": {
         "legend": {
           "calcs": [],
@@ -2044,7 +2239,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "reth_standard_step_1_1_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_e_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A",
@@ -2054,7 +2249,7 @@
           }
         }
       ],
-      "title": "AppendOneOrder Exec Duration",
+      "title": "BuilderEpilogue Exec Duration",
       "type": "timeseries"
     },
     {
@@ -2121,7 +2316,7 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 18,
+        "x": 6,
         "y": 37
       },
       "id": 21,
@@ -2219,10 +2414,10 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 0,
-        "y": 43
+        "x": 12,
+        "y": 37
       },
-      "id": 26,
+      "id": 24,
       "options": {
         "legend": {
           "calcs": [],
@@ -2240,7 +2435,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "reth_standard_step_e_exec_duration_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_step_4_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A",
@@ -2250,7 +2445,7 @@
           }
         }
       ],
-      "title": "BuilderEpilogue Exec Duration",
+      "title": "RemoveRevertedTransactions Exec Duration",
       "type": "timeseries"
     }
   ],
@@ -2267,6 +2462,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Rblib",
-  "version": 12,
+  "version": 18,
   "weekStart": ""
 }

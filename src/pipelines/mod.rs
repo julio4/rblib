@@ -30,7 +30,7 @@ pub use {
 	Behavior::{Loop, Once},
 	context::StepContext,
 	events::system_events::*,
-	step::{ControlFlow, PayloadBuilderError, Step},
+	step::{ControlFlow, InitContext, PayloadBuilderError, Step},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,13 +131,12 @@ impl<P: Platform> Pipeline<P> {
 impl<P: Platform> Pipeline<P> {
 	/// Converts the pipeline into a payload builder service instance that
 	/// can be used when constructing a reth node.
-	pub fn into_service<Node, Pool, EvmConfig>(
+	pub fn into_service<Node, Pool>(
 		self,
-	) -> impl PayloadServiceBuilder<Node, Pool, EvmConfig>
+	) -> impl PayloadServiceBuilder<Node, Pool, types::EvmConfig<P>>
 	where
 		Node: traits::NodeBounds<P>,
 		Pool: traits::PoolBounds<P>,
-		EvmConfig: traits::EvmConfigBounds<P>,
 	{
 		service::PipelineServiceBuilder::new(self)
 	}

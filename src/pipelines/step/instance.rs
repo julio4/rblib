@@ -1,6 +1,9 @@
 use {
-	super::{metrics::Metrics, name::Name},
-	crate::prelude::*,
+	super::{
+		metrics::{Metrics, PerJobCounters},
+		name::Name,
+	},
+	crate::{pipelines::step::InitContext, prelude::*},
 	core::{
 		any::Any,
 		fmt::{self, Debug},
@@ -46,6 +49,17 @@ type WrappedAfterJobFn<P: Platform> = Box<
 	>,
 >;
 
+/// Defines a type-erased function that points to the setup function inside
+/// a concrete step type.
+type WrappedSetupFn<P: Platform> = Box<
+	dyn Fn(
+		Arc<dyn Any + Send + Sync>,
+		InitContext<P>,
+	) -> Pin<
+		Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
+	>,
+>;
+
 /// Wraps a step in a type-erased manner, allowing it to be stored in a
 /// heterogeneous collection of steps inside a pipeline.
 pub(crate) struct StepInstance<P: Platform> {
@@ -53,8 +67,10 @@ pub(crate) struct StepInstance<P: Platform> {
 	step_fn: WrappedStepFn<P>,
 	before_job_fn: WrappedBeforeJobFn<P>,
 	after_job_fn: WrappedAfterJobFn<P>,
+	setup_fn: WrappedSetupFn<P>,
 	name: Name,
 	metrics: OnceLock<Metrics>,
+	per_job: PerJobCounters,
 }
 
 impl<P: Platform> StepInstance<P> {
@@ -104,36 +120,45 @@ impl<P: Platform> StepInstance<P> {
 					step.after_job(ctx, result).boxed()
 				},
 			) as WrappedAfterJobFn<P>,
+			setup_fn: Box::new(
+				|step: Arc<dyn Any + Send + Sync>,
+				 ctx: InitContext<P>|
+				 -> Pin<
+					Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
+				> {
+					let step = step.downcast::<S>().expect("Invalid step type");
+					step.setup(ctx).boxed()
+				},
+			) as WrappedSetupFn<P>,
 			name: Name::new::<S, P>(),
 			metrics: OnceLock::new(),
+			per_job: PerJobCounters::default(),
 		}
 	}
 
 	/// This is invoked from places where we know the kind of the step and
 	/// all other concrete types needed to execute the step and consume its
 	/// output.
-	pub async fn execute(
+	pub async fn step(
 		&self,
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
 		let metrics = self.metrics.get();
-		let started_at = Instant::now();
 
 		if let Some(metrics) = metrics {
 			metrics.invoked_total.increment(1);
+			self.per_job.increment_invocation();
 		}
 
+		let started_at = Instant::now();
 		let local_step = Arc::clone(&self.instance);
 		let result = (self.step_fn)(local_step, payload, ctx).await;
 
 		if let Some(metrics) = metrics {
-			metrics.exec_duration_histogram.record(started_at.elapsed());
-
-			#[allow(clippy::cast_possible_truncation)]
-			metrics
-				.exec_duration_total_millis
-				.increment(started_at.elapsed().as_millis() as u64);
+			let elapsed = started_at.elapsed();
+			metrics.exec_duration_histogram.record(elapsed);
+			self.per_job.increment_exec_time(elapsed);
 
 			match &result {
 				ControlFlow::Ok(_) => metrics.ok_total.increment(1),
@@ -151,24 +176,24 @@ impl<P: Platform> StepInstance<P> {
 		ctx: StepContext<P>,
 	) -> Result<(), PayloadBuilderError> {
 		let metrics = self.metrics.get();
-		let started_at = Instant::now();
 
 		if let Some(metrics) = metrics {
 			metrics.before_job_invoked_total.increment(1);
 		}
 
+		let started_at = Instant::now();
 		let local_step = Arc::clone(&self.instance);
 		let result = (self.before_job_fn)(local_step, ctx).await;
 
 		if let Some(metrics) = metrics {
-			metrics
-				.before_job_exec_duration_histogram
-				.record(started_at.elapsed());
+			let elapsed = started_at.elapsed();
+			metrics.before_job_exec_duration_histogram.record(elapsed);
+			self.per_job.increment_exec_time(elapsed);
 
 			#[allow(clippy::cast_possible_truncation)]
 			metrics
 				.before_job_exec_duration_total_millis
-				.increment(started_at.elapsed().as_millis() as u64);
+				.increment(elapsed.as_millis() as u64);
 
 			if result.is_err() {
 				metrics.before_job_failed_total.increment(1);
@@ -185,24 +210,35 @@ impl<P: Platform> StepInstance<P> {
 		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
 		let metrics = self.metrics.get();
-		let started_at = Instant::now();
 
 		if let Some(metrics) = metrics {
 			metrics.after_job_invoked_total.increment(1);
+			self.per_job.increment_invocation();
 		}
 
+		let started_at = Instant::now();
 		let local_step = Arc::clone(&self.instance);
 		let result = (self.after_job_fn)(local_step, ctx, result).await;
 
 		if let Some(metrics) = metrics {
-			metrics
-				.after_job_exec_duration_histogram
-				.record(started_at.elapsed());
+			let elapsed = started_at.elapsed();
+			metrics.after_job_exec_duration_histogram.record(elapsed);
+			self.per_job.increment_exec_time(elapsed);
 
 			#[allow(clippy::cast_possible_truncation)]
 			metrics
 				.after_job_exec_duration_total_millis
-				.increment(started_at.elapsed().as_millis() as u64);
+				.increment(elapsed.as_millis() as u64);
+
+			// Log the per-job duration.
+			let per_job_duration = self.per_job.exec_duration();
+			metrics.invoked_per_job.record(self.per_job.invoked_count());
+			metrics.exec_duration_per_job.record(per_job_duration);
+			#[allow(clippy::cast_possible_truncation)]
+			metrics
+				.exec_duration_total_millis
+				.increment(per_job_duration.as_millis() as u64);
+			self.per_job.reset();
 
 			if result.is_err() {
 				metrics.after_job_failed_total.increment(1);
@@ -210,6 +246,16 @@ impl<P: Platform> StepInstance<P> {
 		}
 
 		result
+	}
+
+	/// This is invoked exactly once when a pipeline is instantiated as a payload
+	/// builder service.
+	pub async fn setup(
+		&self,
+		ctx: InitContext<P>,
+	) -> Result<(), PayloadBuilderError> {
+		let local_step = Arc::clone(&self.instance);
+		(self.setup_fn)(local_step, ctx).await
 	}
 
 	/// Returns the name of the type that implements this step.

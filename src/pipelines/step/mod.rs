@@ -1,6 +1,7 @@
 use {
-	crate::prelude::*,
-	core::{fmt::Debug, future::Future},
+	crate::{prelude::*, reth},
+	core::{fmt::Debug, future::Future, marker::PhantomData},
+	reth::providers::StateProviderFactory,
 	std::sync::Arc,
 };
 
@@ -8,7 +9,7 @@ pub mod instance;
 pub mod metrics;
 pub mod name;
 
-pub use crate::reth::payload::builder::PayloadBuilderError;
+pub use reth::payload::builder::PayloadBuilderError;
 
 /// This trait defines a step in a pipeline.
 ///
@@ -69,6 +70,18 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 		self: Arc<Self>,
 		_: StepContext<P>,
 		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
+		async { Ok(()) }
+	}
+
+	/// Optional setup function called exactly once when a pipeline is
+	/// instantiated as a payload builder service, before any payload jobs run.
+	///
+	/// This function is called with access to the service that is running and
+	/// the final shape of the pipelines hierarchy that contain it.
+	fn setup(
+		self: Arc<Self>,
+		_: InitContext<P>,
 	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
 		async { Ok(()) }
 	}
@@ -140,5 +153,39 @@ impl<P: Platform> ControlFlow<P> {
 
 	pub const fn is_ok(&self) -> bool {
 		matches!(self, ControlFlow::Ok(_))
+	}
+}
+
+/// Context for the optional setup function of a step.
+pub struct InitContext<P: Platform> {
+	metrics_scope: String,
+	provider: Arc<dyn StateProviderFactory>,
+	_phantom: PhantomData<P>,
+}
+
+impl<P: Platform> InitContext<P> {
+	/// Private API, called from [`PipelineServiceBuilder`].
+	pub(crate) fn new(
+		provider: Arc<dyn StateProviderFactory>,
+		metrics_scope: String,
+	) -> Self {
+		Self {
+			provider,
+			metrics_scope,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+impl<P: Platform> InitContext<P> {
+	/// Access to the node state
+	pub fn provider(&self) -> &dyn StateProviderFactory {
+		&*self.provider
+	}
+
+	/// Metrics scope assigned to this step. Steps that want to produce their own
+	/// custom metrics should use this scope.
+	pub fn metrics_scope(&self) -> &str {
+		&self.metrics_scope
 	}
 }

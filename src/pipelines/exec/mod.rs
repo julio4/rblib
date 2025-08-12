@@ -138,7 +138,7 @@ impl<
 				.step(),
 		);
 
-		async move { step.execute(input, context).await }.boxed()
+		async move { step.step(input, context).await }.boxed()
 	}
 
 	/// This method handles the control flow of the pipeline execution.

@@ -13,7 +13,7 @@ use {
 				components::PayloadServiceBuilder,
 			},
 			payload::builder::{PayloadBuilderHandle, PayloadBuilderService, *},
-			providers::CanonStateSubscriptions,
+			providers::{CanonStateSubscriptions, StateProviderFactory},
 		},
 	},
 	std::sync::Arc,
@@ -31,48 +31,54 @@ pub(super) struct PipelineServiceBuilder<P: Platform> {
 
 impl<P: Platform> PipelineServiceBuilder<P> {
 	pub fn new(pipeline: Pipeline<P>) -> Self {
-		// assign metrics names to each step in the pipeline.
-		// This will be used to automatically generate runtime observability data
-		// during pipeline runs.
-		for step in pipeline.iter_steps() {
-			let navi = step.navigator(&pipeline).expect(
-				"Invalid step path. This is a bug in the pipeline executor \
-				 implementation.",
-			);
-			navi.step().init_metrics(&format!(
-				"{}_step_{}",
-				pipeline.name(),
-				navi.path()
-			));
-		}
-
 		Self { pipeline }
 	}
 }
 
-impl<Plat, Node, Pool, EvmConfig> PayloadServiceBuilder<Node, Pool, EvmConfig>
+impl<Plat, Node, Pool> PayloadServiceBuilder<Node, Pool, types::EvmConfig<Plat>>
 	for PipelineServiceBuilder<Plat>
 where
 	Plat: Platform,
 	Node: traits::NodeBounds<Plat>,
 	Pool: traits::PoolBounds<Plat>,
-	EvmConfig: traits::EvmConfigBounds<Plat>,
 {
 	async fn spawn_payload_builder_service(
 		self,
 		ctx: &BuilderContext<Node>,
 		pool: Pool,
-		_evm_config: EvmConfig,
+		_evm_config: types::EvmConfig<Plat>,
 	) -> eyre::Result<PayloadBuilderHandle<types::PayloadTypes<Plat>>> {
 		let pipeline = self.pipeline;
 		debug!("Spawning payload builder service for: {pipeline:#?}");
 
+		let provider = Arc::new(ctx.provider().clone());
+
 		let service = ServiceContext {
 			pool,
-			provider: ctx.provider().clone(),
+			provider: Arc::clone(&provider),
 			node_config: ctx.config().clone(),
 			metrics: metrics::Payload::default(),
 		};
+
+		// assign metric names to each step in the pipeline.
+		// This will be used to automatically generate runtime observability data
+		// during pipeline runs. Also call an optional `setup` function on the step
+		// that gives it a chance to perform any initialization it needs before
+		// processing any payload jobs.
+		let provider = provider as Arc<dyn StateProviderFactory>;
+
+		for step in pipeline.iter_steps() {
+			let navi = step.navigator(&pipeline).expect(
+				"Invalid step path. This is a bug in the pipeline executor \
+				 implementation.",
+			);
+
+			let metrics_scope = format!("{}_step_{}", pipeline.name(), navi.path());
+			navi.step().init_metrics(&metrics_scope);
+
+			let init_ctx = InitContext::new(Arc::clone(&provider), metrics_scope);
+			navi.step().setup(init_ctx).await?;
+		}
 
 		let (service, builder) = PayloadBuilderService::new(
 			JobGenerator::new(pipeline, service),
@@ -97,7 +103,7 @@ where
 	Pool: traits::PoolBounds<Plat>,
 {
 	pool: Pool,
-	provider: Provider,
+	provider: Arc<Provider>,
 	node_config: NodeConfig<types::ChainSpec<Plat>>,
 	metrics: metrics::Payload,
 }
@@ -108,7 +114,7 @@ where
 	Provider: traits::ProviderBounds<Plat>,
 	Pool: traits::PoolBounds<Plat>,
 {
-	pub const fn provider(&self) -> &Provider {
+	pub fn provider(&self) -> &Provider {
 		&self.provider
 	}
 

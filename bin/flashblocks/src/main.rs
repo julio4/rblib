@@ -68,24 +68,14 @@ pub fn build_pipeline(
 	let mut pipeline = if cli_args.revert_protection {
 		Pipeline::<FlashBlocks>::named("standard")
 			.with_prologue(OptimismPrologue)
-			.with_pipeline(
-				Loop,
-				(
-					AppendOneOrder::from_pool(pool),
-					OrderByPriorityFee::default(),
-					RemoveRevertedTransactions,
-				),
-			)
+			.with_pipeline(Loop, (AppendOneOrder::from_pool(pool),))
+			.with_step(OrderByPriorityFee::default())
+			.with_step(RemoveRevertedTransactions)
 	} else {
 		Pipeline::<FlashBlocks>::named("standard")
 			.with_prologue(OptimismPrologue)
-			.with_pipeline(
-				Loop,
-				(
-					AppendOneOrder::from_pool(pool),
-					OrderByPriorityFee::default(),
-				),
-			)
+			.with_pipeline(Loop, (AppendOneOrder::from_pool(pool),))
+			.with_step(OrderByPriorityFee::default())
 	};
 
 	if let Some(ref signer) = cli_args.builder_signer {

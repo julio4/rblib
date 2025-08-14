@@ -2,12 +2,17 @@ use {
 	super::{select::PoolsDemux, *},
 	crate::{alloy, reth},
 	alloy::{consensus::Transaction, primitives::B256},
+	core::sync::atomic::{AtomicU32, Ordering},
 	dashmap::DashSet,
+	metrics::{Counter, Histogram},
 	reth::{
 		ethereum::primitives::SignedTransaction,
 		payload::builder::PayloadId,
 	},
-	std::{collections::HashSet, sync::Arc},
+	std::{
+		collections::HashSet,
+		sync::{Arc, OnceLock},
+	},
 };
 
 /// This step will append new orders from the enabled pools to the end of
@@ -64,6 +69,9 @@ pub struct AppendOrders<P: Platform> {
 	/// This option is meaningful when this step is used in `Loop`s.
 	/// Defaults to `true`.
 	break_on_limit: bool,
+
+	metrics: OnceLock<Metrics>,
+	per_job: PerJobCounters,
 }
 
 impl<P: Platform> Default for AppendOrders<P> {
@@ -78,6 +86,8 @@ impl<P: Platform> Default for AppendOrders<P> {
 			max_new_bundles: None,
 			max_new_transactions: None,
 			break_on_limit: true,
+			metrics: OnceLock::new(),
+			per_job: PerJobCounters::default(),
 		}
 	}
 }
@@ -135,12 +145,39 @@ impl<P: Platform> AppendOrders<P> {
 }
 
 impl<P: Platform> Step<P> for AppendOrders<P> {
+	// Called exactly once by the runtime when the enclosing pipeline is
+	/// instantiated into a payload builder service.
+	///
+	/// Initializes metrics for this step.
+	async fn setup(
+		self: Arc<Self>,
+		init: InitContext<P>,
+	) -> Result<(), PayloadBuilderError> {
+		let metrics = Metrics::new(init.metrics_scope());
+		self.metrics.set(metrics).expect("step setup called twice");
+		Ok(())
+	}
+
+	/// Called before each new payload job starts
 	async fn before_job(
 		self: Arc<Self>,
 		_: StepContext<P>,
 	) -> Result<(), PayloadBuilderError> {
 		// Clear the list of attempted orders for this payload job.
 		self.attempted.clear();
+
+		// reset per job metrics counter
+		self.per_job.reset();
+		Ok(())
+	}
+
+	/// Called after a payload job completes
+	async fn after_job(
+		self: Arc<Self>,
+		_: StepContext<P>,
+		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> Result<(), PayloadBuilderError> {
+		self.metrics().record_per_job(&self.per_job);
 		Ok(())
 	}
 
@@ -186,6 +223,16 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 
 			run.try_include(order);
 		}
+	}
+}
+
+impl<P: Platform> AppendOrders<P> {
+	/// Returns the metrics for this step.
+	///
+	/// # Panics
+	/// this should be called only after metrics initialization in `setup`.
+	fn metrics(&self) -> &Metrics {
+		self.metrics.get().expect("step setup not called")
 	}
 }
 
@@ -318,7 +365,11 @@ impl<'a, P: Platform> Run<'a, P> {
 	/// Tries to extend the current payload with the contents of the given order.
 	/// If the order is skipped, the payload checkpoint remains unchanged.
 	pub fn try_include(&mut self, order: Order<P>) {
+		self.step.metrics().considered(&order);
+		self.step.per_job.considered(&order);
+
 		if self.should_skip(&order) {
+			self.step.metrics().skipped(&order);
 			return;
 		}
 
@@ -327,6 +378,7 @@ impl<'a, P: Platform> Run<'a, P> {
 			Ok(executable) => executable,
 			Err(err) => {
 				// Order has transactions that cannot have their signers recovered.
+				self.step.metrics().orders_inclusion_failed.increment(1);
 				return self.ctx.emit(OrderInclusionFailure::<P>(
 					order_hash,
 					ExecutionError::InvalidSignature(err).into(),
@@ -343,6 +395,7 @@ impl<'a, P: Platform> Run<'a, P> {
 			Err(err) => {
 				// This order cannot be used to create a valid checkpoint.
 				// skip it and notify the world about this inclusion failure.
+				self.step.metrics().orders_inclusion_failed.increment(1);
 				return self.ctx.emit(OrderInclusionFailure(
 					order_hash,
 					err.into(),
@@ -355,15 +408,28 @@ impl<'a, P: Platform> Run<'a, P> {
 			// Including this order would exceed the gas limit for the payload,
 			// skip it, and try other available orders that might fit within the
 			// remaining gas budget.
+			self.step.metrics().orders_skipped.increment(1);
+			self
+				.step
+				.metrics()
+				.txs_skipped
+				.increment(candidate.transactions().len() as u64);
+
+			if candidate.is_bundle() {
+				self.step.metrics().bundles_skipped.increment(1);
+			}
+
 			return;
 		}
 
 		// checkpoint is valid and fits within limits.
-
 		self.orders_included += 1;
 		self.txs_included += candidate.transactions().len();
 		self.bundles_included += usize::from(candidate.is_bundle());
+		self.step.metrics().included(&self.payload);
+		self.step.per_job.included(&self.payload);
 
+		// extend the tip of the payload with the new checkpoint
 		self.payload = candidate;
 
 		self.ctx.emit(OrderInclusionSuccess(
@@ -397,3 +463,193 @@ pub struct OrderInclusionFailure<P: Platform>(
 	pub Arc<ExecutionError<P>>,
 	pub PayloadId,
 );
+
+#[derive(metrics_derive::Metrics)]
+#[metrics(dynamic = true)]
+struct Metrics {
+	/// The number of transactions considered for inclusion either bundled or
+	/// unbundled.
+	pub txs_considered: Counter,
+
+	/// The number of bundles considered for inclusion.
+	pub bundles_considered: Counter,
+
+	/// The number of transactions in considered bundles.
+	pub considered_bundle_size_histogram: Histogram,
+
+	/// The number of orders considered for inclusion.
+	pub orders_considered: Counter,
+
+	/// The number of transactions considered for inclusion but not included.
+	pub txs_skipped: Counter,
+
+	/// The number of bundles considered for inclusion but not included.
+	pub bundles_skipped: Counter,
+
+	/// The number of orders considered for inclusion but not included.
+	pub orders_skipped: Counter,
+
+	/// The number of orders that failed to be included because they failed to
+	/// create a valid payload checkpoint.
+	pub orders_inclusion_failed: Counter,
+
+	/// The number of transactions included across all payloads either
+	/// bundled or unbundled.
+	pub txs_included: Counter,
+
+	/// The number of bundled transactions included in the payload.
+	pub bundled_txs_included: Counter,
+
+	/// The number of unbundled transactions included in the payload.
+	pub unbundled_txs_included: Counter,
+
+	/// The number of orders included in the payload.
+	pub orders_included: Counter,
+
+	/// The number of bundles included in the payload.
+	pub bundles_included: Counter,
+
+	/// A histogram of the number of transactions in included bundles.
+	pub included_bundle_size_histogram: Histogram,
+
+	/// Histogram of the number of orders considered for inclusion.
+	pub per_job_orders_considered: Histogram,
+
+	/// Histogram of the number of transactions considered for inclusion either
+	/// bundled or unbundled.
+	pub per_job_txs_considered: Histogram,
+
+	/// Histogram of the number of bundles considered for inclusion.
+	pub per_job_bundles_considered: Histogram,
+
+	/// Histogram of the number of orders included in the payload.
+	pub per_job_orders_included: Histogram,
+
+	/// Histogram of the number of transactions included in the payload either
+	/// bundled or unbundled.
+	pub per_job_txs_included: Histogram,
+
+	/// Histogram of the number of bundles included in the payload.
+	pub per_job_bundles_included: Histogram,
+}
+
+impl Metrics {
+	pub fn considered<P: Platform>(&self, order: &Order<P>) {
+		self.orders_considered.increment(1);
+		self
+			.txs_considered
+			.increment(order.transactions().len() as u64);
+		if order.is_bundle() {
+			self.bundles_considered.increment(1);
+
+			#[allow(clippy::cast_possible_truncation)]
+			self
+				.considered_bundle_size_histogram
+				.record(order.transactions().len() as u32);
+		}
+	}
+
+	pub fn skipped<P: Platform>(&self, order: &Order<P>) {
+		self.orders_skipped.increment(1);
+		self
+			.txs_skipped
+			.increment(order.transactions().len() as u64);
+		if order.is_bundle() {
+			self.bundles_skipped.increment(1);
+		}
+	}
+
+	pub fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
+		self.orders_included.increment(1);
+		self
+			.txs_included
+			.increment(checkpoint.transactions().len() as u64);
+
+		if checkpoint.is_bundle() {
+			self.bundles_included.increment(1);
+			self
+				.bundled_txs_included
+				.increment(checkpoint.transactions().len() as u64);
+
+			#[allow(clippy::cast_possible_truncation)]
+			self
+				.included_bundle_size_histogram
+				.record(checkpoint.transactions().len() as u32);
+		} else {
+			self
+				.unbundled_txs_included
+				.increment(checkpoint.transactions().len() as u64);
+		}
+	}
+
+	pub fn record_per_job(&self, counters: &PerJobCounters) {
+		self
+			.per_job_orders_considered
+			.record(counters.orders_considered.load(Ordering::Relaxed));
+		self
+			.per_job_txs_considered
+			.record(counters.txs_considered.load(Ordering::Relaxed));
+		self
+			.per_job_bundles_considered
+			.record(counters.bundles_considered.load(Ordering::Relaxed));
+
+		self
+			.per_job_orders_included
+			.record(counters.orders_included.load(Ordering::Relaxed));
+		self
+			.per_job_txs_included
+			.record(counters.txs_included.load(Ordering::Relaxed));
+		self
+			.per_job_bundles_included
+			.record(counters.bundles_included.load(Ordering::Relaxed));
+	}
+}
+
+#[derive(Default)]
+struct PerJobCounters {
+	pub orders_considered: AtomicU32,
+	pub txs_considered: AtomicU32,
+	pub bundles_considered: AtomicU32,
+
+	pub orders_included: AtomicU32,
+	pub txs_included: AtomicU32,
+	pub bundles_included: AtomicU32,
+}
+
+impl PerJobCounters {
+	pub fn reset(&self) {
+		self.orders_considered.store(0, Ordering::Relaxed);
+		self.txs_considered.store(0, Ordering::Relaxed);
+		self.bundles_considered.store(0, Ordering::Relaxed);
+
+		self.orders_included.store(0, Ordering::Relaxed);
+		self.txs_included.store(0, Ordering::Relaxed);
+		self.bundles_included.store(0, Ordering::Relaxed);
+	}
+
+	pub fn considered<P: Platform>(&self, order: &Order<P>) {
+		self.orders_considered.fetch_add(1, Ordering::Relaxed);
+
+		#[allow(clippy::cast_possible_truncation)]
+		self
+			.txs_considered
+			.fetch_add(order.transactions().len() as u32, Ordering::Relaxed);
+
+		if order.is_bundle() {
+			self.bundles_considered.fetch_add(1, Ordering::Relaxed);
+		}
+	}
+
+	pub fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
+		self.orders_included.fetch_add(1, Ordering::Relaxed);
+
+		#[allow(clippy::cast_possible_truncation)]
+		self
+			.txs_included
+			.fetch_add(checkpoint.transactions().len() as u32, Ordering::Relaxed);
+
+		if checkpoint.is_bundle() {
+			self.bundles_included.fetch_add(1, Ordering::Relaxed);
+		}
+	}
+}

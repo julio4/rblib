@@ -64,6 +64,10 @@ impl<P: Platform> Order<P> {
 			Order::Bundle(bundle) => bundle.try_into_executable(),
 		}
 	}
+
+	pub const fn is_bundle(&self) -> bool {
+		matches!(self, Order::Bundle(_))
+	}
 }
 
 /// Implements an order pool that handles mempool operations for transactions

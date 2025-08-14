@@ -1,7 +1,7 @@
 use {
 	crate::{alloy, prelude::*, reth},
 	alloy::primitives::TxHash,
-	core::sync::atomic::{AtomicU32, Ordering},
+	core::sync::atomic::{AtomicU32, AtomicU64, Ordering},
 	derive_more::Deref,
 	metrics::{Counter, Histogram},
 	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
@@ -47,6 +47,17 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 			.txs_dropped_total
 			.increment(dropped_txs.into());
 		self.metrics().txs_dropped_per_job.record(dropped_txs);
+		self
+			.metrics()
+			.gas_dropped_total
+			.increment(self.per_job.gas_dropped_count());
+
+		#[allow(clippy::cast_precision_loss)]
+		self
+			.metrics()
+			.gas_dropped_per_job
+			.record(self.per_job.gas_dropped_count() as f64);
+
 		self.per_job.reset();
 		Ok(())
 	}
@@ -98,7 +109,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 					// from the payload by keeping the safe prefix unmodified and emit an
 					// event about it.
 					ctx.emit(TransactionDropped::<P>(tx));
-					self.per_job.inc_txs_dropped(1);
+					self.per_job.mark_dropped(&new_checkpoint);
 				} else {
 					// if the transaction was applied and had successful outcome, we can
 					// extend the safe prefix with it and try the next checkpoint in the
@@ -116,7 +127,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 					let Ok(new_checkpoint) = prefix.apply(bundle.clone()) else {
 						// Bundle cannot be applied anymore. It became invalid due to some
 						// previously removed transactions.
-						self.per_job.inc_txs_dropped(bundle.transactions().len());
+						self.per_job.mark_dropped(&checkpoint);
 						ctx.emit(BundleDropped::<P>(bundle));
 						continue 'next_order;
 					};
@@ -127,8 +138,10 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 
 					let optional_failed_txs = new_checkpoint
 						.failed_txs()
-						.filter_map(|tx| {
-							bundle.is_optional(*tx.tx_hash()).then_some(*tx.tx_hash())
+						.filter_map(|(tx, result)| {
+							bundle
+								.is_optional(*tx.tx_hash())
+								.then_some((*tx.tx_hash(), result.gas_used()))
 						})
 						.collect::<Vec<_>>();
 
@@ -138,18 +151,22 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 						continue 'next_order;
 					}
 
-					ctx.emit(BundlePartiallyDropped::<P> {
-						bundle: bundle.clone(),
-						removed: optional_failed_txs.clone(),
-					});
+					let (failed_hashes, failed_gas): (Vec<_>, Vec<_>) =
+						optional_failed_txs.into_iter().unzip();
 
-					self.per_job.inc_txs_dropped(optional_failed_txs.len());
+					self.per_job.inc_txs_dropped(failed_hashes.len());
+					self.per_job.inc_gas_dropped(failed_gas.iter().sum());
 
 					// try with a version of the bundle that has all optional reverting
 					// transactions removed
-					for tx in optional_failed_txs {
-						bundle = bundle.without_transaction(tx);
+					for tx in &failed_hashes {
+						bundle = bundle.without_transaction(*tx);
 					}
+
+					ctx.emit(BundlePartiallyDropped::<P> {
+						bundle: bundle.clone(),
+						removed: failed_hashes,
+					});
 				}
 			}
 		}
@@ -171,20 +188,28 @@ struct Metrics {
 	/// This includes loose transactions and bundled transactions.
 	pub txs_dropped_total: Counter,
 
+	/// Total amount of gas consumed by dropped transactions across all payloads.
+	pub gas_dropped_total: Counter,
+
 	/// Number of transactions dropped per payload job.
 	pub txs_dropped_per_job: Histogram,
+
+	/// The amount of gas consumed by dropped transactions per payload job.
+	pub gas_dropped_per_job: Histogram,
 }
 
 /// Tracks metrics aggregates per payload job.
 #[derive(Default)]
 struct PerJobCounters {
 	pub txs_dropped: AtomicU32,
+	pub gas_dropped: AtomicU64,
 }
 
 impl PerJobCounters {
 	/// Called at the end of a payload job
 	pub fn reset(&self) {
 		self.txs_dropped.store(0, Ordering::Relaxed);
+		self.gas_dropped.store(0, Ordering::Relaxed);
 	}
 
 	/// Increment the number of dropped transactions for this job.
@@ -193,8 +218,21 @@ impl PerJobCounters {
 		self.txs_dropped.fetch_add(count, Ordering::Relaxed);
 	}
 
+	pub fn inc_gas_dropped(&self, amount: u64) {
+		self.gas_dropped.fetch_add(amount, Ordering::Relaxed);
+	}
+
+	pub fn mark_dropped<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
+		self.inc_txs_dropped(checkpoint.transactions().len());
+		self.inc_gas_dropped(checkpoint.gas_used());
+	}
+
 	pub fn txs_dropped_count(&self) -> u32 {
 		self.txs_dropped.load(Ordering::Relaxed)
+	}
+
+	pub fn gas_dropped_count(&self) -> u64 {
+		self.gas_dropped.load(Ordering::Relaxed)
 	}
 }
 

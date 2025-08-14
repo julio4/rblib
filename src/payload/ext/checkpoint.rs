@@ -114,7 +114,12 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// have a successful execution outcome.
 	fn failed_txs(
 		&self,
-	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>>;
+	) -> impl Iterator<
+		Item = (
+			&Recovered<types::Transaction<P>>,
+			&types::TransactionExecutionResult<P>,
+		),
+	>;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -245,13 +250,18 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// have a successful execution outcome.
 	fn failed_txs(
 		&self,
-	) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
+	) -> impl Iterator<
+		Item = (
+			&Recovered<types::Transaction<P>>,
+			&types::TransactionExecutionResult<P>,
+		),
+	> {
 		self.result().into_iter().flat_map(|result| {
 			result
 				.transactions()
 				.iter()
 				.zip(result.results())
-				.filter_map(|(tx, res)| (!res.is_success()).then_some(tx))
+				.filter_map(|(tx, res)| (!res.is_success()).then_some((tx, res)))
 		})
 	}
 }

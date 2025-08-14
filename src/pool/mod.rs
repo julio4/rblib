@@ -21,15 +21,14 @@ mod report;
 mod rpc;
 mod select;
 mod setup;
-mod steps;
+mod step;
 
 // Order Pool public API
 pub use {
 	rpc::{BundleResult, BundlesApiClient},
 	setup::HostNodeInstaller,
-	steps::{
-		AppendManyOrders,
-		AppendOneOrder,
+	step::{
+		AppendOrders,
 		OrderInclusionAttempt,
 		OrderInclusionFailure,
 		OrderInclusionSuccess,

@@ -52,7 +52,7 @@ async fn empty_pipeline_builds_empty_payload<P: TestablePlatform>() {
 #[rblib_test(Ethereum, Optimism)]
 async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
-		.with_step(AppendManyOrders::default())
+		.with_step(AppendOrders::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions::default());
 
@@ -79,10 +79,60 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 }
 
 #[rblib_test(Ethereum, Optimism)]
-async fn all_transactions_included<P: TestablePlatform>() {
+async fn all_transactions_included_by_one<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
-		(AppendOneOrder::default(), OrderByPriorityFee::default()),
+		(
+			AppendOrders::default().with_max_new_orders(1),
+			OrderByPriorityFee::default(),
+		),
+	);
+
+	let node = P::create_test_node(pipeline).await.unwrap();
+
+	let mut transfers = vec![];
+	for i in 0..10 {
+		let tx = node.build_tx().transfer().with_value(U256::from(i + 1));
+		transfers.push(*node.send_tx(tx).await.unwrap().tx_hash());
+	}
+
+	let mut reverts = vec![];
+	for i in 0..4 {
+		let tx = node.build_tx().reverting().with_value(U256::from(3000 + i));
+		reverts.push(*node.send_tx(tx).await.unwrap().tx_hash());
+	}
+
+	let block = node.next_block().await.unwrap();
+
+	info!("Block built: {block:#?}");
+
+	assert!(
+		block.includes(&transfers),
+		"Block should include all valid transfers"
+	);
+
+	assert!(
+		block.includes(&reverts),
+		"Block should not include any reverts"
+	);
+
+	assert_eq!(block.header().number(), 1);
+
+	if_platform!(Ethereum => {
+		assert_eq!(block.tx_count(), transfers.len() + reverts.len());
+	});
+
+	if_platform!(Optimism => {
+		// Optimism should include an extra sequencer deposit transaction
+		assert_eq!(block.tx_count(), transfers.len() + reverts.len() + 1);
+	});
+}
+
+#[rblib_test(Ethereum, Optimism)]
+async fn all_transactions_included_by_many<P: TestablePlatform>() {
+	let pipeline = Pipeline::default().with_pipeline(
+		Loop,
+		(AppendOrders::default(), OrderByPriorityFee::default()),
 	);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
@@ -132,7 +182,7 @@ async fn reth_minimal_integration_example() {
 	let pipeline = Pipeline::<Ethereum>::default().with_pipeline(
 		Loop,
 		(
-			AppendOneOrder::default(),
+			AppendOrders::default(),
 			OrderByPriorityFee::default(),
 			OrderByCoinbaseProfit::default(),
 			RemoveRevertedTransactions::default(),

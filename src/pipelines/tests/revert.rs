@@ -17,7 +17,7 @@ async fn empty_payload_when_all_txs_revert_loop<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
-			AppendOneOrder::default(),
+			AppendOrders::default(),
 			OrderByPriorityFee::default(),
 			RemoveRevertedTransactions::default(),
 		),
@@ -51,7 +51,7 @@ async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
-			AppendOneOrder::default(),
+			AppendOrders::default().with_max_new_orders(1),
 			OrderByPriorityFee::default(),
 			RemoveRevertedTransactions::default(),
 		),
@@ -101,7 +101,7 @@ async fn transfers_included_reverts_excluded_loop<P: TestablePlatform>() {
 #[rblib_test(Ethereum, Optimism)]
 async fn transfers_included_reverts_excluded_flat<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
-		.with_step(AppendManyOrders::default())
+		.with_step(AppendOrders::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions::default());
 

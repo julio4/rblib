@@ -71,7 +71,7 @@ pub fn build_pipeline(
 			.with_pipeline(
 				Loop,
 				(
-					AppendManyOrders::from_pool(pool).with_break_on_limit(),
+					AppendOrders::from_pool(pool),
 					OrderByPriorityFee::default(),
 					RemoveRevertedTransactions::default(),
 				),
@@ -81,10 +81,7 @@ pub fn build_pipeline(
 			.with_prologue(OptimismPrologue)
 			.with_pipeline(
 				Loop,
-				(
-					AppendManyOrders::from_pool(pool).with_break_on_limit(),
-					OrderByPriorityFee::default(),
-				),
+				(AppendOrders::from_pool(pool), OrderByPriorityFee::default()),
 			)
 	};
 

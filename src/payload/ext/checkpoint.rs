@@ -120,6 +120,9 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 			&types::TransactionExecutionResult<P>,
 		),
 	>;
+
+	/// Returns true if the checkpoint represents a bundle of transactions.
+	fn is_bundle(&self) -> bool;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -263,5 +266,10 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 				.zip(result.results())
 				.filter_map(|(tx, res)| (!res.is_success()).then_some((tx, res)))
 		})
+	}
+
+	/// Returns true if the checkpoint represents a bundle of transactions.
+	fn is_bundle(&self) -> bool {
+		self.as_bundle().is_some()
 	}
 }

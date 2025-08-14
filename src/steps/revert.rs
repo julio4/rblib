@@ -1,9 +1,11 @@
 use {
 	crate::{alloy, prelude::*, reth},
 	alloy::primitives::TxHash,
+	core::sync::atomic::{AtomicU32, Ordering},
 	derive_more::Deref,
+	metrics::{Counter, Histogram},
 	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
-	std::sync::Arc,
+	std::sync::{Arc, OnceLock},
 };
 
 /// This step removes transactions that are reverted from the payload.
@@ -13,8 +15,42 @@ use {
 ///
 /// For bundles, reverted transactions that are also marked as optional (see
 /// [`Bundle::is_optional`]) will be removed from the payload.
-pub struct RemoveRevertedTransactions;
+#[derive(Default)]
+pub struct RemoveRevertedTransactions {
+	metrics: OnceLock<Metrics>,
+	per_job: PerJobCounters,
+}
+
 impl<P: Platform> Step<P> for RemoveRevertedTransactions {
+	/// Called exactly once by the runtime when the enclosing pipeline is
+	/// instantiated into a payload builder service.
+	///
+	/// Initializes metrics for this step.
+	async fn setup(
+		self: Arc<Self>,
+		init: InitContext<P>,
+	) -> Result<(), PayloadBuilderError> {
+		let metrics = Metrics::new(init.metrics_scope());
+		self.metrics.set(metrics).expect("step setup called twice");
+		Ok(())
+	}
+
+	async fn after_job(
+		self: Arc<Self>,
+		_: StepContext<P>,
+		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
+	) -> Result<(), PayloadBuilderError> {
+		// Record metrics for this payload job.
+		let dropped_txs = self.per_job.txs_dropped_count();
+		self
+			.metrics()
+			.txs_dropped_total
+			.increment(dropped_txs.into());
+		self.metrics().txs_dropped_per_job.record(dropped_txs);
+		self.per_job.reset();
+		Ok(())
+	}
+
 	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
@@ -53,6 +89,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 					// if the transaction cannot be applied because of consensus rules, we
 					// skip it emit an event and move on to the next one.
 					ctx.emit(TransactionDropped::<P>(tx));
+					self.per_job.inc_txs_dropped(1);
 					continue 'next_order;
 				};
 
@@ -61,6 +98,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 					// from the payload by keeping the safe prefix unmodified and emit an
 					// event about it.
 					ctx.emit(TransactionDropped::<P>(tx));
+					self.per_job.inc_txs_dropped(1);
 				} else {
 					// if the transaction was applied and had successful outcome, we can
 					// extend the safe prefix with it and try the next checkpoint in the
@@ -78,6 +116,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 					let Ok(new_checkpoint) = prefix.apply(bundle.clone()) else {
 						// Bundle cannot be applied anymore. It became invalid due to some
 						// previously removed transactions.
+						self.per_job.inc_txs_dropped(bundle.transactions().len());
 						ctx.emit(BundleDropped::<P>(bundle));
 						continue 'next_order;
 					};
@@ -104,6 +143,8 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 						removed: optional_failed_txs.clone(),
 					});
 
+					self.per_job.inc_txs_dropped(optional_failed_txs.len());
+
 					// try with a version of the bundle that has all optional reverting
 					// transactions removed
 					for tx in optional_failed_txs {
@@ -114,6 +155,46 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 		}
 
 		ControlFlow::Ok(prefix)
+	}
+}
+
+impl RemoveRevertedTransactions {
+	fn metrics(&self) -> &Metrics {
+		self.metrics.get().expect("step setup called")
+	}
+}
+
+#[derive(metrics_derive::Metrics)]
+#[metrics(dynamic = true)]
+struct Metrics {
+	/// Total number of all transactions dropped across all payloads.
+	/// This includes loose transactions and bundled transactions.
+	pub txs_dropped_total: Counter,
+
+	/// Number of transactions dropped per payload job.
+	pub txs_dropped_per_job: Histogram,
+}
+
+/// Tracks metrics aggregates per payload job.
+#[derive(Default)]
+struct PerJobCounters {
+	pub txs_dropped: AtomicU32,
+}
+
+impl PerJobCounters {
+	/// Called at the end of a payload job
+	pub fn reset(&self) {
+		self.txs_dropped.store(0, Ordering::Relaxed);
+	}
+
+	/// Increment the number of dropped transactions for this job.
+	pub fn inc_txs_dropped(&self, count: usize) {
+		let count: u32 = count.try_into().expect("realistically impossible");
+		self.txs_dropped.fetch_add(count, Ordering::Relaxed);
+	}
+
+	pub fn txs_dropped_count(&self) -> u32 {
+		self.txs_dropped.load(Ordering::Relaxed)
 	}
 }
 
@@ -176,7 +257,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn empty_payload<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RemoveRevertedTransactions)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions::default())
 			.run()
 			.await
 			.unwrap();
@@ -191,7 +272,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn one_revert_one_ok<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RemoveRevertedTransactions)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions::default())
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.run()
@@ -207,7 +288,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn all_revert<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RemoveRevertedTransactions)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions::default())
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(2))
@@ -225,7 +306,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn all_revert_with_barrier<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RemoveRevertedTransactions)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions::default())
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.reverting().with_default_signer().with_nonce(1))
 			.with_payload_barrier()
@@ -250,7 +331,7 @@ mod tests {
 
 	#[rblib_test(Ethereum, Optimism)]
 	async fn none_revert<P: TestablePlatform>() {
-		let output = OneStep::<P>::new(RemoveRevertedTransactions)
+		let output = OneStep::<P>::new(RemoveRevertedTransactions::default())
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(0))
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(1))
 			.with_payload_tx(|tx| tx.transfer().with_default_signer().with_nonce(2))

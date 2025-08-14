@@ -53,6 +53,10 @@ pub struct AppendManyOrders<P: Platform> {
 	/// Specifies the maximum number of new transactions that will be added to
 	/// the payload across all new orders in one run of this step.
 	max_new_transactions: Option<usize>,
+
+	/// Specifies whether this step should return `ControlFlow::Ok` or
+	/// `ControlFlow::Break` when payload limits are reached.
+	break_on_limit: bool,
 }
 
 impl<P: Platform> Default for AppendManyOrders<P> {
@@ -65,10 +69,12 @@ impl<P: Platform> Default for AppendManyOrders<P> {
 			enable_system_pool: true,
 			max_new_orders: None,
 			max_new_transactions: None,
+			break_on_limit: false,
 		}
 	}
 }
 
+/// Construction
 impl<P: Platform> AppendManyOrders<P> {
 	/// Attaches this step a an `OrderPool` that supports bundles.
 	pub fn from_pool(pool: &OrderPool<P>) -> Self {
@@ -97,11 +103,17 @@ impl<P: Platform> AppendManyOrders<P> {
 	/// Specifies the maximum number of new transactions that will be added to
 	/// the payload across all new orders in one run of this step.
 	#[must_use]
-	pub fn with_max_new_transactions(
-		mut self,
-		max_new_transactions: usize,
-	) -> Self {
-		self.max_new_transactions = Some(max_new_transactions);
+	pub fn with_max_new_transactions(mut self, count: usize) -> Self {
+		self.max_new_transactions = Some(count);
+		self
+	}
+
+	/// Specifies whether this step should return `ControlFlow::Ok` or
+	/// `ControlFlow::Break` when payload limits are reached and no new orders
+	/// can be added to the payload.
+	#[must_use]
+	pub fn with_break_on_limit(mut self) -> Self {
+		self.break_on_limit = true;
 		self
 	}
 }
@@ -123,9 +135,12 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 	) -> ControlFlow<P> {
 		let mut payload = payload;
 
+		let mut orders_added = 0;
+		let mut transactions_added = 0;
+
 		if payload.cumulative_gas_used() >= ctx.limits().gas_limit {
 			// If the payload already at capacity, we can stop here.
-			return ControlFlow::Ok(payload);
+			return self.return_at_limit(payload, transactions_added);
 		}
 
 		// Create an iterator that will demultiplex orders coming from the
@@ -135,9 +150,6 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 			self.order_pool.as_ref(),
 			ctx.block(),
 		);
-
-		let mut orders_added = 0;
-		let mut transactions_added = 0;
 
 		// the maximum number of new transactions that can be added to the
 		// payload in this step. This will be None if no limits are set on
@@ -149,11 +161,15 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 				.min();
 
 		loop {
+			if ctx.limits().deadline_reached() {
+				return self.return_at_limit(payload, transactions_added);
+			}
+
 			if let Some(max_orders) = self.max_new_orders
 				&& orders_added >= max_orders
 			{
 				// We've reached the maximum number of new orders to add to the payload.
-				return ControlFlow::Ok(payload);
+				return self.return_at_limit(payload, transactions_added);
 			}
 
 			if let Some(max_new_transactions) = max_new_transactions
@@ -161,7 +177,7 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 			{
 				// We've reached the maximum number of new transactions to add to the
 				// payload.
-				return ControlFlow::Ok(payload);
+				return self.return_at_limit(payload, transactions_added);
 			}
 
 			let existing_txs: HashSet<_> = payload
@@ -174,7 +190,7 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 			// pull next order
 			let Some(order) = orders.next() else {
 				// No more orders in the pool to add to the payload.
-				return ControlFlow::Ok(payload);
+				return self.return_at_limit(payload, transactions_added);
 			};
 
 			let order_hash = order.hash();
@@ -272,6 +288,21 @@ impl<P: Platform> Step<P> for AppendManyOrders<P> {
 
 			// all good, extend the payload with the new checkpoint
 			payload = new_payload;
+		}
+	}
+}
+
+impl<P: Platform> AppendManyOrders<P> {
+	#[inline]
+	const fn return_at_limit(
+		&self,
+		payload: Checkpoint<P>,
+		tx_added: usize,
+	) -> ControlFlow<P> {
+		if self.break_on_limit && tx_added == 0 {
+			ControlFlow::Break(payload)
+		} else {
+			ControlFlow::Ok(payload)
 		}
 	}
 }

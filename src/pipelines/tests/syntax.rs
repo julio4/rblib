@@ -10,7 +10,7 @@ fn only_steps() {
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(AppendManyOrders::default())
 		.with_step(OrderByPriorityFee::default())
-		.with_step(RemoveRevertedTransactions);
+		.with_step(RemoveRevertedTransactions::default());
 
 	info!("{pipeline:#?}");
 }
@@ -25,7 +25,7 @@ fn only_steps_optimism_specific() {
 		.with_step(AppendManyOrders::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(OrderByCoinbaseProfit::default())
-		.with_step(RemoveRevertedTransactions)
+		.with_step(RemoveRevertedTransactions::default())
 		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
 	info!("{pipeline:#?}");
@@ -40,7 +40,7 @@ fn nested_verbose() {
 		.with_step(AppendOneOrder::default())
 		.with_step(OrderByPriorityFee::default())
 		.with_step(OrderByCoinbaseProfit::default())
-		.with_step(RemoveRevertedTransactions);
+		.with_step(RemoveRevertedTransactions::default());
 
 	let top_level = top_level //
 		.with_pipeline(Loop, nested);
@@ -74,7 +74,7 @@ fn nested_many_concise() {
 				AppendOneOrder::default(),
 				OrderByPriorityFee::default(),
 				OrderByCoinbaseProfit::default(),
-				RemoveRevertedTransactions,
+				RemoveRevertedTransactions::default(),
 			),
 		)
 		.with_step(TestStep2);
@@ -126,7 +126,7 @@ fn flashblocks_example_closure() {
 						AppendOneOrder::default(),
 						OrderByPriorityFee::default(),
 						OrderByCoinbaseProfit::default(),
-						RemoveRevertedTransactions,
+						RemoveRevertedTransactions::default(),
 					),
 				)
 				.with_step(PublishToWebSocket(config))
@@ -178,7 +178,7 @@ async fn flashblocks_example_concise() {
 						AppendOneOrder::default(),
 						OrderByPriorityFee::default(),
 						OrderByCoinbaseProfit::default(),
-						RemoveRevertedTransactions,
+						RemoveRevertedTransactions::default(),
 					)
 						.with_limits(FlashblockLimits(config.clone()))
 						.with_epilogue(FlashblockEpilogue),

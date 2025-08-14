@@ -146,8 +146,7 @@ impl<P: Platform> StepInstance<P> {
 	) -> ControlFlow<P> {
 		let metrics = self.metrics.get();
 
-		if let Some(metrics) = metrics {
-			metrics.invoked_total.increment(1);
+		if metrics.is_some() {
 			self.per_job.increment_invocation();
 		}
 
@@ -232,7 +231,9 @@ impl<P: Platform> StepInstance<P> {
 
 			// Log the per-job duration.
 			let per_job_duration = self.per_job.exec_duration();
-			metrics.invoked_per_job.record(self.per_job.invoked_count());
+			let invoke_count = self.per_job.invoked_count();
+			metrics.invoked_total.increment(invoke_count.into());
+			metrics.invoked_per_job.record(invoke_count);
 			metrics.exec_duration_per_job.record(per_job_duration);
 			#[allow(clippy::cast_possible_truncation)]
 			metrics

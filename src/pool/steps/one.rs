@@ -5,7 +5,6 @@ use {
 	dashmap::DashSet,
 	reth::ethereum::primitives::SignedTransaction,
 	std::{collections::HashSet, sync::Arc},
-	tracing::debug,
 };
 
 /// This step will append one new order from the enabled pools to the end of the
@@ -113,11 +112,6 @@ impl<P: Platform> Step<P> for AppendOneOrder<P> {
 		loop {
 			// check if we have reached the deadline
 			if ctx.limits().deadline_reached() {
-				// stop the loop and return the current payload
-				debug!(
-					"Payload building deadline reached for {}",
-					ctx.block().payload_id()
-				);
 				return ControlFlow::Break(payload);
 			}
 

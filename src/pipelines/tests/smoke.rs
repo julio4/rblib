@@ -54,7 +54,7 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 	let pipeline = Pipeline::default()
 		.with_step(AppendManyOrders::default())
 		.with_step(OrderByPriorityFee::default())
-		.with_step(RemoveRevertedTransactions);
+		.with_step(RemoveRevertedTransactions::default());
 
 	let node = P::create_test_node(pipeline).await.unwrap();
 	let block = node.next_block().await.unwrap();
@@ -135,7 +135,7 @@ async fn reth_minimal_integration_example() {
 			AppendOneOrder::default(),
 			OrderByPriorityFee::default(),
 			OrderByCoinbaseProfit::default(),
-			RemoveRevertedTransactions,
+			RemoveRevertedTransactions::default(),
 		),
 	);
 

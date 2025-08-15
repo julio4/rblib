@@ -5,11 +5,11 @@ use {
 	std::sync::Arc,
 };
 
-/// Defines the FlashBlocks platform.
+/// Defines the `FlashBlocks` platform.
 ///
 /// This platform is mainly fully derived from the Optimism platform with few
 /// modifications, such as:
-/// - Custom bundle type that is used to represent the FlashBlocks bundles.
+/// - Custom bundle type that is used to represent the `FlashBlocks` bundles.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FlashBlocks;
 
@@ -52,7 +52,7 @@ impl Platform for FlashBlocks {
 	}
 }
 
-/// Inherits all optimism RPC types for the FlashBlocks platform.
+/// Inherits all optimism RPC types for the `FlashBlocks` platform.
 impl PlatformWithRpcTypes for FlashBlocks {
 	type RpcTypes = types::RpcTypes<Optimism>;
 }

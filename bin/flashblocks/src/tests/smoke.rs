@@ -32,11 +32,11 @@ async fn chain_produces_empty_blocks() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn chain_produces_blocks_with_txs() -> eyre::Result<()> {
-	// builders signer is not configured, so won't produce a builder tx
-	let node = FlashBlocks::test_node().await?;
-
 	const BLOCKS: usize = 5;
 	const TXS_PER_BLOCK: usize = 5;
+
+	// builders signer is not configured, so won't produce a builder tx
+	let node = FlashBlocks::test_node().await?;
 
 	for i in 1..=BLOCKS {
 		let mut txs = Vec::with_capacity(TXS_PER_BLOCK);

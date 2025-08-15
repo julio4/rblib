@@ -1,4 +1,4 @@
-//! Tests for revert protection in FlashBlocks bundles.
+//! Tests for revert protection in `FlashBlocks` bundles.
 //!
 //! Nomenclature (see `rblib::platform::ext::BundleExt` for more details):
 //!
@@ -161,8 +161,9 @@ async fn when_disabled_reverted_txs_are_included() -> eyre::Result<()> {
 	Ok(())
 }
 
-/// If a transaction reverts and gets dropped it, the eth_getTransactionReceipt
-/// should return an error message that it was dropped.
+/// If a transaction reverts and gets dropped it, the
+/// `eth_getTransactionReceipt` should return an error message that it was
+/// dropped.
 #[tokio::test]
 async fn reverted_dropped_tx_has_valid_receipt_status() -> eyre::Result<()> {
 	todo!()

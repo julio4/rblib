@@ -78,7 +78,7 @@ impl FlashBlocksBundle {
 	}
 }
 
-/// Implements rblib Bundle semantics for the FlashBlocksBundle type.
+/// Implements rblib Bundle semantics for the `FlashBlocksBundle` type.
 impl Bundle<FlashBlocks> for FlashBlocksBundle {
 	type PostExecutionError = Infallible;
 

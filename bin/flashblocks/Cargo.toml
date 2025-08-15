@@ -46,3 +46,6 @@ reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0
 
 [dev-dependencies]
 rblib = { path = "../../", features = ["optimism", "test-utils"] }
+
+[lints]
+workspace = true

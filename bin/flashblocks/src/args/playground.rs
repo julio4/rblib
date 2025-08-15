@@ -6,11 +6,11 @@
 //!
 //! To setup the playground, checkout this repository:
 //!
-//!   https://github.com/flashbots/builder-playground
+//!   <https://github.com/flashbots/builder-playground>
 //!
 //! Then run the following command:
 //!
-//!   go run main.go cook opstack --external-builder http://host.docker.internal:4444
+//!   go run main.go cook opstack --external-builder <http://host.docker.internal:4444>
 //!
 //! Wait until the playground is up and running, then run the following command
 //! to build op-rbuilder with flashblocks support:
@@ -60,28 +60,28 @@ use {
 };
 
 pub struct PlaygroundOptions {
-	/// Sets node.chain in NodeCommand
+	/// Sets node.chain in `NodeCommand`
 	pub chain: Arc<OpChainSpec>,
 
-	/// Sets node.rpc.http_port in NodeCommand
+	/// Sets `node.rpc.http_port` in `NodeCommand`
 	pub http_port: u16,
 
-	/// Sets node.rpc.auth_addr in NodeCommand
+	/// Sets `node.rpc.auth_addr` in `NodeCommand`
 	pub authrpc_addr: IpAddr,
 
-	/// Sets node.rpc.authrpc_port in NodeCommand
+	/// Sets `node.rpc.authrpc_port` in `NodeCommand`
 	pub authrpc_port: u16,
 
-	/// Sets node.rpc.authrpc_jwtsecret in NodeCommand
+	/// Sets `node.rpc.authrpc_jwtsecret` in `NodeCommand`
 	pub authrpc_jwtsecret: PathBuf,
 
-	/// Sets node.network.port in NodeCommand
+	/// Sets `node.network.port` in `NodeCommand`
 	pub port: u16,
 
-	/// Sets the node.network.trusted_peers in NodeCommand
+	/// Sets the `node.network.trusted_peers` in `NodeCommand`
 	pub trusted_peer: TrustedPeer,
 
-	/// Sets node.ext.flashblock_block_time in NodeCommand
+	/// Sets `node.ext.flashblock_block_time` in `NodeCommand`
 	pub chain_block_time: Duration,
 }
 
@@ -174,6 +174,7 @@ impl PlaygroundOptions {
 			node.network.discovery.disable_discovery = true;
 		}
 
+		#[expect(clippy::cast_possible_truncation)]
 		if matches.value_source("chain_block_time").is_default() {
 			node.ext.chain_block_time = self.chain_block_time.as_millis() as u64;
 		}
@@ -273,11 +274,11 @@ fn extract_service_command_flag(
 		eyre!("docker_compose: {flag} not found on {service} service")
 	})?;
 
-	let value = args
+	let value = *args
 		.get(index + 1)
 		.ok_or_else(|| eyre!("docker_compose: {flag} value not found"))?;
 
-	Ok(value.to_string())
+	Ok(value.into())
 }
 
 fn extract_authrpc_port(basepath: &Path) -> Result<u16> {

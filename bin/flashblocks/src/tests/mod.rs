@@ -177,13 +177,13 @@ pub fn transfer_tx_compact(
 }
 
 /// Will generate a random bundle with a given number of valid transactions.
-/// Transaction will be sending 1_000_000 + index wei to a random address.
+/// Transaction will be sending `1_000_000` + index wei to a random address.
 pub fn random_valid_bundle(tx_count: usize) -> FlashBlocksBundle {
 	random_bundle_with_reverts(tx_count, 0)
 }
 
-/// Non-reverting transactions amount value is 1_000_000 + index wei.
-/// Reverting transactions amount value is 2_000_000 + index wei.
+/// Non-reverting transactions amount value is `1_000_000` + index wei.
+/// Reverting transactions amount value is `2_000_000` + index wei.
 pub fn random_bundle_with_reverts(
 	non_reverting: usize,
 	reverting: usize,
@@ -197,6 +197,7 @@ pub fn random_bundle_with_reverts(
 		let signer = rng().random_range(0..SIGNERS_COUNT);
 		let nonce = nonces[signer];
 		let amount = 1_000_000 + i as u64;
+		#[allow(clippy::cast_possible_truncation)]
 		let tx = transfer_tx_compact(signer as u32, nonce, amount);
 		txs.push(tx);
 		nonces[signer] += 1;
@@ -207,6 +208,7 @@ pub fn random_bundle_with_reverts(
 		let signer = rng().random_range(0..SIGNERS_COUNT);
 		let nonce = nonces[signer];
 		nonces[signer] += 1;
+		#[allow(clippy::cast_possible_truncation)]
 		let signer = FundedAccounts::signer(signer as u32);
 		let amount = 2_000_000 + i as u64;
 		let mut tx = OpTransactionRequest::default()

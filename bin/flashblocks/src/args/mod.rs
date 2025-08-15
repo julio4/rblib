@@ -63,7 +63,7 @@ impl CliExt for Cli {
 
 		let options = match PlaygroundOptions::new(playground_dir) {
 			Ok(options) => options,
-			Err(e) => exit(e),
+			Err(e) => exit(&e),
 		};
 
 		options.apply(self)
@@ -82,7 +82,7 @@ impl CliExt for Cli {
 
 /// Following clap's convention, a failure to parse the command line arguments
 /// will result in terminating the program with a non-zero exit code.
-fn exit(error: eyre::Report) -> ! {
+fn exit(error: &eyre::Report) -> ! {
 	eprintln!("{error}");
 	std::process::exit(-1);
 }

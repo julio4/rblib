@@ -36,6 +36,7 @@ impl<P: PlatformWithRpcTypes> TransactionStatusRpc<P> {
 		}
 	}
 
+	#[expect(clippy::unused_self)]
 	pub fn attach_rpc<Node, EthApi>(
 		self,
 		rpc_context: &mut RpcContext<Node, EthApi>,
@@ -88,17 +89,15 @@ where
 		&self,
 		hash: B256,
 	) -> RpcResult<Option<types::ReceiptResponse<P>>> {
-		match self.eth_api.transaction_receipt(hash).await? {
-			Some(receipt) => Ok(Some(receipt)),
-			None => {
-				if self.dropped_txs.contains_key(&hash) {
-					return Err(
-						EthApiError::InvalidParams("transaction dropped".into()).into(),
-					);
-				} else {
-					Ok(None)
-				}
+		if let Some(receipt) = self.eth_api.transaction_receipt(hash).await? {
+			Ok(Some(receipt))
+		} else {
+			if self.dropped_txs.contains_key(&hash) {
+				return Err(
+					EthApiError::InvalidParams("transaction dropped".into()).into(),
+				);
 			}
+			Ok(None)
 		}
 	}
 }

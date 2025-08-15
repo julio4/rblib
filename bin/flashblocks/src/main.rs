@@ -25,7 +25,8 @@ mod tests;
 
 pub use platform::FlashBlocks;
 
-fn main() -> eyre::Result<()> {
+#[allow(clippy::large_futures)]
+fn main() {
 	Cli::parsed()
 		.run(|builder, cli_args| async move {
 			let pool = OrderPool::<FlashBlocks>::default();
@@ -57,8 +58,6 @@ fn main() -> eyre::Result<()> {
 			handle.wait_for_node_exit().await
 		})
 		.unwrap();
-
-	Ok(())
 }
 
 pub fn build_pipeline(

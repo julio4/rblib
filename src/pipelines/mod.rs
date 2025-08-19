@@ -119,10 +119,15 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// Sets payload building limits for the pipeline.
+	///
+	/// Here we can either use an instance of `LimitsFactory` that generates
+	/// limits dynamically according to a user-defined logic, or we can use a
+	/// fixed `Limits` instance.
 	#[must_use]
-	pub fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Self {
+	pub fn with_limits<T, L: IntoLimitsFactory<P, T>>(self, limits: L) -> Self {
 		let mut this = self;
-		this.limits = Some(Box::new(limits) as Box<dyn LimitsFactory<P>>);
+		let factory = limits.into_limits_factory();
+		this.limits = Some(Box::new(factory) as Box<dyn LimitsFactory<P>>);
 		this
 	}
 }

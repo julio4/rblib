@@ -110,7 +110,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 2,
+        "w": 3,
         "x": 0,
         "y": 1
       },
@@ -182,8 +182,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 2,
+        "w": 4,
+        "x": 3,
         "y": 1
       },
       "id": 37,
@@ -218,7 +218,7 @@
           "refId": "A"
         }
       ],
-      "title": "Payload Job Deadline",
+      "title": "Payload Deadline (block time)",
       "type": "stat"
     },
     {
@@ -248,7 +248,7 @@
       "gridPos": {
         "h": 4,
         "w": 3,
-        "x": 5,
+        "x": 7,
         "y": 1
       },
       "id": 18,
@@ -316,8 +316,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 8,
+        "w": 3,
+        "x": 10,
         "y": 1
       },
       "id": 5,
@@ -352,7 +352,7 @@
           "refId": "A"
         }
       ],
-      "title": "Total Transactions Count",
+      "title": "Transactions Built",
       "type": "stat"
     },
     {
@@ -382,8 +382,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 12,
+        "w": 3,
+        "x": 13,
         "y": 1
       },
       "id": 6,
@@ -621,7 +621,7 @@
           "refId": "A"
         }
       ],
-      "title": "Failed Payload Jobs",
+      "title": "Failed Jobs",
       "type": "stat"
     },
     {
@@ -3216,7 +3216,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Flashblock - Standard Builder",
-  "uid": "5211c89f-e5bc-4e58-8210-237af32b0d89",
-  "version": 4,
+  "version": 5,
   "weekStart": ""
 }

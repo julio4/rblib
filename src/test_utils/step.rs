@@ -152,13 +152,7 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 
 	#[must_use]
 	pub fn with_limits(mut self, limits: Limits) -> Self {
-		struct FixedLimits(Limits);
-		impl<P: Platform> LimitsFactory<P> for FixedLimits {
-			fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
-				self.0.clone()
-			}
-		}
-		self.pipeline = self.pipeline.with_limits(FixedLimits(limits));
+		self.pipeline = self.pipeline.with_limits(limits);
 		self
 	}
 

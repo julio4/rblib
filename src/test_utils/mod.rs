@@ -29,7 +29,7 @@ pub use {
 	mock::{GenesisProviderFactory, GenesisStateProvider},
 	node::{ConsensusDriver, LocalNode},
 	platform::{TestNodeFactory, TestablePlatform},
-	rblib_tests_macros::{if_platform, rblib_test},
+	rblib_tests_macros::{assert_is_dyn_safe, if_platform, rblib_test},
 	step::{AlwaysBreakStep, AlwaysFailStep, AlwaysOkStep, OneStep},
 };
 

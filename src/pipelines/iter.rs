@@ -16,14 +16,11 @@ struct Frame<'a, P: Platform> {
 
 impl<'a, P: Platform> StepPathIter<'a, P> {
 	pub fn new(pipeline: &'a Pipeline<P>) -> Self {
-		// SAFETY: The empty step path is never used directly;
-		// we only concat onto it during iteration.
-		let empty_path = unsafe { StepPath::empty() };
 		Self {
 			stack: vec![Frame {
 				pipeline,
-				path: empty_path,
 				next_ix: 0,
+				path: StepPath::empty(),
 				yielded_prologue: false,
 				yielded_epilogue: false,
 			}],

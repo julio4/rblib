@@ -89,7 +89,7 @@ impl PerJobCounters {
 	}
 
 	pub fn increment_exec_time(&self, duration: Duration) {
-		#[allow(clippy::cast_possible_truncation)]
+		#[expect(clippy::cast_possible_truncation)]
 		self
 			.exec_duration_micros
 			.fetch_add(duration.as_micros() as u64, Ordering::Relaxed);

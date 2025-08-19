@@ -52,7 +52,6 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 			.gas_dropped_total
 			.increment(self.per_job.gas_dropped_count());
 
-		#[allow(clippy::cast_precision_loss)]
 		self
 			.metrics()
 			.gas_dropped_per_job

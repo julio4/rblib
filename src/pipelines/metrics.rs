@@ -1,10 +1,11 @@
 use {
 	crate::{alloy, prelude::*, reth},
 	alloy::consensus::BlockHeader,
-	core::panic::Location,
-	metrics::{Counter, Histogram},
+	core::{panic::Location, time::Duration},
+	metrics::{Counter, Gauge, Histogram},
 	metrics_derive::Metrics,
-	reth::node::builder::BuiltPayload,
+	reth::node::builder::{BuiltPayload, PayloadBuilderAttributes},
+	std::time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Metrics)]
@@ -19,9 +20,6 @@ pub struct Payload {
 	/// Number of payload jobs that have started and failed to produce a block
 	/// payload.
 	pub jobs_failed: Counter,
-
-	/// Duration of a payload job from start to completion or failure.
-	pub job_duration: Histogram,
 
 	/// Number of transactions in a produced payload.
 	pub tx_count_histogram: Histogram,
@@ -53,10 +51,13 @@ pub struct Payload {
 
 	/// Total fees accumulated by all produced payloads.
 	pub fees_total: Counter,
+
+	/// The time given by the EL for the payload job to complete.
+	/// This can be also interpretted as the block time.
+	pub job_deadline: Gauge,
 }
 
 impl Payload {
-	#[allow(clippy::cast_precision_loss)]
 	pub fn record_payload<P: Platform>(
 		&self,
 		payload: &types::BuiltPayload<P>,
@@ -89,6 +90,21 @@ impl Payload {
 		self
 			.tx_count_total
 			.increment(payload.block().transaction_count() as u64);
+	}
+
+	pub fn record_payload_job_attributes<P: Platform>(
+		&self,
+		attributes: &types::PayloadBuilderAttributes<P>,
+	) {
+		let job_deadline = Duration::from_secs(
+			attributes.timestamp().saturating_sub(
+				SystemTime::now()
+					.duration_since(UNIX_EPOCH)
+					.unwrap_or_default()
+					.as_secs(),
+			),
+		);
+		self.job_deadline.set(job_deadline);
 	}
 }
 

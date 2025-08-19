@@ -1,5 +1,6 @@
 use {
 	crate::{alloy::eips::eip7840::BlobParams, prelude::*},
+	core::time::Duration,
 	std::time::Instant,
 };
 
@@ -31,12 +32,8 @@ pub struct Limits {
 	/// custom limits factories.
 	pub max_transactions: Option<usize>,
 
-	/// The time by which the payload must be built.
-	///
-	/// In most cases, the pipeline executor will stop iterating over loops if
-	/// the deadline is reached, however for long running steps, its recommended
-	/// to have deadline-aware logic inside the step itself.
-	pub deadline: Option<Instant>,
+	/// The time a pipeline is allowed to spend on execution.
+	pub deadline: Option<Duration>,
 }
 
 impl Limits {
@@ -62,7 +59,13 @@ impl Limits {
 	}
 
 	#[must_use]
-	pub fn with_deadline(mut self, deadline: Instant) -> Self {
+	pub fn with_deadline_at(mut self, deadline: Instant) -> Self {
+		self.deadline = Some(deadline.duration_since(Instant::now()));
+		self
+	}
+
+	#[must_use]
+	pub fn with_deadline(mut self, deadline: Duration) -> Self {
 		self.deadline = Some(deadline);
 		self
 	}
@@ -92,12 +95,5 @@ impl Limits {
 			max_transactions: self.max_transactions.min(other.max_transactions),
 			deadline: self.deadline.min(other.deadline),
 		}
-	}
-
-	/// Returns `true` if there is a deadline set and it has been reached.
-	pub fn deadline_reached(&self) -> bool {
-		self
-			.deadline
-			.is_some_and(|deadline| deadline <= Instant::now())
 	}
 }

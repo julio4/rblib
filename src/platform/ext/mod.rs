@@ -1,5 +1,5 @@
-//! Extention traits that improve the developer experience when working
-//! platform-agnostic code.
+//! Extention traits and utilities that improve the developer experience when
+//! working platform-agnostic code.
 
 use {
 	crate::{alloy, prelude::*, reth},
@@ -12,8 +12,9 @@ use {
 };
 
 mod bundle;
+mod limits;
 
-pub use bundle::BundleExt;
+pub use {bundle::BundleExt, limits::*};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionBuilderError<P: PlatformWithRpcTypes> {

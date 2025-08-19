@@ -3,6 +3,7 @@ use {
 		args::{Cli, CliExt, OpRbuilderArgs},
 		rpc::TransactionStatusRpc,
 	},
+	core::time::Duration,
 	rblib::{
 		pool::*,
 		prelude::*,
@@ -25,7 +26,6 @@ mod tests;
 
 pub use platform::FlashBlocks;
 
-#[allow(clippy::large_futures)]
 fn main() {
 	Cli::parsed()
 		.run(|builder, cli_args| async move {
@@ -34,6 +34,7 @@ fn main() {
 			let opnode = OpNode::new(cli_args.rollup_args.clone());
 			let tx_status_rpc = TransactionStatusRpc::new(&pipeline);
 
+			#[expect(clippy::large_futures)]
 			let handle = builder
 				.with_types::<OpNode>()
 				.with_components(
@@ -73,7 +74,10 @@ pub fn build_pipeline(
 					AppendOrders::from_pool(pool),
 					OrderByPriorityFee::default(),
 					RemoveRevertedTransactions::default(),
-				),
+				)
+					.with_limits(
+						Scaled::new().deadline(Minus(Duration::from_millis(500))),
+					),
 			)
 	} else {
 		Pipeline::<FlashBlocks>::named("standard")

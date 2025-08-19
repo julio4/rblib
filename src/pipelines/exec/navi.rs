@@ -21,7 +21,7 @@ use {
 ///
 /// A Step path cannot be empty, it must always contain at least one element,
 /// which is the case for pipelines with only steps and no nested pipelines.
-#[derive(PartialEq, Eq, Clone, Debug, From, Into)]
+#[derive(PartialEq, Eq, Clone, From, Into, Hash)]
 pub(crate) struct StepPath(SmallVec<[usize; 8]>);
 
 const PROLOGUE_INDEX: usize = usize::MIN;
@@ -97,7 +97,7 @@ impl StepPath {
 	/// For example, if the path is `[3, 1, 2]`, this function will return `3`,
 	/// which represents the nested pipeline at index `3`. A path of `[1]`
 	/// represents the step or nested pipeline at index `1` in the pipeline.
-	fn root(&self) -> StepPath {
+	pub(super) fn root(&self) -> StepPath {
 		Self(self.0[..1].into())
 	}
 
@@ -105,7 +105,7 @@ impl StepPath {
 	/// path relative to its immediate parent.
 	///
 	/// This essentially returns the last element of the path.
-	fn leaf(&self) -> usize {
+	pub(super) fn leaf(&self) -> usize {
 		self.0.last().copied().expect("StepPath cannot be empty")
 	}
 
@@ -113,7 +113,7 @@ impl StepPath {
 	///
 	/// This is useful when doing recursive navigation down through the pipeline.
 	/// Returns None if the path is an item in a top-level pipeline.
-	fn remove_root(self) -> Option<StepPath> {
+	pub(super) fn remove_root(self) -> Option<StepPath> {
 		if self.is_toplevel() {
 			// If there's only one element, popping it would result in an empty path
 			// which is not allowed.
@@ -129,7 +129,7 @@ impl StepPath {
 	/// contains the current step or pipeline.
 	///
 	/// Returns None if the path points to a top-level item.
-	fn remove_leaf(self) -> Option<StepPath> {
+	pub(super) fn remove_leaf(self) -> Option<StepPath> {
 		if self.is_toplevel() {
 			None
 		} else {
@@ -141,7 +141,7 @@ impl StepPath {
 	///
 	/// This method does not check if the next item is valid or exists in the
 	/// pipeline. It simply increments the last index in the path.
-	fn increment_leaf(self) -> Self {
+	pub(super) fn increment_leaf(self) -> Self {
 		let mut new_path = self.0;
 		if let Some(last) = new_path.last_mut() {
 			*last += 1;
@@ -149,10 +149,76 @@ impl StepPath {
 		Self(new_path)
 	}
 
-	fn replace_leaf(self, new_leaf: usize) -> Self {
+	pub(super) fn replace_leaf(self, new_leaf: usize) -> Self {
 		let mut new_path = self.0;
 		*new_path.last_mut().expect("StepPath cannot be empty") = new_leaf;
 		Self(new_path)
+	}
+
+	pub(super) fn is_ancestor_of(&self, other: &StepPath) -> bool {
+		other.0.starts_with(&self.0)
+	}
+
+	/// Returns a `StepPath` that is the lowest common ancestor of the two paths.
+	/// For paths that do not share a common ancestor, this will return an empty
+	/// path, which represents the root scope of the pipeline.
+	pub(super) fn common_ancestor(&self, other: &StepPath) -> StepPath {
+		let mut common = StepPath::empty();
+		let mut self_iter = self.0.iter();
+		let mut other_iter = other.0.iter();
+
+		while let (Some(&self_index), Some(&other_index)) =
+			(self_iter.next(), other_iter.next())
+		{
+			if self_index == other_index {
+				common.0.push(self_index);
+			} else {
+				break;
+			}
+		}
+
+		common
+	}
+
+	/// Given two paths, where one is an ancestor of the other, returns the
+	/// intermediate paths between them.
+	///
+	/// If the one othe paths is not an ancestor of the other an empty vector is
+	/// returned.
+	///
+	/// if the paths are equal, an empty vector is returned.
+	///
+	/// if `self` is an ancestor of `other` then this will return all the steps
+	/// descending from `self` to `other`.
+	///
+	/// if `other` is an ancestor of `self` then this will return all the steps
+	/// descending from `other` to `self`.
+	pub(super) fn between(&self, other: &StepPath) -> Vec<StepPath> {
+		if !self.is_ancestor_of(other) && !other.is_ancestor_of(self) {
+			return vec![];
+		}
+
+		let ancestor = self.common_ancestor(other);
+		let mut paths = Vec::new();
+
+		if ancestor == *self {
+			// self is the ancestor, we need to go down to other
+			let mut current = self.clone();
+			while current != *other {
+				current.0.push(other.0[current.0.len()]);
+				paths.push(current.clone());
+			}
+		} else if ancestor == *other {
+			// other is the ancestor, we need to go up to self
+			let mut current = other.clone();
+			while current != *self {
+				current.0.push(self.0[current.0.len()]);
+				paths.push(current.clone());
+			}
+			paths.reverse();
+		}
+
+		paths
 	}
 }
 
@@ -161,28 +227,28 @@ impl StepPath {
 /// None of those methods do any checks on the validity of the path.
 impl StepPath {
 	/// Returns a step path that points to the prologue step.
-	pub(crate) fn prologue() -> Self {
+	pub(in crate::pipelines) fn prologue() -> Self {
 		Self(smallvec![PROLOGUE_INDEX])
 	}
 
 	/// Returns a leaf step path pointing at the epilogue step.
-	pub(crate) fn epilogue() -> Self {
+	pub(in crate::pipelines) fn epilogue() -> Self {
 		Self(smallvec![EPILOGUE_INDEX])
 	}
 
 	/// Returns a new step path that points to the first non-prologue and
 	/// non-epilogue step.
-	pub(crate) fn step0() -> Self {
+	pub(in crate::pipelines) fn step0() -> Self {
 		Self::step(0)
 	}
 
 	/// Returns a leaf step path pointing at a step with the given index.
-	pub(crate) fn step(step_index: usize) -> Self {
+	pub(in crate::pipelines) fn step(step_index: usize) -> Self {
 		Self(smallvec![step_index + STEP0_INDEX])
 	}
 
 	/// Appends a new path to the current path.
-	pub(crate) fn concat(self, other: Self) -> Self {
+	pub(in crate::pipelines) fn concat(self, other: Self) -> Self {
 		let mut new_path = self.0;
 		new_path.extend(other.0);
 		Self(new_path)
@@ -191,15 +257,14 @@ impl StepPath {
 	/// Creates an empty step path. This is an invalid state and public APIs
 	/// should never be able to construct an empty `StepPath`.
 	///
-	/// # Safety
-	///
 	/// It is the caller's responsibility to ensure that the returned empty step
 	/// path is never used directly, but rather used as a placeholder for
-	/// constructing valid paths.
+	/// constructing valid paths or as a prefix during traversal or matching.
 	///
-	/// Empty step paths are used as a placeholder when traversing a pipeline.
-	pub(crate) unsafe fn empty() -> Self {
-		Self(smallvec![])
+	/// Empty step paths are used as a placeholder when traversing a pipeline or
+	/// as prefix matches for the root pipeline.
+	pub(in crate::pipelines) const fn empty() -> Self {
+		Self(SmallVec::new_const())
 	}
 }
 
@@ -223,6 +288,12 @@ impl core::fmt::Display for StepPath {
 			}
 		}
 		Ok(())
+	}
+}
+
+impl core::fmt::Debug for StepPath {
+	fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+		write!(f, "StepPath({self})")
 	}
 }
 
@@ -280,7 +351,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 
 	/// Returns a reference to the instance of the step that this path is
 	/// currently pointing to.
-	pub fn step(&self) -> &Arc<StepInstance<P>> {
+	pub fn instance(&self) -> &Arc<StepInstance<P>> {
 		let step_index = self.0.leaf();
 		let enclosing_pipeline = self.pipeline();
 
@@ -439,7 +510,9 @@ impl<P: Platform> StepNavigator<'_, P> {
 	/// pointed to by the current path.
 	///
 	/// If the current path points to a step, this will return itself.
-	/// Returns None if the current path points to an empty nested pipeline.
+	/// If the current path points to a pipeline, this will return the first
+	/// executable step in the pipeline.
+	/// Returns None if the current path points to an empty pipeline.
 	fn enter(self) -> Option<Self> {
 		let StepNavigator(path, ancestors) = self;
 		let enclosing_pipeline = ancestors.last().expect(
@@ -720,7 +793,7 @@ mod test {
 			.with_step(Step2)
 			.with_step(Step3);
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
-		assert_eq!(navigator.step().name(), "Step1");
+		assert_eq!(navigator.instance().name(), "Step1");
 
 		let pipeline = Pipeline::<Ethereum>::default()
 			.with_prologue(Prologue1)
@@ -728,12 +801,12 @@ mod test {
 			.with_step(Step2)
 			.with_step(Step3);
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
-		assert_eq!(navigator.step().name(), "Prologue1");
+		assert_eq!(navigator.instance().name(), "Prologue1");
 
 		let pipeline = Pipeline::<Ethereum>::default()
 			.with_pipeline(Loop, Pipeline::default().with_epilogue(Epilogue1));
 		let navigator = StepNavigator::entrypoint(&pipeline).unwrap();
-		assert_eq!(navigator.step().name(), "Epilogue1");
+		assert_eq!(navigator.instance().name(), "Epilogue1");
 	}
 
 	#[test]
@@ -863,7 +936,7 @@ mod test {
 		assert_eq!(cursor.0, StepPath::step0());
 		let navigator = cursor.0.navigator(&pipeline).unwrap();
 		assert_eq!(navigator.0, StepPath::step0());
-		assert_eq!(navigator.step().name(), cursor.step().name());
+		assert_eq!(navigator.instance().name(), cursor.instance().name());
 		assert_eq!(navigator.1.len(), cursor.1.len());
 
 		let cursor = cursor.next_ok().unwrap();
@@ -871,21 +944,21 @@ mod test {
 		let navigator = cursor.0.navigator(&pipeline).unwrap();
 		assert_eq!(navigator.0, StepPath::step(1));
 		assert_eq!(navigator.1.len(), cursor.1.len());
-		assert_eq!(navigator.step().name(), cursor.step().name());
+		assert_eq!(navigator.instance().name(), cursor.instance().name());
 
 		let cursor = cursor.next_ok().unwrap();
 		assert_eq!(cursor.0, StepPath::step(2).append_prologue());
 		let navigator = cursor.0.navigator(&pipeline).unwrap();
 		assert_eq!(navigator.1.len(), cursor.1.len());
 		assert_eq!(navigator.0, StepPath::step(2).append_prologue());
-		assert_eq!(navigator.step().name(), cursor.step().name());
+		assert_eq!(navigator.instance().name(), cursor.instance().name());
 
 		let cursor = cursor.next_ok().unwrap();
 		assert_eq!(cursor.0, StepPath::step(2).append_step(0));
 		let navigator = cursor.0.navigator(&pipeline).unwrap();
 		assert_eq!(navigator.1.len(), cursor.1.len());
 		assert_eq!(navigator.0, StepPath::step(2).append_step(0));
-		assert_eq!(navigator.step().name(), cursor.step().name());
+		assert_eq!(navigator.instance().name(), cursor.instance().name());
 
 		let cursor = cursor.next_ok().unwrap();
 		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
@@ -895,11 +968,144 @@ mod test {
 			navigator.0,
 			StepPath::step(2).append_step(1).append_prologue()
 		);
-		assert_eq!(navigator.step().name(), cursor.step().name());
+		assert_eq!(navigator.instance().name(), cursor.instance().name());
 
 		// navigator goes to first executable step rooted at the path
 		let navigator = StepPath::step(2).navigator(&pipeline).unwrap();
 		assert_eq!(navigator.0, StepPath::step(2).append_prologue());
-		assert_eq!(navigator.step().name(), "Prologue2");
+		assert_eq!(navigator.instance().name(), "Prologue2");
+	}
+
+	#[test]
+	fn is_ancestor_of() {
+		assert!(
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.is_ancestor_of(
+					&StepPath::step(1)
+						.append_step(2)
+						.append_step(3)
+						.append_step(4)
+				)
+		);
+
+		assert!(
+			!StepPath::step(2)
+				.append_step(2)
+				.append_step(3)
+				.is_ancestor_of(
+					&StepPath::step(1)
+						.append_step(2)
+						.append_step(3)
+						.append_step(4)
+				)
+		);
+	}
+
+	#[test]
+	fn common_ancestor() {
+		assert_eq!(
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.common_ancestor(
+					&StepPath::step(1)
+						.append_step(2)
+						.append_step(3)
+						.append_step(4)
+				),
+			StepPath::step(1).append_step(2).append_step(3)
+		);
+
+		assert_eq!(
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.common_ancestor(
+					&StepPath::step(2)
+						.append_step(2)
+						.append_step(3)
+						.append_step(4)
+				),
+			StepPath::empty()
+		);
+
+		assert_eq!(
+			StepPath::step(1)
+				.append_step(2)
+				.common_ancestor(&StepPath::step(1).append_step(2).append_step(3)),
+			StepPath::step(1).append_step(2)
+		);
+
+		assert_eq!(
+			StepPath::step(1).common_ancestor(&StepPath::step(1).append_step(2)),
+			StepPath::step(1)
+		);
+
+		assert_eq!(
+			StepPath::empty().common_ancestor(&StepPath::empty()),
+			StepPath::empty()
+		);
+	}
+
+	#[test]
+	fn between() {
+		let p1 = StepPath::step(1).append_step(2);
+		let p2 = StepPath::step(1)
+			.append_step(2)
+			.append_step(3)
+			.append_step(4);
+
+		assert_eq!(p1.between(&p2), vec![
+			StepPath::step(1).append_step(2).append_step(3),
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.append_step(4)
+		]);
+
+		assert_eq!(p2.between(&p1), vec![
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.append_step(4),
+			StepPath::step(1).append_step(2).append_step(3),
+		]);
+
+		assert_eq!(p1.between(&StepPath::empty()), vec![
+			StepPath::step(1).append_step(2),
+			StepPath::step(1)
+		]);
+
+		assert_eq!(p2.between(&StepPath::empty()), vec![
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.append_step(4),
+			StepPath::step(1).append_step(2).append_step(3),
+			StepPath::step(1).append_step(2),
+			StepPath::step(1)
+		]);
+
+		assert_eq!(StepPath::empty().between(&p2), vec![
+			StepPath::step(1),
+			StepPath::step(1).append_step(2),
+			StepPath::step(1).append_step(2).append_step(3),
+			StepPath::step(1)
+				.append_step(2)
+				.append_step(3)
+				.append_step(4),
+		]);
+
+		// no steps between
+		let p1 = StepPath::step(2).append_step(2);
+		let p2 = StepPath::step(1)
+			.append_step(2)
+			.append_step(3)
+			.append_step(4);
+
+		assert_eq!(p1.between(&p2), vec![]);
+		assert_eq!(p2.between(&p1), vec![]);
 	}
 }

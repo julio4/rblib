@@ -110,7 +110,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
+        "w": 2,
         "x": 0,
         "y": 1
       },
@@ -156,6 +156,76 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Time given to the builder to build a payload (block time).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 2,
+        "y": 1
+      },
+      "id": 37,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.2.0-16818804881",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "reth_rblib_payload_job_deadline",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Payload Job Deadline",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -178,7 +248,7 @@
       "gridPos": {
         "h": 4,
         "w": 3,
-        "x": 4,
+        "x": 5,
         "y": 1
       },
       "id": 18,
@@ -247,7 +317,7 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 7,
+        "x": 8,
         "y": 1
       },
       "id": 5,
@@ -313,7 +383,7 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 11,
+        "x": 12,
         "y": 1
       },
       "id": 6,
@@ -382,7 +452,7 @@
       "gridPos": {
         "h": 4,
         "w": 3,
-        "x": 15,
+        "x": 16,
         "y": 1
       },
       "id": 7,
@@ -448,7 +518,7 @@
       "gridPos": {
         "h": 4,
         "w": 3,
-        "x": 18,
+        "x": 19,
         "y": 1
       },
       "id": 8,
@@ -515,8 +585,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 21,
+        "w": 2,
+        "x": 22,
         "y": 1
       },
       "id": 4,
@@ -885,7 +955,9 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "blue",
+            "mode": "palette-classic-by-name",
+            "seriesBy": "last"
           },
           "custom": {
             "axisBorderShow": false,
@@ -893,10 +965,11 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 0,
+            "fillOpacity": 17,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -906,7 +979,7 @@
             "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
-            "pointSize": 5,
+            "pointSize": 8,
             "scaleDistribution": {
               "type": "linear"
             },
@@ -927,16 +1000,57 @@
               {
                 "color": "green",
                 "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           },
           "unit": "s"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reth_rblib_payload_job_duration"
+            },
+            "properties": [
+              {
+                "id": "custom.pointSize",
+                "value": 9
+              },
+              {
+                "id": "displayName",
+                "value": "Building Time"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "{__name__=\"reth_rblib_payload_job_deadline\", instance=\"host.docker.internal:5559\", job=\"my_exporter\"}"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Deadline"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reth_rblib_payload_job_deadline"
+            },
+            "properties": [
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 1
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
@@ -948,8 +1062,8 @@
       "options": {
         "legend": {
           "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
+          "displayMode": "hidden",
+          "placement": "right",
           "showLegend": false
         },
         "tooltip": {
@@ -966,10 +1080,23 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_job_duration{quantile=\"0.95\"}",
+          "expr": "reth_standard_pipeline_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "reth_rblib_payload_job_deadline",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
         }
       ],
       "title": "Payload Job Duration",
@@ -1264,7 +1391,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"reth_standard_step_1_1_invoked_per_job\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
+              "options": "reth_standard_step_1_1_invoked_per_job"
             },
             "properties": [
               {
@@ -1330,6 +1457,10 @@
           "refId": "D"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "exemplar": false,
           "expr": "reth_standard_step_1_1_exec_duration_per_job{quantile=\"0.95\"}",
@@ -1337,11 +1468,7 @@
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         },
         {
           "datasource": {
@@ -1487,6 +1614,10 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "exemplar": false,
           "expr": "reth_standard_step_1_1_exec_duration_per_job{quantile=\"0.95\"}",
@@ -1494,11 +1625,7 @@
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         },
         {
           "datasource": {
@@ -1627,18 +1754,18 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "builder",
           "expr": "reth_standard_step_1_1_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
-      "title": "AppendManyOrders Step Duration",
+      "title": "AppendOrders Step Duration",
       "type": "timeseries"
     },
     {
@@ -1725,18 +1852,18 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_1_exec_duration_per_job{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
-      "title": "AppendManyOrders Per Job Exec Time",
+      "title": "AppendOrders Per Job Exec Time",
       "type": "timeseries"
     },
     {
@@ -1823,15 +1950,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_2_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "OrderByPriorityFee Step Duration",
@@ -1921,15 +2048,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_2_exec_duration_per_job{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "OrderByPriorityFee Per Job Exec Time",
@@ -2019,15 +2146,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_e_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "BuilderEpilogue Exec Duration",
@@ -2117,15 +2244,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_3_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "RemoveRevertedTransactions Exec Duration",
@@ -2215,15 +2342,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_p_exec_duration_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "OptimismPrologue Step Duration",
@@ -2313,15 +2440,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_p_exec_duration_per_job{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "OptimismPrologue Per Job Exec Time",
@@ -2391,15 +2518,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_3_txs_dropped_total",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Total Dropped Transactions",
@@ -2456,15 +2583,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_3_gas_dropped_total",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Total Dropped Gas",
@@ -2554,15 +2681,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_3_txs_dropped_per_job{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Dropped Transactions Per Payload",
@@ -2652,15 +2779,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_3_gas_dropped_per_job{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Dropped Gas Per Payload",
@@ -2752,15 +2879,15 @@
       "pluginVersion": "12.2.0-16818804881",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "editorMode": "code",
           "expr": "reth_standard_step_1_3_txs_dropped_per_job{quantile=\"0.95\"} / reth_standard_step_1_1_per_job_txs_included{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          }
+          "refId": "A"
         }
       ],
       "title": "Drop rate per payload",
@@ -3089,6 +3216,7 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Flashblock - Standard Builder",
-  "version": 46,
+  "uid": "5211c89f-e5bc-4e58-8210-237af32b0d89",
+  "version": 4,
   "weekStart": ""
 }

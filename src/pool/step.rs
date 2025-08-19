@@ -186,8 +186,6 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
-		let mut run = Run::new(&self, &ctx, payload);
-
 		// Create an iterator that will demultiplex orders coming from the
 		// orders pool that supports bundles and the system transaction pool.
 		let mut orders = PoolsDemux::new(
@@ -195,6 +193,9 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 			self.order_pool.as_ref(),
 			ctx.block(),
 		);
+
+		// state of one step invocation
+		let mut run = Run::new(&self, &ctx, payload);
 
 		loop {
 			if run.should_stop() {
@@ -284,10 +285,11 @@ impl<'a, P: Platform> Run<'a, P> {
 	}
 
 	/// Returns `true` if the step should stop attempting to add new orders to the
-	/// payload. This result means that no new orders can be added to the payload
-	/// regardless of their content.
+	/// payload and return the current state of the payload to the pipeline. This
+	/// result means that no new orders can be added to the payload regardless of
+	/// their content.
 	fn should_stop(&self) -> bool {
-		if self.limits().deadline_reached() {
+		if self.ctx.deadline_reached() {
 			return true;
 		}
 
@@ -423,11 +425,13 @@ impl<'a, P: Platform> Run<'a, P> {
 		}
 
 		// checkpoint is valid and fits within limits.
+		let txs = candidate.transactions();
 		self.orders_included += 1;
-		self.txs_included += candidate.transactions().len();
+		self.txs_included += txs.len();
 		self.bundles_included += usize::from(candidate.is_bundle());
 		self.step.metrics().included(&self.payload);
 		self.step.per_job.included(&self.payload);
+		self.existing_txs.extend(txs.iter().map(|tx| tx.tx_hash()));
 
 		// extend the tip of the payload with the new checkpoint
 		self.payload = candidate;
@@ -533,6 +537,7 @@ struct Metrics {
 	pub per_job_bundles_included: Histogram,
 }
 
+#[allow(clippy::cast_possible_truncation)]
 impl Metrics {
 	pub fn considered<P: Platform>(&self, order: &Order<P>) {
 		self.orders_considered.increment(1);
@@ -542,7 +547,6 @@ impl Metrics {
 		if order.is_bundle() {
 			self.bundles_considered.increment(1);
 
-			#[allow(clippy::cast_possible_truncation)]
 			self
 				.considered_bundle_size_histogram
 				.record(order.transactions().len() as u32);
@@ -571,7 +575,6 @@ impl Metrics {
 				.bundled_txs_included
 				.increment(checkpoint.transactions().len() as u64);
 
-			#[allow(clippy::cast_possible_truncation)]
 			self
 				.included_bundle_size_histogram
 				.record(checkpoint.transactions().len() as u32);
@@ -616,6 +619,7 @@ struct PerJobCounters {
 	pub bundles_included: AtomicU32,
 }
 
+#[allow(clippy::cast_possible_truncation)]
 impl PerJobCounters {
 	pub fn reset(&self) {
 		self.orders_considered.store(0, Ordering::Relaxed);
@@ -630,7 +634,6 @@ impl PerJobCounters {
 	pub fn considered<P: Platform>(&self, order: &Order<P>) {
 		self.orders_considered.fetch_add(1, Ordering::Relaxed);
 
-		#[allow(clippy::cast_possible_truncation)]
 		self
 			.txs_considered
 			.fetch_add(order.transactions().len() as u32, Ordering::Relaxed);
@@ -643,7 +646,6 @@ impl PerJobCounters {
 	pub fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
 		self.orders_included.fetch_add(1, Ordering::Relaxed);
 
-		#[allow(clippy::cast_possible_truncation)]
 		self
 			.txs_included
 			.fetch_add(checkpoint.transactions().len() as u32, Ordering::Relaxed);

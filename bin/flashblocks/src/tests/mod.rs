@@ -197,7 +197,8 @@ pub fn random_bundle_with_reverts(
 		let signer = rng().random_range(0..SIGNERS_COUNT);
 		let nonce = nonces[signer];
 		let amount = 1_000_000 + i as u64;
-		#[allow(clippy::cast_possible_truncation)]
+
+		#[expect(clippy::cast_possible_truncation)]
 		let tx = transfer_tx_compact(signer as u32, nonce, amount);
 		txs.push(tx);
 		nonces[signer] += 1;
@@ -208,7 +209,8 @@ pub fn random_bundle_with_reverts(
 		let signer = rng().random_range(0..SIGNERS_COUNT);
 		let nonce = nonces[signer];
 		nonces[signer] += 1;
-		#[allow(clippy::cast_possible_truncation)]
+
+		#[expect(clippy::cast_possible_truncation)]
 		let signer = FundedAccounts::signer(signer as u32);
 		let amount = 2_000_000 + i as u64;
 		let mut tx = OpTransactionRequest::default()

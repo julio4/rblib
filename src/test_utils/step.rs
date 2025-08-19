@@ -15,7 +15,7 @@ use {
 #[allow(unused_macros)]
 macro_rules! fake_step {
 	($name:ident) => {
-		#[derive(Debug, Clone)]
+		#[derive(Debug, Default, Clone)]
 		pub struct $name;
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
@@ -24,6 +24,34 @@ macro_rules! fake_step {
 				_: $crate::prelude::StepContext<P>,
 			) -> $crate::prelude::ControlFlow<P> {
 				unimplemented!("Step `{}` is not implemented", stringify!($name))
+			}
+		}
+	};
+
+	($name:ident, noop_ok) => {
+		#[derive(Debug, Default, Clone)]
+		pub struct $name;
+		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
+			async fn step(
+				self: std::sync::Arc<Self>,
+				checkpoint: $crate::prelude::Checkpoint<P>,
+				_: $crate::prelude::StepContext<P>,
+			) -> $crate::prelude::ControlFlow<P> {
+				$crate::prelude::ControlFlow::Ok(checkpoint)
+			}
+		}
+	};
+
+	($name:ident, noop_break) => {
+		#[derive(Debug, Default, Clone)]
+		pub struct $name;
+		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
+			async fn step(
+				self: std::sync::Arc<Self>,
+				checkpoint: $crate::prelude::Checkpoint<P>,
+				_: $crate::prelude::StepContext<P>,
+			) -> $crate::prelude::ControlFlow<P> {
+				$crate::prelude::ControlFlow::Break(checkpoint)
 			}
 		}
 	};

@@ -1,7 +1,7 @@
 use {
 	super::{
 		events::EventsBus,
-		exec::navi::StepNavigator,
+		exec::{navi::StepNavigator, scope::Scope},
 		service::ServiceContext,
 	},
 	crate::{
@@ -11,7 +11,7 @@ use {
 	core::any::Any,
 	futures::Stream,
 	pool::TransactionPool,
-	std::sync::Arc,
+	std::{sync::Arc, time::Instant},
 };
 
 mod pool;
@@ -21,6 +21,7 @@ pub struct StepContext<Plat: Platform> {
 	pool: TransactionPool<Plat>,
 	limits: Limits,
 	events_bus: Arc<EventsBus<Plat>>,
+	started_at: Option<Instant>,
 }
 
 impl<P: Platform> StepContext<P> {
@@ -28,6 +29,7 @@ impl<P: Platform> StepContext<P> {
 		block: &BlockContext<P>,
 		service: &ServiceContext<P, Provider, Pool>,
 		step: &StepNavigator<P>,
+		scope: &Scope,
 	) -> Self
 	where
 		Pool: traits::PoolBounds<P>,
@@ -36,19 +38,15 @@ impl<P: Platform> StepContext<P> {
 		let block = block.clone();
 		let pool = TransactionPool::new(service.pool().clone());
 		let events_bus = Arc::clone(&step.root_pipeline().events);
-
-		// either inherit limits from the enclosing pipeline or use the default
-		// limits of the underlying platform if not explicitly specified.
-		let limits = match step.pipeline().limits() {
-			Some(limits) => limits.create(&block, None),
-			None => P::DefaultLimits::default().create(&block, None),
-		};
+		let limits = scope.limits().clone();
+		let started_at = scope.started_at();
 
 		Self {
 			block,
 			pool,
 			limits,
 			events_bus,
+			started_at,
 		}
 	}
 
@@ -79,6 +77,19 @@ impl<P: Platform> StepContext<P> {
 	/// Payload limits for the scope of the step.
 	pub const fn limits(&self) -> &Limits {
 		&self.limits
+	}
+
+	/// Checks if the scope of this step has been running longer than the deadline
+	/// specified in the limits. If the limits do not specify any deadline this
+	/// will return false.
+	pub fn deadline_reached(&self) -> bool {
+		if let (Some(deadline), Some(started_at)) =
+			(self.limits.deadline, self.started_at)
+		{
+			started_at.elapsed() >= deadline
+		} else {
+			false
+		}
 	}
 
 	/// Broadcasts an event to all subscribers.

@@ -9,7 +9,7 @@ use {
 		},
 	},
 	core::time::Duration,
-	std::time::{Instant, SystemTime, UNIX_EPOCH},
+	std::time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -31,17 +31,15 @@ impl LimitsFactory<Ethereum> for EthereumDefaultLimits {
 		let timestamp = block.attributes().timestamp();
 		let parent_gas_limit = block.parent().gas_limit();
 		let gas_limit = self.0.gas_limit(parent_gas_limit);
-		let mut limits = Limits::with_gas_limit(gas_limit).with_deadline(
-			Instant::now()
-				+ Duration::from_secs(
-					block.attributes().timestamp().saturating_sub(
-						SystemTime::now()
-							.duration_since(UNIX_EPOCH)
-							.unwrap_or_default()
-							.as_secs(),
-					),
+		let mut limits =
+			Limits::with_gas_limit(gas_limit).with_deadline(Duration::from_secs(
+				block.attributes().timestamp().saturating_sub(
+					SystemTime::now()
+						.duration_since(UNIX_EPOCH)
+						.unwrap_or_default()
+						.as_secs(),
 				),
-		);
+			));
 
 		if let Some(blob_params) =
 			block.chainspec().blob_params_at_timestamp(timestamp)

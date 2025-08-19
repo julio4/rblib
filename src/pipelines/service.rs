@@ -74,10 +74,10 @@ where
 			);
 
 			let metrics_scope = format!("{}_step_{}", pipeline.name(), navi.path());
-			navi.step().init_metrics(&metrics_scope);
+			navi.instance().init_metrics(&metrics_scope);
 
 			let init_ctx = InitContext::new(Arc::clone(&provider), metrics_scope);
-			navi.step().setup(init_ctx).await?;
+			navi.instance().setup(init_ctx).await?;
 		}
 
 		let (service, builder) = PayloadBuilderService::new(

@@ -12,19 +12,21 @@
 
 use {
 	super::service::ServiceContext,
-	crate::{prelude::*, reth::payload::builder::PayloadBuilderError},
+	crate::{prelude::*, reth},
 	core::{
 		pin::Pin,
 		task::{Context, Poll},
 	},
 	futures::FutureExt,
 	navi::{StepNavigator, StepPath},
-	reth_payload_builder::PayloadId,
+	reth::payload::builder::{PayloadBuilderError, PayloadId},
+	scope::RootScope,
 	std::{sync::Arc, time::Instant},
 	tracing::{debug, trace},
 };
 
 pub(super) mod navi;
+pub(super) mod scope;
 
 type PipelineOutput<P: Platform> =
 	Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>;
@@ -42,8 +44,21 @@ where
 	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
+	/// The current state of the executor state machine.
 	cursor: Cursor<P>,
-	context: ExecContext<P, Provider, Pool>,
+
+	// The pipeline that is being executed.
+	pipeline: Arc<Pipeline<P>>,
+
+	// The block context that is being built.
+	block: BlockContext<P>,
+
+	// The reth payload builder service context that is running this payload job.
+	service: Arc<ServiceContext<P, Provider, Pool>>,
+
+	/// Execution scopes. This root scope represents the top-level pipeline that
+	/// may contain nested scopes for each nested pipeline.
+	scope: Arc<RootScope>,
 }
 
 impl<
@@ -58,44 +73,52 @@ impl<
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider, Pool>>,
 	) -> Self {
-		// Emit a system event for this new payload job.
+		// Emit a system event for this new payload job and record initial metrics.
 		pipeline.events.publish(PayloadJobStarted(block.clone()));
 		service.metrics().jobs_started.increment(1);
+		service
+			.metrics()
+			.record_payload_job_attributes::<P>(block.attributes());
+
+		// initialize pipeline scopes
+		let root = Arc::new(RootScope::new(&pipeline, &block));
 
 		// Initially set the execution cursor to initializing state, that will call
 		// all `before_job` methods of the steps in the pipeline.
-
 		Self {
 			cursor: Cursor::<P>::Initializing({
 				let block = block.clone();
 				let pipeline = Arc::clone(&pipeline);
 				let service = Arc::clone(&service);
+				let scope = Arc::clone(&root);
+
 				async move {
+					// enter the scope of the root pipeline
+					scope.enter();
+
 					for step in pipeline.iter_steps() {
 						let navi = step.navigator(&pipeline).expect(
 							"Invalid step path. This is a bug in the pipeline executor \
 							 implementation.",
 						);
-						let context = StepContext::new(&block, &service, &navi);
-						navi.step().before_job(context).await?;
+						let scope = scope.of(&step).expect("invalid step path");
+						let ctx = StepContext::new(&block, &service, &navi, scope);
+						navi.instance().before_job(ctx).await?;
 					}
 					Ok(())
 				}
 				.boxed()
 			}),
-
-			context: ExecContext {
-				pipeline,
-				block,
-				service,
-				started_at: Instant::now(),
-			},
+			pipeline,
+			block,
+			service,
+			scope: root,
 		}
 	}
 
 	/// Returns the payload id for which we are building a payload.
 	pub fn payload_id(&self) -> PayloadId {
-		self.context.block.payload_id()
+		self.block.payload_id()
 	}
 }
 
@@ -106,18 +129,9 @@ impl<
 	Pool: traits::PoolBounds<P>,
 > PipelineExecutor<P, Provider, Pool>
 {
-	fn create_step_context(&self, step: &StepPath) -> StepContext<P> {
-		let pipeline = Arc::clone(&self.context.pipeline);
-		let step = step.navigator(&pipeline).expect(
-			"Invalid step path. This is a bug in the pipeline executor \
-			 implementation.",
-		);
-
-		StepContext::new(&self.context.block, &self.context.service, &step)
-	}
-
 	/// This method creates a future that encapsulates the execution an an async
-	/// step.
+	/// step. The created future will be held inside `Cursor::StepInProgress` and
+	/// polled until it resolves.
 	///
 	/// It will prepare the step context and all the information a pipeline step
 	/// needs to execute, then create a future object that will be stored in the
@@ -127,18 +141,19 @@ impl<
 		path: &StepPath,
 		input: Checkpoint<P>,
 	) -> Pin<Box<dyn Future<Output = ControlFlow<P>> + Send>> {
-		let context = self.create_step_context(path);
-		let step = Arc::clone(
-			path
-				.navigator(&self.context.pipeline)
-				.expect(
-					"Step path is unreachable. This is a bug in the pipeline executor \
-					 implementation.",
-				)
-				.step(),
+		let scope = self.scope.of(path).expect(
+			"Invalid step path. This is a bug in the pipeline executor \
+			 implementation.",
 		);
 
-		async move { step.step(input, context).await }.boxed()
+		let step_navi = path.navigator(&self.pipeline).expect(
+			"Invalid step path. This is a bug in the pipeline executor \
+			 implementation.",
+		);
+
+		let ctx = StepContext::new(&self.block, &self.service, &step_navi, scope);
+		let step = Arc::clone(step_navi.instance());
+		async move { step.step(input, ctx).await }.boxed()
 	}
 
 	/// This method handles the control flow of the pipeline execution.
@@ -148,12 +163,12 @@ impl<
 	/// structure.
 	fn advance_cursor(
 		&self,
-		path: &StepPath,
+		current_path: &StepPath,
 		output: ControlFlow<P>,
 	) -> Cursor<P> {
 		// we need this type to determine the next step to execute
 		// based on the current step output.
-		let navigator = path.navigator(&self.context.pipeline).expect(
+		let navigator = current_path.navigator(&self.pipeline).expect(
 			"Step path is unreachable. This is a bug in the pipeline executor \
 			 implementation.",
 		);
@@ -179,42 +194,36 @@ impl<
 			// If there is no next step, we are done with the pipeline execution.
 			// We can finalize the pipeline and return the output as the final
 			// result of the pipeline run.
-			return Cursor::Finalizing(
-				self.finalize(
-					P::build_payload(input, self.context.service.provider())
-						.map_err(Arc::new),
-				),
-			);
+			return Cursor::Finalizing(self.finalize(
+				P::build_payload(input, self.service.provider()).map_err(Arc::new),
+			));
 		};
 
 		// there is a next step to be executed, create a cursor that will
 		// start running the next step with the output of the current step
 		// as input on next executor future poll
+		self.scope.switch_context(step.path());
 		Cursor::BeforeStep(step.into(), input)
 	}
 
 	/// After pipeline steps are initialized, this method will identify the first
 	/// step to execute in the pipeline and prepare the cursor to run it.
 	fn first_step(&self) -> Cursor<P> {
-		let Some(navigator) = StepNavigator::entrypoint(&self.context.pipeline)
-		else {
+		let Some(navigator) = StepNavigator::entrypoint(&self.pipeline) else {
 			debug!(
 				"empty pipeline, building empty payload for attributes: {:?}",
-				self.context.block.attributes()
+				self.block.attributes()
 			);
 
 			return Cursor::<P>::Finalizing(
 				self.finalize(
-					P::build_payload(
-						self.context.block.start(),
-						self.context.service.provider(),
-					)
-					.map_err(Arc::new),
+					P::build_payload(self.block.start(), self.service.provider())
+						.map_err(Arc::new),
 				),
 			);
 		};
 
-		Cursor::BeforeStep(navigator.into(), self.context.block.start())
+		Cursor::BeforeStep(navigator.into(), self.block.start())
 	}
 
 	/// This method will walk through the pipeline steps and invoke the
@@ -224,10 +233,11 @@ impl<
 		output: PipelineOutput<P>,
 	) -> Pin<Box<dyn Future<Output = PipelineOutput<P>> + Send>> {
 		let output = Arc::new(output.map_err(|e| clone_payload_error_lossy(&e)));
-		let pipeline = Arc::clone(&self.context.pipeline);
-		let block = self.context.block.clone();
+		let pipeline = Arc::clone(&self.pipeline);
+		let block = self.block.clone();
 		let pipeline = Arc::clone(&pipeline);
-		let service = Arc::clone(&self.context.service);
+		let service = Arc::clone(&self.service);
+		let scope = Arc::clone(&self.scope);
 
 		async move {
 			// invoke the `after_job` method of each step in the pipeline
@@ -238,9 +248,13 @@ impl<
 					"Invalid step path. This is a bug in the pipeline executor \
 					 implementation.",
 				);
-				let ctx = StepContext::new(&block, &service, &navi);
-				navi.step().after_job(ctx, output.clone()).await?;
+				let scope = scope.of(&step).expect("invalid step path");
+				let ctx = StepContext::new(&block, &service, &navi, scope);
+				navi.instance().after_job(ctx, output.clone()).await?;
 			}
+
+			// leave the scope of the root pipeline
+			scope.leave();
 
 			Arc::into_inner(output)
 				.expect("unexpected > 1 strong reference count")
@@ -267,13 +281,13 @@ where
 			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
 				match output {
 					Ok(()) => {
-						trace!("{} initialized successfully", executor.context.pipeline);
+						trace!("{} initialized successfully", executor.pipeline);
 						executor.cursor = executor.first_step();
 					}
 					Err(error) => {
 						trace!(
 							"{} initialization failed with error: {error:?}",
-							executor.context.pipeline
+							executor.pipeline
 						);
 						// If the initialization failed, we immediately finalize the
 						// pipeline with the error that occurred during initialization
@@ -282,7 +296,7 @@ where
 							Cursor::Finalizing(executor.finalize(Err(error.into())));
 					}
 				}
-				trace!("{} initializing completed", executor.context.pipeline);
+				trace!("{} initializing completed", executor.pipeline);
 			}
 
 			// tell the async runtime to poll again because we are still initializing
@@ -293,22 +307,15 @@ where
 		// Now we are running the `after_job` of each step in the pipeline.
 		if let Cursor::Finalizing(ref mut future) = executor.cursor {
 			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
-				trace!(
-					"{} completed with output: {output:#?}",
-					executor.context.pipeline
-				);
+				trace!("{} completed with output: {output:#?}", executor.pipeline);
 
 				// Execution of this pipeline has completed, This resolves the
 				// executor future with the final output of the pipeline. Also
 				// emit an appropriate system event and record metrics.
 
-				let payload_id = executor.context.block.payload_id();
-				let events_bus = &executor.context.pipeline.events;
-				let metrics = executor.context.service.metrics();
-
-				metrics
-					.job_duration
-					.record(executor.context.started_at.elapsed());
+				let payload_id = executor.block.payload_id();
+				let events_bus = &executor.pipeline.events;
+				let metrics = executor.service.metrics();
 
 				match &output {
 					Ok(built_payload) => {
@@ -317,7 +324,7 @@ where
 							built_payload: built_payload.clone(),
 						});
 						metrics.jobs_completed.increment(1);
-						metrics.record_payload::<P>(built_payload, &executor.context.block);
+						metrics.record_payload::<P>(built_payload, &executor.block);
 					}
 					Err(error) => {
 						events_bus.publish(PayloadJobFailed {
@@ -338,7 +345,7 @@ where
 		if matches!(executor.cursor, Cursor::BeforeStep(_, _)) {
 			// If the cursor is in the BeforeStep state, we need to run the next
 			// step of the pipeline. Steps are async futures, so we need to store
-			// their instance while they are running and being polled.
+			// their instance while they are running and being polled until resolved.
 
 			let Cursor::BeforeStep(path, input) =
 				std::mem::replace(&mut executor.cursor, Cursor::PreparingStep)
@@ -346,10 +353,9 @@ where
 				unreachable!("bug in PipelineExecutor state machine");
 			};
 
-			trace!("{} will execute step {path:?}", executor.context.pipeline,);
-
-			let running_future = executor.execute_step(&path, input);
-			executor.cursor = Cursor::StepInProgress(path, running_future);
+			trace!("{} will execute step {path}", executor.pipeline);
+			let future = executor.execute_step(&path, input);
+			executor.cursor = Cursor::StepInProgress(path, future);
 			cx.waker().wake_by_ref(); // tell the async runtime to poll again
 		}
 
@@ -359,7 +365,7 @@ where
 			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
 				trace!(
 					"{} step {path:?} completed with output: {output:#?}",
-					executor.context.pipeline
+					executor.pipeline
 				);
 
 				// step has completed, we can advance the cursor
@@ -371,24 +377,6 @@ where
 
 		Poll::Pending
 	}
-}
-
-struct ExecContext<P, Provider, Pool>
-where
-	P: Platform,
-	Provider: traits::ProviderBounds<P>,
-	Pool: traits::PoolBounds<P>,
-{
-	// The pipeline that is being executed.
-	pipeline: Arc<Pipeline<P>>,
-	// The block context that is being built.
-	block: BlockContext<P>,
-	// The service context that provides access to the transaction pool and state
-	// provider.
-	service: Arc<ServiceContext<P, Provider, Pool>>,
-
-	/// The time when a payload job was created.
-	started_at: Instant,
 }
 
 /// Keeps track of the current pipeline execution progress.

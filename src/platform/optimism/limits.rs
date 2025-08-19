@@ -10,7 +10,7 @@ use {
 		},
 	},
 	core::time::Duration,
-	std::time::{Instant, SystemTime, UNIX_EPOCH},
+	std::time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -39,21 +39,18 @@ where
 				.gas_limit
 				.unwrap_or_else(|| block.parent().header().gas_limit()),
 		)
-		.with_deadline(
-			Instant::now()
-				+ Duration::from_secs(
-					block
-						.attributes()
-						.payload_attributes
-						.timestamp
-						.saturating_sub(
-							SystemTime::now()
-								.duration_since(UNIX_EPOCH)
-								.unwrap_or_default()
-								.as_secs(),
-						),
+		.with_deadline(Duration::from_secs(
+			block
+				.attributes()
+				.payload_attributes
+				.timestamp
+				.saturating_sub(
+					SystemTime::now()
+						.duration_since(UNIX_EPOCH)
+						.unwrap_or_default()
+						.as_secs(),
 				),
-		);
+		));
 
 		if let Some(blob_params) = block
 			.chainspec()

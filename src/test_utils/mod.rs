@@ -52,9 +52,7 @@ pub const TEST_COINBASE: crate::alloy::primitives::Address = //
 fn init_test_logging() {
 	use tracing_subscriber::{filter::filter_fn, prelude::*};
 	if let Ok(v) = std::env::var("TEST_TRACE") {
-		#[allow(clippy::match_same_arms)]
 		let level = match v.as_str() {
-			"false" | "off" => return,
 			"true" | "debug" | "on" => tracing::Level::DEBUG,
 			"trace" => tracing::Level::TRACE,
 			"info" => tracing::Level::INFO,

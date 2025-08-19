@@ -189,7 +189,7 @@ impl<P: Platform> StepInstance<P> {
 			metrics.before_job_exec_duration_histogram.record(elapsed);
 			self.per_job.increment_exec_time(elapsed);
 
-			#[allow(clippy::cast_possible_truncation)]
+			#[expect(clippy::cast_possible_truncation)]
 			metrics
 				.before_job_exec_duration_total_millis
 				.increment(elapsed.as_millis() as u64);
@@ -224,7 +224,7 @@ impl<P: Platform> StepInstance<P> {
 			metrics.after_job_exec_duration_histogram.record(elapsed);
 			self.per_job.increment_exec_time(elapsed);
 
-			#[allow(clippy::cast_possible_truncation)]
+			#[expect(clippy::cast_possible_truncation)]
 			metrics
 				.after_job_exec_duration_total_millis
 				.increment(elapsed.as_millis() as u64);
@@ -235,7 +235,8 @@ impl<P: Platform> StepInstance<P> {
 			metrics.invoked_total.increment(invoke_count.into());
 			metrics.invoked_per_job.record(invoke_count);
 			metrics.exec_duration_per_job.record(per_job_duration);
-			#[allow(clippy::cast_possible_truncation)]
+
+			#[expect(clippy::cast_possible_truncation)]
 			metrics
 				.exec_duration_total_millis
 				.increment(per_job_duration.as_millis() as u64);

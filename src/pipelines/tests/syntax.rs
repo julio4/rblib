@@ -139,13 +139,12 @@ fn flashblocks_example_closure() {
 #[tokio::test]
 #[allow(dead_code)]
 #[cfg(feature = "optimism")]
-async fn flashblocks_example_concise() {
-	use core::time::Duration;
+async fn flashblocks_example_concise_fractional() {
+	use core::num::NonZero;
 
 	#[derive(Debug, Clone)]
 	struct FlashblocksConfig {
-		count: usize,
-		interval: Duration,
+		count: NonZero<u32>,
 	}
 
 	fake_step!(WebSocketBeginBlock);
@@ -153,22 +152,12 @@ async fn flashblocks_example_concise() {
 	fake_step!(FlashblockEpilogue);
 	fake_step!(PublishToWebSocket, FlashblocksConfig);
 
-	#[derive(Debug)]
-	struct FlashblockLimits(FlashblocksConfig);
-	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
-		fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
-			unimplemented!()
-		}
-	}
-
 	let config = FlashblocksConfig {
-		count: 5,
-		interval: Duration::from_millis(200),
+		count: NonZero::new(5).unwrap(),
 	};
 
-	let pipeline = Pipeline::<Optimism>::default()
+	let pipeline = Pipeline::<Optimism>::default() // deadline 1
 		.with_prologue(OptimismPrologue)
-		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()))
 		.with_step(WebSocketBeginBlock)
 		.with_pipeline(Loop, |nested: Pipeline<Optimism>| {
 			nested
@@ -180,12 +169,67 @@ async fn flashblocks_example_concise() {
 						OrderByCoinbaseProfit::default(),
 						RemoveRevertedTransactions::default(),
 					)
-						.with_limits(FlashblockLimits(config.clone()))
-						.with_epilogue(FlashblockEpilogue),
+						.with_limits(
+							Scaled::new()
+								.deadline(Fraction(1, config.count))
+								.gas(Fraction(1, config.count)),
+						)
+						.with_epilogue(FlashblockEpilogue), // deadline 2, derived from 1
 				)
 				.with_step(PublishToWebSocket(config))
 		})
-		.with_step(WebSocketEndBlock);
+		.with_step(WebSocketEndBlock)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
+
+	info!("{pipeline:#?}");
+}
+
+#[tokio::test]
+#[allow(dead_code)]
+#[cfg(feature = "optimism")]
+async fn flashblocks_example_concise_fixed_interval() {
+	use core::{num::NonZero, time::Duration};
+
+	#[derive(Debug, Clone)]
+	struct FlashblocksConfig {
+		block_interval: Duration,
+		max_gas_per_block: Fraction,
+	}
+
+	fake_step!(WebSocketBeginBlock);
+	fake_step!(WebSocketEndBlock);
+	fake_step!(FlashblockEpilogue);
+	fake_step!(PublishToWebSocket, FlashblocksConfig);
+
+	let config = FlashblocksConfig {
+		block_interval: Duration::from_millis(250),
+		max_gas_per_block: Fraction(1, NonZero::new(3).unwrap()),
+	};
+
+	let pipeline = Pipeline::<Optimism>::default() // deadline 1
+		.with_prologue(OptimismPrologue)
+		.with_step(WebSocketBeginBlock)
+		.with_pipeline(Loop, |nested: Pipeline<Optimism>| {
+			nested
+				.with_pipeline(
+					Loop,
+					(
+						AppendOrders::default(),
+						OrderByPriorityFee::default(),
+						OrderByCoinbaseProfit::default(),
+						RemoveRevertedTransactions::default(),
+					)
+						.with_limits(
+							Scaled::new()
+								.deadline(Fixed(config.block_interval))
+								.gas(config.max_gas_per_block),
+						)
+						.with_epilogue(FlashblockEpilogue), // deadline 2, derived from 1
+				)
+				.with_step(PublishToWebSocket(config))
+		})
+		.with_step(WebSocketEndBlock)
+		.with_epilogue(BuilderEpilogue::with_signer(LocalSigner::random()));
 
 	info!("{pipeline:#?}");
 }

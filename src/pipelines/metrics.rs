@@ -55,6 +55,10 @@ pub struct Payload {
 	/// The time given by the EL for the payload job to complete.
 	/// This can be also interpretted as the block time.
 	pub job_deadline: Gauge,
+
+	/// The latest block number produced by the payload builder.
+	/// This is not a `Gauge` because `Gauge` does not support `u64`.
+	pub block_number: Counter,
 }
 
 impl Payload {
@@ -90,6 +94,8 @@ impl Payload {
 		self
 			.tx_count_total
 			.increment(payload.block().transaction_count() as u64);
+
+		self.block_number.absolute(payload.block().number());
 	}
 
 	pub fn record_payload_job_attributes<P: Platform>(

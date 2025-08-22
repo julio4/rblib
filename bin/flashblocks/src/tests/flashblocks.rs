@@ -4,9 +4,7 @@
 
 use {
 	crate::{FlashBlocks, tests::*},
-	core::time::Duration,
 	rblib::alloy::{eips::Decodable2718, network::BlockResponse},
-	tracing::debug,
 };
 
 #[tokio::test]
@@ -16,7 +14,6 @@ async fn empty_blocks_smoke() -> eyre::Result<()> {
 
 	for i in 1..=5 {
 		let block = node.next_block().await?;
-		debug!("produced block: {block:#?}");
 
 		assert_eq!(block.number(), i);
 		assert_eq!(block.tx_count(), 1); // sequencer deposit tx
@@ -38,32 +35,29 @@ async fn empty_blocks_smoke() -> eyre::Result<()> {
 #[tokio::test]
 async fn blocks_with_txs_smoke() -> eyre::Result<()> {
 	const BLOCKS: usize = 5;
-	const TXS_PER_BLOCK: usize = 15;
 
 	let (node, ws_addr) = FlashBlocks::test_node_with_flashblocks_on().await?;
 	let ws = WebSocketObserver::new(ws_addr).await?;
 
 	for i in 1..=BLOCKS {
-		let mut txs = Vec::with_capacity(TXS_PER_BLOCK);
+		let mut send_txs = Vec::new();
+
 		let block = node
 			.while_next_block(async {
-				for _ in 0..TXS_PER_BLOCK {
+				loop {
 					let tx = node
 						.send_tx(node.build_tx().transfer().value(U256::from(1_234_000)))
 						.await?;
-					txs.push(*tx.tx_hash());
-					tokio::time::sleep(Duration::from_millis(10)).await;
+					tokio::task::yield_now().await;
+					send_txs.push(*tx.tx_hash());
 				}
-				Ok(())
 			})
 			.await?;
 
-		debug!("produced block: {block:#?}");
-
 		assert_eq!(block.number(), i as u64);
-		assert_eq!(block.tx_count(), 1 + TXS_PER_BLOCK); // sequencer deposit tx + user txs
 		assert_has_sequencer_tx!(&block);
-		assert!(block.includes(txs));
+		assert!(block.tx_count() > send_txs.len());
+		assert!(block.includes(send_txs));
 
 		let fblocks = ws.by_block_number(block.number());
 

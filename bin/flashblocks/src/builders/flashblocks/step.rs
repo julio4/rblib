@@ -76,7 +76,7 @@ impl Step<FlashBlocks> for PublishFlashblock {
 			state_root: B256::ZERO,       // TODO: compute state root
 			receipts_root: B256::ZERO,    // TODO: compute receipts root
 			logs_bloom: Bloom::default(), // TODO
-			gas_used: this_block_span.gas_used(),
+			gas_used: payload.cumulative_gas_used(),
 			block_hash: B256::ZERO, // TODO: compute block hash
 			transactions: this_block_span
 				.transactions()

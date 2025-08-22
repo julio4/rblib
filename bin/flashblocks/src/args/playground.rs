@@ -34,7 +34,6 @@ use {
 	core::{
 		net::{IpAddr, Ipv4Addr, SocketAddr},
 		ops::Range,
-		time::Duration,
 	},
 	eyre::{Result, eyre},
 	rand::{Rng, rng},
@@ -50,7 +49,6 @@ use {
 	},
 	reth_network_peers::TrustedPeer,
 	secp256k1::SecretKey,
-	serde_json::Value,
 	std::{
 		fs::read_to_string,
 		path::{Path, PathBuf},
@@ -80,9 +78,6 @@ pub struct PlaygroundOptions {
 
 	/// Sets the `node.network.trusted_peers` in `NodeCommand`
 	pub trusted_peer: TrustedPeer,
-
-	/// Sets `node.ext.flashblock_block_time` in `NodeCommand`
-	pub chain_block_time: Duration,
 }
 
 impl PlaygroundOptions {
@@ -103,7 +98,6 @@ impl PlaygroundOptions {
 		let http_port = pick_preferred_port(2222, 3000..9999);
 		let authrpc_jwtsecret = existing_path(path, "jwtsecret")?.into();
 		let port = pick_preferred_port(30333, 30000..65535);
-		let chain_block_time = extract_chain_block_time(path)?;
 		let authrpc_port = extract_authrpc_port(path)?;
 		let trusted_peer = TrustedPeer::from_secret_key(
 			Host::Ipv4(Ipv4Addr::LOCALHOST),
@@ -119,7 +113,6 @@ impl PlaygroundOptions {
 			authrpc_jwtsecret,
 			port,
 			trusted_peer,
-			chain_block_time,
 		})
 	}
 
@@ -174,11 +167,6 @@ impl PlaygroundOptions {
 			node.network.discovery.disable_discovery = true;
 		}
 
-		#[expect(clippy::cast_possible_truncation)]
-		if matches.value_source("chain_block_time").is_default() {
-			node.ext.chain_block_time = self.chain_block_time.as_millis() as u64;
-		}
-
 		cli
 	}
 }
@@ -219,18 +207,6 @@ fn pick_preferred_port(preferred: u16, fallback_range: Range<u16>) -> u16 {
 fn is_port_free(port: u16) -> bool {
 	let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
 	std::net::TcpListener::bind(socket).is_ok()
-}
-
-fn extract_chain_block_time(basepath: &Path) -> Result<Duration> {
-	Ok(Duration::from_secs(
-		serde_json::from_str::<Value>(&read_to_string(existing_path(
-			basepath,
-			"rollup.json",
-		)?)?)?
-		.get("block_time")
-		.and_then(|v| v.as_u64())
-		.ok_or_else(|| eyre::eyre!("Missing chain_block_time in rollup.json"))?,
-	))
 }
 
 fn extract_deterministic_p2p_key(basepath: &Path) -> Result<SecretKey> {

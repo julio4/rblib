@@ -1,19 +1,10 @@
 use {
-	crate::{
-		args::OpRbuilderArgs,
-		build_pipeline,
-		bundle::FlashBlocksBundle,
-		platform::FlashBlocks,
-		rpc::TransactionStatusRpc,
-	},
+	crate::{args::BuilderArgs, bundle::FlashBlocksBundle},
 	rand::{Rng, rng},
 	rblib::{
 		alloy::{
 			network::{TransactionBuilder, TransactionResponse, TxSignerSync},
-			optimism::{
-				consensus::{DEPOSIT_TX_TYPE_ID, OpTxEnvelope},
-				rpc_types::OpTransactionRequest,
-			},
+			optimism::{consensus::OpTxEnvelope, rpc_types::OpTransactionRequest},
 			primitives::{Address, U256},
 			signers::local::PrivateKeySigner,
 		},
@@ -21,11 +12,7 @@ use {
 		prelude::*,
 		reth::{
 			core::primitives::SignedTransaction,
-			optimism::{
-				chainspec,
-				node::{OpEngineApiBuilder, OpEngineValidatorBuilder, OpNode},
-				primitives::OpTransactionSigned,
-			},
+			optimism::primitives::OpTransactionSigned,
 			primitives::Recovered,
 		},
 		test_utils::*,
@@ -33,91 +20,15 @@ use {
 };
 
 mod bundle;
+mod flashblocks;
 mod ordering;
 mod revert;
 mod rpc;
-mod smoke;
+mod standard;
 mod txpool;
+mod utils;
 
-impl FlashBlocks {
-	pub async fn test_node_with_cli_args(
-		cli_args: OpRbuilderArgs,
-	) -> eyre::Result<LocalNode<FlashBlocks, OptimismConsensusDriver>> {
-		FlashBlocks::create_test_node_with_args(Pipeline::default(), cli_args).await
-	}
-
-	pub async fn test_node()
-	-> eyre::Result<LocalNode<FlashBlocks, OptimismConsensusDriver>> {
-		FlashBlocks::test_node_with_cli_args(OpRbuilderArgs::default()).await
-	}
-
-	pub async fn test_node_with_builder_signer()
-	-> eyre::Result<LocalNode<FlashBlocks, OptimismConsensusDriver>> {
-		FlashBlocks::test_node_with_cli_args(OpRbuilderArgs {
-			builder_signer: Some(FundedAccounts::signer(0).into()),
-			..Default::default()
-		})
-		.await
-	}
-}
-
-impl TestNodeFactory<FlashBlocks> for FlashBlocks {
-	type CliExtArgs = OpRbuilderArgs;
-	type ConsensusDriver = OptimismConsensusDriver;
-
-	/// Notes:
-	///
-	/// - Here we are ignoring the `pipeline` argument because we are not
-	///   interested in running arbitrary pipelines for this platform, instead we
-	///   construct the pipeline based on the CLI arguments.
-	async fn create_test_node_with_args(
-		_: Pipeline<FlashBlocks>,
-		cli_args: Self::CliExtArgs,
-	) -> eyre::Result<LocalNode<FlashBlocks, Self::ConsensusDriver>> {
-		let chainspec = chainspec::OP_DEV.as_ref().clone().with_funded_accounts();
-		LocalNode::new(OptimismConsensusDriver, chainspec, move |builder| {
-			let pool = OrderPool::<FlashBlocks>::default();
-			let pipeline = build_pipeline(&cli_args, &pool);
-			let opnode = OpNode::new(cli_args.rollup_args.clone());
-			let tx_status_rpc = TransactionStatusRpc::new(&pipeline);
-
-			builder
-				.with_types::<OpNode>()
-				.with_components(
-					opnode
-						.components()
-						.attach_pool(&pool)
-						.payload(pipeline.into_service()),
-				)
-				.with_add_ons(opnode
-						.add_ons_builder::<types::RpcTypes<FlashBlocks>>()
-						.build::<_, OpEngineValidatorBuilder, OpEngineApiBuilder<OpEngineValidatorBuilder>>())
-				.extend_rpc_modules(move |mut rpc_ctx| {
-					pool.attach_rpc(&mut rpc_ctx)?;
-					tx_status_rpc.attach_rpc(&mut rpc_ctx)?;
-					Ok(())
-				})
-		})
-		.await
-	}
-}
-
-#[tokio::test]
-async fn test_node_for_flashblocks_platform_smoke() -> eyre::Result<()> {
-	let node = FlashBlocks::test_node().await?;
-	assert_eq!(node.chain_id(), 1337);
-
-	let block = node.next_block().await?;
-
-	assert_eq!(block.header.number, 1);
-	assert_eq!(block.tx_count(), 1); // sequencer deposit tx
-	assert_eq!(
-		block.tx(0).unwrap().transaction_type().unwrap(),
-		DEPOSIT_TX_TYPE_ID,
-		"Optimism sequencer transaction should be a deposit tx"
-	);
-	Ok(())
-}
+pub use utils::*;
 
 macro_rules! assert_is_sequencer_tx {
 	($tx:expr) => {

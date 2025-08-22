@@ -180,6 +180,13 @@ where
 		self.block_time = block_time.max(Self::MIN_BLOCK_TIME);
 	}
 
+	/// The time interval between `engine_forkchoiceUpdate` and
+	/// `engine_getPayload` Engine API calls, also specifies the timestamp that
+	/// is assigned to the `payloadAttributes` for the next block.
+	pub const fn block_time(&self) -> Duration {
+		self.block_time
+	}
+
 	/// Returns the node configuration used to create this local node.
 	pub const fn config(&self) -> &NodeConfig<types::ChainSpec<P>> {
 		&self.config
@@ -380,6 +387,20 @@ where
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 		self.get_mut().exit_future.poll_unpin(cx)
 	}
+}
+
+unsafe impl<P, C> Sync for LocalNode<P, C>
+where
+	P: PlatformWithRpcTypes,
+	C: ConsensusDriver<P>,
+{
+}
+
+unsafe impl<P, C> Send for LocalNode<P, C>
+where
+	P: PlatformWithRpcTypes,
+	C: ConsensusDriver<P>,
+{
 }
 
 fn create_node_builder<P: Platform>(

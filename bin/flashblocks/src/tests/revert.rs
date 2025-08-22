@@ -127,7 +127,7 @@ async fn faliable_optional_reverted_not_included() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn when_disabled_reverted_txs_are_included() -> eyre::Result<()> {
-	let node = FlashBlocks::test_node_with_cli_args(OpRbuilderArgs {
+	let node = FlashBlocks::test_node_with_cli_args(BuilderArgs {
 		revert_protection: false,
 		..Default::default()
 	})

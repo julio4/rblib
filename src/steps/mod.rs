@@ -6,8 +6,15 @@
 mod builder;
 mod ordering;
 mod revert;
+mod utils;
 
-pub use {crate::pool::AppendOrders, builder::*, ordering::*, revert::*};
+pub use {
+	crate::pool::AppendOrders,
+	builder::*,
+	ordering::*,
+	revert::*,
+	utils::*,
+};
 
 #[cfg(feature = "optimism")]
 mod optimism;

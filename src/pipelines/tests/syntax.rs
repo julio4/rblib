@@ -216,7 +216,6 @@ async fn flashblocks_example_concise_fixed_interval() {
 					(
 						AppendOrders::default(),
 						OrderByPriorityFee::default(),
-						OrderByCoinbaseProfit::default(),
 						RemoveRevertedTransactions::default(),
 					)
 						.with_limits(

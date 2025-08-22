@@ -1,3 +1,5 @@
+//! Smoke tests for the standard blocks builder
+
 use {
 	crate::{FlashBlocks, tests::assert_has_sequencer_tx},
 	rblib::{

@@ -76,14 +76,8 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 
 	/// Optional setup function called exactly once when a pipeline is
 	/// instantiated as a payload builder service, before any payload jobs run.
-	///
-	/// This function is called with access to the service that is running and
-	/// the final shape of the pipelines hierarchy that contain it.
-	fn setup(
-		self: Arc<Self>,
-		_: InitContext<P>,
-	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
-		async { Ok(()) }
+	fn setup(&mut self, _: InitContext<P>) -> Result<(), PayloadBuilderError> {
+		Ok(())
 	}
 }
 

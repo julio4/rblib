@@ -57,7 +57,10 @@ where
 			pool,
 			provider: Arc::clone(&provider),
 			node_config: ctx.config().clone(),
-			metrics: metrics::Payload::default(),
+			metrics: metrics::Payload::with_scope(&format!(
+				"{}_payloads",
+				pipeline.name()
+			)),
 		};
 
 		// assign metric names to each step in the pipeline.
@@ -77,7 +80,7 @@ where
 			navi.instance().init_metrics(&metrics_scope);
 
 			let init_ctx = InitContext::new(Arc::clone(&provider), metrics_scope);
-			navi.instance().setup(init_ctx).await?;
+			navi.instance().setup(init_ctx)?;
 		}
 
 		let (service, builder) = PayloadBuilderService::new(

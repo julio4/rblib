@@ -128,6 +128,7 @@ pub struct OneStep<P: PlatformWithRpcTypes> {
 }
 
 impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
+	#[track_caller]
 	pub fn new(step: impl Step<P>) -> Self {
 		let (prepopulate, payload_tx) = PopulatePayload::new();
 		let (record_ok, ok_rx) = RecordOk::new();

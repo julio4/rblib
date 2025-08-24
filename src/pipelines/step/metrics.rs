@@ -1,14 +1,13 @@
 use {
+	super::MetricsSet,
 	core::{
 		sync::atomic::{AtomicU32, AtomicU64, Ordering},
 		time::Duration,
 	},
 	metrics::{Counter, Histogram},
-	metrics_derive::Metrics,
 };
 
-#[derive(Metrics)]
-#[metrics(dynamic = true)]
+#[derive(MetricsSet)]
 pub struct Metrics {
 	/// The total number of times this step's `step` method has been invoked.
 	pub invoked_total: Counter,

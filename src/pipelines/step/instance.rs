@@ -53,11 +53,9 @@ type WrappedAfterJobFn<P: Platform> = Box<
 /// a concrete step type.
 type WrappedSetupFn<P: Platform> = Box<
 	dyn Fn(
-		Arc<dyn Any + Send + Sync>,
+		&Arc<dyn Any + Send + Sync>,
 		InitContext<P>,
-	) -> Pin<
-		Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
-	>,
+	) -> Result<(), PayloadBuilderError>,
 >;
 
 /// Wraps a step in a type-erased manner, allowing it to be stored in a
@@ -121,13 +119,24 @@ impl<P: Platform> StepInstance<P> {
 				},
 			) as WrappedAfterJobFn<P>,
 			setup_fn: Box::new(
-				|step: Arc<dyn Any + Send + Sync>,
+				|step: &Arc<dyn Any + Send + Sync>,
 				 ctx: InitContext<P>|
-				 -> Pin<
-					Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>,
-				> {
-					let step = step.downcast::<S>().expect("Invalid step type");
-					step.setup(ctx).boxed()
+				 -> Result<(), PayloadBuilderError> {
+					let step = step.downcast_ref::<S>().expect("Invalid step type");
+
+					// SAFETY: `Step::setup` is called only once per pipeline inside
+					// `PipelineServiceBuilder::spawn_payload_builder_service` for a
+					// given instance of a `Pipeline<P>`. The service builder owns the
+					// pipeline instance and is guaranteed to be the only one calling
+					// the setup function. Also `setup` is a synchronous function.
+					#[expect(invalid_reference_casting)]
+					let step = unsafe {
+						let ptr = core::ptr::from_ref(step);
+						let mut_ptr = ptr.cast_mut();
+						&mut *mut_ptr
+					};
+
+					step.setup(ctx)
 				},
 			) as WrappedSetupFn<P>,
 			name: Name::new::<S, P>(),
@@ -252,12 +261,8 @@ impl<P: Platform> StepInstance<P> {
 
 	/// This is invoked exactly once when a pipeline is instantiated as a payload
 	/// builder service.
-	pub async fn setup(
-		&self,
-		ctx: InitContext<P>,
-	) -> Result<(), PayloadBuilderError> {
-		let local_step = Arc::clone(&self.instance);
-		(self.setup_fn)(local_step, ctx).await
+	pub fn setup(&self, ctx: InitContext<P>) -> Result<(), PayloadBuilderError> {
+		(self.setup_fn)(&self.instance, ctx)
 	}
 
 	/// Returns the name of the type that implements this step.
@@ -277,7 +282,7 @@ impl<P: Platform> StepInstance<P> {
 		// initialize the metrics instance
 		self
 			.metrics
-			.set(Metrics::new(name))
+			.set(Metrics::with_scope(name))
 			.expect("Metrics for step {name} already initialized");
 	}
 }

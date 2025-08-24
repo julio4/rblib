@@ -9,10 +9,7 @@ use {
 		ethereum::primitives::SignedTransaction,
 		payload::builder::PayloadId,
 	},
-	std::{
-		collections::HashSet,
-		sync::{Arc, OnceLock},
-	},
+	std::{collections::HashSet, sync::Arc},
 };
 
 /// This step will append new orders from the enabled pools to the end of
@@ -70,7 +67,7 @@ pub struct AppendOrders<P: Platform> {
 	/// Defaults to `true`.
 	break_on_limit: bool,
 
-	metrics: OnceLock<Metrics>,
+	metrics: Metrics,
 	per_job: PerJobCounters,
 }
 
@@ -86,7 +83,7 @@ impl<P: Platform> Default for AppendOrders<P> {
 			max_new_bundles: None,
 			max_new_transactions: None,
 			break_on_limit: true,
-			metrics: OnceLock::new(),
+			metrics: Metrics::default(),
 			per_job: PerJobCounters::default(),
 		}
 	}
@@ -149,12 +146,8 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 	/// instantiated into a payload builder service.
 	///
 	/// Initializes metrics for this step.
-	async fn setup(
-		self: Arc<Self>,
-		init: InitContext<P>,
-	) -> Result<(), PayloadBuilderError> {
-		let metrics = Metrics::new(init.metrics_scope());
-		self.metrics.set(metrics).expect("step setup called twice");
+	fn setup(&mut self, init: InitContext<P>) -> Result<(), PayloadBuilderError> {
+		self.metrics = Metrics::with_scope(init.metrics_scope());
 		Ok(())
 	}
 
@@ -177,7 +170,7 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 		_: StepContext<P>,
 		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
 	) -> Result<(), PayloadBuilderError> {
-		self.metrics().record_per_job(&self.per_job);
+		self.metrics.record_per_job(&self.per_job);
 		Ok(())
 	}
 
@@ -224,16 +217,6 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 
 			run.try_include(order);
 		}
-	}
-}
-
-impl<P: Platform> AppendOrders<P> {
-	/// Returns the metrics for this step.
-	///
-	/// # Panics
-	/// this should be called only after metrics initialization in `setup`.
-	fn metrics(&self) -> &Metrics {
-		self.metrics.get().expect("step setup not called")
 	}
 }
 
@@ -367,11 +350,11 @@ impl<'a, P: Platform> Run<'a, P> {
 	/// Tries to extend the current payload with the contents of the given order.
 	/// If the order is skipped, the payload checkpoint remains unchanged.
 	pub fn try_include(&mut self, order: Order<P>) {
-		self.step.metrics().considered(&order);
+		self.step.metrics.considered(&order);
 		self.step.per_job.considered(&order);
 
 		if self.should_skip(&order) {
-			self.step.metrics().skipped(&order);
+			self.step.metrics.skipped(&order);
 			return;
 		}
 
@@ -380,7 +363,7 @@ impl<'a, P: Platform> Run<'a, P> {
 			Ok(executable) => executable,
 			Err(err) => {
 				// Order has transactions that cannot have their signers recovered.
-				self.step.metrics().orders_inclusion_failed.increment(1);
+				self.step.metrics.orders_inclusion_failed.increment(1);
 				return self.ctx.emit(OrderInclusionFailure::<P>(
 					order_hash,
 					ExecutionError::InvalidSignature(err).into(),
@@ -397,7 +380,7 @@ impl<'a, P: Platform> Run<'a, P> {
 			Err(err) => {
 				// This order cannot be used to create a valid checkpoint.
 				// skip it and notify the world about this inclusion failure.
-				self.step.metrics().orders_inclusion_failed.increment(1);
+				self.step.metrics.orders_inclusion_failed.increment(1);
 				return self.ctx.emit(OrderInclusionFailure(
 					order_hash,
 					err.into(),
@@ -410,15 +393,15 @@ impl<'a, P: Platform> Run<'a, P> {
 			// Including this order would exceed the gas limit for the payload,
 			// skip it, and try other available orders that might fit within the
 			// remaining gas budget.
-			self.step.metrics().orders_skipped.increment(1);
+			self.step.metrics.orders_skipped.increment(1);
 			self
 				.step
-				.metrics()
+				.metrics
 				.txs_skipped
 				.increment(candidate.transactions().len() as u64);
 
 			if candidate.is_bundle() {
-				self.step.metrics().bundles_skipped.increment(1);
+				self.step.metrics.bundles_skipped.increment(1);
 			}
 
 			return;
@@ -429,7 +412,7 @@ impl<'a, P: Platform> Run<'a, P> {
 		self.orders_included += 1;
 		self.txs_included += txs.len();
 		self.bundles_included += usize::from(candidate.is_bundle());
-		self.step.metrics().included(&self.payload);
+		self.step.metrics.included(&self.payload);
 		self.step.per_job.included(&self.payload);
 		self.existing_txs.extend(txs.iter().map(|tx| tx.tx_hash()));
 
@@ -468,8 +451,7 @@ pub struct OrderInclusionFailure<P: Platform>(
 	pub PayloadId,
 );
 
-#[derive(metrics_derive::Metrics)]
-#[metrics(dynamic = true)]
+#[derive(MetricsSet)]
 struct Metrics {
 	/// The number of transactions considered for inclusion either bundled or
 	/// unbundled.

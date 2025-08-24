@@ -110,7 +110,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 3,
+        "w": 2,
         "x": 0,
         "y": 1
       },
@@ -139,9 +139,9 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "exemplar": false,
-          "expr": "reth_rblib_payload_jobs_completed",
+          "expr": "reth_standard_payloads_jobs_completed",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -183,7 +183,7 @@
       "gridPos": {
         "h": 4,
         "w": 2,
-        "x": 3,
+        "x": 2,
         "y": 1
       },
       "id": 37,
@@ -212,7 +212,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_job_deadline",
+          "expr": "reth_standard_payloads_job_deadline",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -249,7 +249,7 @@
       "gridPos": {
         "h": 4,
         "w": 2,
-        "x": 5,
+        "x": 4,
         "y": 1
       },
       "id": 38,
@@ -278,7 +278,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_block_number",
+          "expr": "reth_standard_payloads_block_number",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -313,11 +313,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 7,
+        "w": 4,
+        "x": 6,
         "y": 1
       },
-      "id": 18,
+      "id": 39,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -344,7 +344,7 @@
           },
           "editorMode": "builder",
           "exemplar": false,
-          "expr": "rate(reth_rblib_payload_gas_used_total[$__rate_interval])",
+          "expr": "rate(reth_standard_payloads_gas_used_total[$__rate_interval])",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -412,7 +412,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "reth_rblib_payload_tx_count_total",
+          "expr": "reth_standard_payloads_tx_count_total",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -479,7 +479,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "reth_rblib_payload_gas_used_total",
+          "expr": "reth_standard_payloads_gas_used_total",
           "format": "time_series",
           "instant": false,
           "legendFormat": "__auto",
@@ -547,7 +547,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "reth_rblib_payload_blob_gas_total",
+          "expr": "reth_standard_payloads_blob_gas_total",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -613,7 +613,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_fees_total / 1e18",
+          "expr": "reth_standard_payloads_fees_total / 1e18",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -681,7 +681,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
-          "expr": "reth_rblib_payload_jobs_failed",
+          "expr": "reth_standard_payloads_jobs_failed",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -755,7 +755,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "{__name__=\"reth_rblib_payload_tx_count_histogram\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
+                  "{__name__=\"reth_standard_payloads_tx_count_histogram\", instance=\"host.docker.internal:5559\", job=\"my_exporter\", quantile=\"0.95\"}"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -802,7 +802,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_tx_count_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_payloads_tx_count_histogram{quantile=\"0.95\"}",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -904,7 +904,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_jobs_completed / (reth_rblib_payload_jobs_failed + reth_rblib_payload_jobs_completed)",
+          "expr": "reth_standard_payloads_jobs_completed / (reth_standard_payloads_jobs_failed + reth_standard_payloads_jobs_completed)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -958,6 +958,7 @@
             }
           },
           "mappings": [],
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1003,7 +1004,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_gas_used_histogram{quantile=\"0.95\"}",
+          "expr": "reth_standard_payloads_gas_used_histogram{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1075,7 +1076,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "reth_rblib_payload_job_duration"
+              "options": "reth_standard_payloads_job_duration"
             },
             "properties": [
               {
@@ -1091,7 +1092,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"reth_rblib_payload_job_deadline\", instance=\"host.docker.internal:5559\", job=\"my_exporter\"}"
+              "options": "{__name__=\"reth_standard_payloads_job_deadline\", instance=\"host.docker.internal:5559\", job=\"my_exporter\"}"
             },
             "properties": [
               {
@@ -1103,7 +1104,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "reth_rblib_payload_job_deadline"
+              "options": "reth_standard_payloads_job_deadline"
             },
             "properties": [
               {
@@ -1157,7 +1158,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_job_deadline",
+          "expr": "reth_standard_payloads_job_deadline",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -1260,7 +1261,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_gas_utilized{quantile=\"0.95\"}",
+          "expr": "reth_standard_payloads_gas_utilized{quantile=\"0.95\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1319,6 +1320,7 @@
           "displayName": "ETH",
           "fieldMinMax": false,
           "mappings": [],
+          "min": 0,
           "noValue": "0",
           "thresholds": {
             "mode": "absolute",
@@ -1360,7 +1362,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "reth_rblib_payload_fees_histogram{quantile=\"0.95\"} / 1e18",
+          "expr": "reth_standard_payloads_fees_histogram{quantile=\"0.95\"} / 1e18",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1850,6 +1852,7 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -1948,6 +1951,7 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -2046,6 +2050,7 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -2242,6 +2247,7 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -2340,6 +2346,7 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -2438,6 +2445,7 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
+            "axisSoftMin": 0,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -3282,6 +3290,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Flashblock - Standard Builder",
-  "version": 6,
+  "version": 12,
   "weekStart": ""
 }

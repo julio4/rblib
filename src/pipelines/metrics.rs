@@ -3,13 +3,11 @@ use {
 	alloy::consensus::BlockHeader,
 	core::{panic::Location, time::Duration},
 	metrics::{Counter, Gauge, Histogram},
-	metrics_derive::Metrics,
 	reth::node::builder::{BuiltPayload, PayloadBuilderAttributes},
 	std::time::{SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Metrics)]
-#[metrics(scope = "rblib_payload")]
+#[derive(MetricsSet)]
 pub struct Payload {
 	/// Number of new payload jobs that have started.
 	pub jobs_started: Counter,

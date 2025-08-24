@@ -5,8 +5,18 @@ mod platform;
 
 // RBLib Core Public API Prelude
 pub mod prelude {
+	pub use {
+		super::{payload::*, pipelines::*, platform::*},
+		metrics::{Counter, Gauge, Histogram},
+		pipelines_macros::MetricsSet,
+	};
+
 	pub(crate) use super::Variant;
-	pub use super::{payload::*, pipelines::*, platform::*};
+}
+
+#[doc(hidden)]
+pub mod metrics_util {
+	pub use metrics::*;
 }
 
 /// Order Pool Public API

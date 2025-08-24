@@ -5,7 +5,7 @@ use {
 	derive_more::Deref,
 	metrics::{Counter, Histogram},
 	reth::{ethereum::primitives::SignedTransaction, primitives::Recovered},
-	std::sync::{Arc, OnceLock},
+	std::sync::Arc,
 };
 
 /// This step removes transactions that are reverted from the payload.
@@ -17,7 +17,7 @@ use {
 /// [`Bundle::is_optional`]) will be removed from the payload.
 #[derive(Default)]
 pub struct RemoveRevertedTransactions {
-	metrics: OnceLock<Metrics>,
+	metrics: Metrics,
 	per_job: PerJobCounters,
 }
 
@@ -26,12 +26,8 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 	/// instantiated into a payload builder service.
 	///
 	/// Initializes metrics for this step.
-	async fn setup(
-		self: Arc<Self>,
-		init: InitContext<P>,
-	) -> Result<(), PayloadBuilderError> {
-		let metrics = Metrics::new(init.metrics_scope());
-		self.metrics.set(metrics).expect("step setup called twice");
+	fn setup(&mut self, init: InitContext<P>) -> Result<(), PayloadBuilderError> {
+		self.metrics = Metrics::with_scope(init.metrics_scope());
 		Ok(())
 	}
 
@@ -42,18 +38,15 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 	) -> Result<(), PayloadBuilderError> {
 		// Record metrics for this payload job.
 		let dropped_txs = self.per_job.txs_dropped_count();
+		self.metrics.txs_dropped_total.increment(dropped_txs.into());
+		self.metrics.txs_dropped_per_job.record(dropped_txs);
 		self
-			.metrics()
-			.txs_dropped_total
-			.increment(dropped_txs.into());
-		self.metrics().txs_dropped_per_job.record(dropped_txs);
-		self
-			.metrics()
+			.metrics
 			.gas_dropped_total
 			.increment(self.per_job.gas_dropped_count());
 
 		self
-			.metrics()
+			.metrics
 			.gas_dropped_per_job
 			.record(self.per_job.gas_dropped_count() as f64);
 
@@ -174,14 +167,7 @@ impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 	}
 }
 
-impl RemoveRevertedTransactions {
-	fn metrics(&self) -> &Metrics {
-		self.metrics.get().expect("step setup called")
-	}
-}
-
-#[derive(metrics_derive::Metrics)]
-#[metrics(dynamic = true)]
+#[derive(MetricsSet)]
 struct Metrics {
 	/// Total number of all transactions dropped across all payloads.
 	/// This includes loose transactions and bundled transactions.

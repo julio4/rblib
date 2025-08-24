@@ -6,7 +6,6 @@ use {
 		time::Duration,
 	},
 	metrics::{Counter, Histogram},
-	metrics_derive::Metrics,
 	std::collections::HashMap,
 };
 
@@ -125,7 +124,7 @@ impl Scope {
 		root: &Pipeline<P>,
 		block: &BlockContext<P>,
 	) -> Self {
-		let metrics = Metrics::new(&format!("{}_pipeline", root.name()));
+		let metrics = Metrics::with_scope(&format!("{}_pipeline", root.name()));
 		let limits = root.limits().map_or_else(
 			|| P::DefaultLimits::default().create(block, None),
 			|limits| limits.create(block, None),
@@ -207,7 +206,7 @@ impl Scope {
 			.clamp(enclosing);
 
 		let scope_name = format!("{root_name}_pipeline_{path}");
-		let metrics = Metrics::new(&scope_name);
+		let metrics = Metrics::with_scope(&scope_name);
 
 		let mut nested = HashMap::new();
 		for (ix, step) in local.steps().iter().enumerate() {
@@ -242,8 +241,7 @@ impl Drop for Scope {
 unsafe impl Send for Scope {}
 unsafe impl Sync for Scope {}
 
-#[derive(Metrics)]
-#[metrics(dynamic = true)]
+#[derive(MetricsSet)]
 pub struct Metrics {
 	/// Histogram of the number of iterations.
 	pub iter_count_histogram: Histogram,

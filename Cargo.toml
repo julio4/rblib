@@ -1,7 +1,6 @@
 [workspace]
 members = [
   ".",                     # The main rblib library
-  "bin/flashblocks",
   "src/pipelines/macros",
   "src/test_utils/macros",
 ]

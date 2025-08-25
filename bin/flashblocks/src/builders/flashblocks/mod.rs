@@ -1,5 +1,6 @@
 use {
 	crate::{args::BuilderArgs, platform::FlashBlocks},
+	core::num::NonZero,
 	rblib::{pool::OrderPool, prelude::*, steps::*},
 	std::sync::Arc,
 	step::PublishFlashblock,
@@ -21,8 +22,15 @@ pub fn pipeline(
 		.ws_address()
 		.expect("WebSocket address must be set for Flashblocks");
 
+	// how often a flashblock is published
 	let interval = cli_args.flashblocks_args.interval;
-	let sink = Arc::new(WebSocketPublisher::new(socket_address)?);
+
+	// Flashblocks builder will always take as long as the payload job deadline,
+	// this value specifies how much buffer we want to give between flashblocks
+	// building and the payload job deadline that is given by the CL.
+	let total_building_time = Fraction(95, NonZero::new(100).unwrap());
+
+	let ws = Arc::new(WebSocketPublisher::new(socket_address)?);
 
 	let pipeline = Pipeline::<FlashBlocks>::named("flashblocks")
 		.with_prologue(OptimismPrologue)
@@ -37,13 +45,14 @@ pub fn pipeline(
 						RemoveRevertedTransactions::default(),
 						BreakAfterDeadline,
 					)
-						.with_epilogue(PublishFlashblock::to(&sink))
+						.with_epilogue(PublishFlashblock::to(&ws))
 						.with_limits(Scaled::default().deadline(Fixed(interval))),
 				)
 				.with_step(BreakAfterDeadline),
-		);
+		)
+		.with_limits(Scaled::default().deadline(total_building_time));
 
-	sink.watch_shutdown(&pipeline);
+	ws.watch_shutdown(&pipeline);
 
 	Ok(pipeline)
 }

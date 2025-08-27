@@ -1,6 +1,6 @@
 # rblib — Rust SDK for Ethereum Block Builders
 
-> ⚠️ **Early Alpha Notice**  
+> [!WARNING]
 > This library is early alpha software under active and rapid development. Breaking changes are expected, APIs may shift, and stability is not guaranteed. No official support is provided at this stage; however, early adopters are encouraged to open issues for bugs, feedback, or feature requests. Your input will help shape the roadmap.
 
 [![Sanity Check](https://github.com/flashbots/rblib/actions/workflows/sanity.yaml/badge.svg)](https://github.com/flashbots/rblib/actions/workflows/sanity.yaml)

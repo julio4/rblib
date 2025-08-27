@@ -89,6 +89,9 @@ impl Limits {
 					max_blobs_per_tx: self_params
 						.max_blobs_per_tx
 						.min(other_params.max_blobs_per_tx),
+					blob_base_cost: self_params
+						.blob_base_cost
+						.min(other_params.blob_base_cost),
 				}),
 				_ => self.blob_params.or(other.blob_params),
 			},

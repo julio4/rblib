@@ -1,3 +1,5 @@
+//! Reth native `TransactionPool`
+
 use {
 	crate::{
 		alloy::{
@@ -25,11 +27,11 @@ use {
 ///
 /// It is unfortunate that Reth's `TransactionPool` trait is not dyn-safe,
 /// because it inherits from `Clone`, which forces us to wrap it here.
-pub struct TransactionPool<P: Platform> {
+pub struct NativeTransactionPool<P: Platform> {
 	vtable: TransactionPoolVTable<P>,
 }
 
-impl<P: Platform> Clone for TransactionPool<P> {
+impl<P: Platform> Clone for NativeTransactionPool<P> {
 	fn clone(&self) -> Self {
 		let vtable_clone = self.vtable.clone();
 		let cloned = (self.vtable.clone)(self.vtable.self_ptr, vtable_clone);
@@ -37,21 +39,21 @@ impl<P: Platform> Clone for TransactionPool<P> {
 	}
 }
 
-impl<P: Platform> TransactionPool<P> {
-	pub fn new<Pool: traits::PoolBounds<P>>(pool: Pool) -> Self {
+impl<P: Platform> NativeTransactionPool<P> {
+	pub fn new<Pool: traits::PoolBounds<P>>(pool: Arc<Pool>) -> Self {
 		let vtable = TransactionPoolVTable::new(pool);
 		Self { vtable }
 	}
 }
 
-impl<P: Platform> Debug for TransactionPool<P> {
+impl<P: Platform> Debug for NativeTransactionPool<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		write!(f, "TransactionPool ({:?})", &self.pool_size())
 	}
 }
 
-unsafe impl<P: Platform> Send for TransactionPool<P> {}
-unsafe impl<P: Platform> Sync for TransactionPool<P> {}
+unsafe impl<P: Platform> Send for NativeTransactionPool<P> {}
+unsafe impl<P: Platform> Sync for NativeTransactionPool<P> {}
 
 /// V-Table struct that captures all methods from the `TransactionPool` trait
 #[allow(clippy::type_complexity)]
@@ -450,7 +452,7 @@ impl<P: Platform> Drop for TransactionPoolVTable<P> {
 	}
 }
 
-impl<P: Platform> RethTransactionPoolTrait for TransactionPool<P> {
+impl<P: Platform> RethTransactionPoolTrait for NativeTransactionPool<P> {
 	/// The transaction type of the pool
 	type Transaction = P::PooledTransaction;
 

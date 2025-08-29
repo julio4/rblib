@@ -1,6 +1,6 @@
 use {
 	super::*,
-	crate::{alloy, prelude::*, reth},
+	crate::{alloy, pool::NativeTransactionPool, prelude::*, reth},
 	alloy::{
 		consensus::{BlockHeader, SignableTransaction},
 		eips::{BlockNumberOrTag, Encodable2718},
@@ -35,7 +35,8 @@ use {
 		},
 		node::builder::{rpc::RethRpcAddOns, *},
 		payload::builder::PayloadId,
-		tasks::{TaskExecutor, TaskManager},
+		providers::{CanonStateSubscriptions, StateProviderFactory},
+		tasks::{TaskExecutor, TaskManager, shutdown::Shutdown},
 	},
 	reth_ipc::client::{IpcClientBuilder, IpcError},
 	std::{
@@ -95,15 +96,22 @@ where
 	exit_future: NodeExitFuture,
 	/// The configuration of the node.
 	config: NodeConfig<types::ChainSpec<P>>,
-	/// The provider used to interact with the node.
+	/// The provider used to interact with the node over rpc.
 	provider: RootProvider<types::RpcTypes<P>>,
+	/// The provider with access to node local storage
+	state_provider: Arc<dyn StateProviderFactory>,
+	/// Access to chain canonical chain updates stream
+	canon_updates:
+		Arc<dyn CanonStateSubscriptions<Primitives = types::Primitives<P>>>,
 	/// The task manager used to manage async tasks in the node.
 	tasks: Option<TaskManager>,
+	/// The transaction pool used by the node.
+	pool: NativeTransactionPool<P>,
 	/// The block time used by the node.
 	block_time: Duration,
 	/// Keeps reth alive, this is used to ensure that the node does not exit
 	/// while we are still using it.
-	_node_handle: Box<dyn Any + Send>,
+	node_handle: Box<dyn Any + Send>,
 }
 
 impl<P, C> LocalNode<P, C>
@@ -132,6 +140,7 @@ where
 			) -> WithLaunchContext<NodeBuilderWithComponents<T, CB, AO>>,
 		T: FullNodeTypes<Types = P::NodeTypes>,
 		CB: NodeComponentsBuilder<T>,
+		CB::Components: NodeComponents<T, Pool: traits::PoolBounds<P>>,
 		AO: RethRpcAddOns<NodeAdapter<T, CB::Components>> + 'static,
 		EngineNodeLauncher: LaunchNode<
 				NodeBuilderWithComponents<T, CB, AO>,
@@ -150,6 +159,10 @@ where
 		let node_handle = node_builder.launch();
 		let node_handle = Box::pin(node_handle).await?;
 
+		let pool = node_handle.node.pool.clone();
+		let pool = NativeTransactionPool::new(Arc::new(pool));
+		let state_provider = Arc::new(node_handle.node.provider.clone());
+		let canon_updates = Arc::new(node_handle.node.provider.clone());
 		let exit_future = node_handle.node_exit_future;
 		let boxed_handle = Box::new(node_handle.node);
 		let node_handle: Box<dyn Any + Send> = boxed_handle;
@@ -166,10 +179,13 @@ where
 			consensus,
 			exit_future,
 			config,
+			pool,
 			provider,
+			canon_updates,
+			state_provider,
 			tasks: Some(tasks),
 			block_time: Self::MIN_BLOCK_TIME,
-			_node_handle: node_handle,
+			node_handle,
 		})
 	}
 
@@ -197,9 +213,42 @@ where
 		self.config().chain.chain_id()
 	}
 
-	/// Returns a provider connected to this local node instance.
+	/// Returns a provider connected to this local node instance over rpc.
 	pub const fn provider(&self) -> &RootProvider<types::RpcTypes<P>> {
 		&self.provider
+	}
+
+	/// Returns a state provider that has access to the node local state.
+	pub const fn state_provider(&self) -> &Arc<dyn StateProviderFactory> {
+		&self.state_provider
+	}
+
+	/// Returns a type that allows subscription to canonical chain updates.
+	pub const fn canonical_chain_updates(
+		&self,
+	) -> &Arc<dyn CanonStateSubscriptions<Primitives = types::Primitives<P>>> {
+		&self.canon_updates
+	}
+
+	/// Returns a reference to the native transaction pool.
+	pub const fn pool(&self) -> &NativeTransactionPool<P> {
+		&self.pool
+	}
+
+	pub const fn node_handle(&self) -> &Box<dyn Any + Send> {
+		&self.node_handle
+	}
+
+	/// Returns a future that resolves when the node is shutting down gracefully.
+	pub fn on_shutdown(&self) -> Shutdown {
+		self.task_manager().executor().on_shutdown_signal().clone()
+	}
+
+	/// Access to the task manager managing the test node.
+	/// # Panics
+	/// Should never panic because `self.tasks` is None only after `drop`.
+	pub fn task_manager(&self) -> &TaskManager {
+		self.tasks.as_ref().expect("TaskManager must be present")
 	}
 
 	/// Returns a connected client to the RPC endpoint of this local node via IPC.

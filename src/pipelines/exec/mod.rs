@@ -11,7 +11,7 @@
 //! [`BlockBuilder::apply_pre_execution_changes`] applied to its state.
 
 use {
-	super::service::ServiceContext,
+	super::{StepInstance, service::ServiceContext},
 	crate::{prelude::*, reth},
 	core::{
 		pin::Pin,
@@ -38,10 +38,9 @@ type PipelineOutput<P: Platform> =
 /// the step is async and needs many polls before it completes. The executor
 /// future will resolve when the whole pipeline has been executed, or when an
 /// error occurs.
-pub(super) struct PipelineExecutor<P, Provider, Pool>
+pub(super) struct PipelineExecutor<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	/// The current state of the executor state machine.
@@ -54,24 +53,21 @@ where
 	block: BlockContext<P>,
 
 	// The reth payload builder service context that is running this payload job.
-	service: Arc<ServiceContext<P, Provider, Pool>>,
+	service: Arc<ServiceContext<P, Provider>>,
 
 	/// Execution scopes. This root scope represents the top-level pipeline that
 	/// may contain nested scopes for each nested pipeline.
 	scope: Arc<RootScope>,
 }
 
-impl<
-	P: Platform,
-	Provider: traits::ProviderBounds<P>,
-	Pool: traits::PoolBounds<P>,
-> PipelineExecutor<P, Provider, Pool>
+impl<P: Platform, Provider: traits::ProviderBounds<P>>
+	PipelineExecutor<P, Provider>
 {
 	/// Begins the execution of a pipeline for a new block/payload job.
 	pub fn run(
 		pipeline: Arc<Pipeline<P>>,
 		block: BlockContext<P>,
-		service: Arc<ServiceContext<P, Provider, Pool>>,
+		service: Arc<ServiceContext<P, Provider>>,
 	) -> Self {
 		// Emit a system event for this new payload job and record initial metrics.
 		pipeline.events.publish(PayloadJobStarted(block.clone()));
@@ -89,7 +85,6 @@ impl<
 			cursor: Cursor::<P>::Initializing({
 				let block = block.clone();
 				let pipeline = Arc::clone(&pipeline);
-				let service = Arc::clone(&service);
 				let scope = Arc::clone(&root);
 
 				async move {
@@ -102,7 +97,7 @@ impl<
 							 implementation.",
 						);
 						let scope = scope.of(&step).expect("invalid step path");
-						let ctx = StepContext::new(&block, &service, &navi, scope);
+						let ctx = StepContext::new(&block, &navi, scope);
 						navi.instance().before_job(ctx).await?;
 					}
 					Ok(())
@@ -123,11 +118,8 @@ impl<
 }
 
 /// private implementation details for the `PipelineExecutor`.
-impl<
-	P: Platform,
-	Provider: traits::ProviderBounds<P>,
-	Pool: traits::PoolBounds<P>,
-> PipelineExecutor<P, Provider, Pool>
+impl<P: Platform, Provider: traits::ProviderBounds<P>>
+	PipelineExecutor<P, Provider>
 {
 	/// This method creates a future that encapsulates the execution an an async
 	/// step. The created future will be held inside `Cursor::StepInProgress` and
@@ -151,7 +143,7 @@ impl<
 			 implementation.",
 		);
 
-		let ctx = StepContext::new(&self.block, &self.service, &step_navi, scope);
+		let ctx = StepContext::new(&self.block, &step_navi, scope);
 		let step = Arc::clone(step_navi.instance());
 		async move { step.step(input, ctx).await }.boxed()
 	}
@@ -236,7 +228,6 @@ impl<
 		let pipeline = Arc::clone(&self.pipeline);
 		let block = self.block.clone();
 		let pipeline = Arc::clone(&pipeline);
-		let service = Arc::clone(&self.service);
 		let scope = Arc::clone(&self.scope);
 
 		async move {
@@ -249,7 +240,7 @@ impl<
 					 implementation.",
 				);
 				let scope = scope.of(&step).expect("invalid step path");
-				let ctx = StepContext::new(&block, &service, &navi, scope);
+				let ctx = StepContext::new(&block, &navi, scope);
 				navi.instance().after_job(ctx, output.clone()).await?;
 			}
 
@@ -264,11 +255,10 @@ impl<
 	}
 }
 
-impl<P, Provider, Pool> Future for PipelineExecutor<P, Provider, Pool>
+impl<P, Provider> Future for PipelineExecutor<P, Provider>
 where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
-	Pool: traits::PoolBounds<P>,
 {
 	type Output = PipelineOutput<P>;
 

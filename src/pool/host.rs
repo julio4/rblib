@@ -1,6 +1,6 @@
 use {
 	super::*,
-	core::any::Any,
+	crate::pool::native::NativeTransactionPool,
 	futures::StreamExt,
 	reth::{
 		chainspec::EthChainSpec,
@@ -11,7 +11,6 @@ use {
 			StateProviderFactory,
 		},
 		tasks::shutdown::Shutdown,
-		transaction_pool::TransactionPool,
 	},
 	std::sync::OnceLock,
 	tracing::debug,
@@ -44,10 +43,7 @@ impl<P: Platform> HostNode<P> {
 	) -> eyre::Result<()>
 	where
 		Node: FullNodeTypes<Types: NodeTypes<Primitives = types::Primitives<P>>>,
-		Pool: TransactionPool<Transaction = types::PooledTransaction<P>>
-			+ Send
-			+ Sync
-			+ 'static,
+		Pool: traits::PoolBounds<P> + Send + Sync + 'static,
 	{
 		let tip_header = builder_context
 			.provider()
@@ -62,10 +58,11 @@ impl<P: Platform> HostNode<P> {
 		self
 			.instances
 			.set(Instances {
-				system_pool,
+				system_pool: NativeTransactionPool::new(system_pool),
 				tip_header: RwLock::new(tip_header),
 				order_pool: order_pool.into(),
-				provider: Box::new(builder_context.provider().clone()),
+				state_provider: Arc::new(builder_context.provider().clone()),
+				canonical_sub: Arc::new(builder_context.provider().clone()),
 				shutdown: builder_context.task_executor().on_shutdown_signal().clone(),
 			})
 			.map_err(|_| {
@@ -101,12 +98,18 @@ impl<P: Platform> HostNode<P> {
 	{
 		self.instances.get().map(|i| op(&*i.tip_header.read()))
 	}
+
+	/// If attached to a host node, this will return a reference to the reth
+	/// native transaction pool.
+	pub fn system_pool(&self) -> Option<&impl traits::PoolBounds<P>> {
+		self.instances.get().map(|i| &i.system_pool)
+	}
 }
 
 impl<P: Platform> HostNode<P> {
 	async fn maintenance_loop(self: Arc<Self>) {
 		let instances = self.instances.get().expect("HostNode must be attached");
-		let mut chain_events = instances.provider.canonical_state_stream();
+		let mut chain_events = instances.canonical_sub.canonical_state_stream();
 		let mut shutdown = instances.shutdown.clone();
 
 		loop {
@@ -131,16 +134,56 @@ impl<P: Platform> HostNode<P> {
 	}
 }
 
+#[cfg(feature = "test-utils")]
+impl<P: PlatformWithRpcTypes> HostNode<P> {
+	pub fn attach_to_test_node<C: crate::test_utils::ConsensusDriver<P>>(
+		self: &Arc<Self>,
+		node: &crate::test_utils::LocalNode<P, C>,
+		order_pool: OrderPool<P>,
+	) -> eyre::Result<()> {
+		use parking_lot::lock_api::RwLock;
+
+		let tip_header = SealedHeader::new(
+			node.config().chain.genesis_header().clone(),
+			node.config().chain.genesis_hash(),
+		);
+
+		self
+			.instances
+			.set(Instances {
+				order_pool,
+				system_pool: node.pool().clone(),
+				state_provider: node.state_provider().clone(),
+				canonical_sub: node.canonical_chain_updates().clone(),
+				tip_header: RwLock::new(tip_header),
+				shutdown: node.on_shutdown(),
+			})
+			.map_err(|_| {
+				eyre::eyre!("There is a host already attached to this instance")
+			})?;
+
+		node.task_manager().executor().spawn_critical(
+			"HostNode maintenance loop",
+			Arc::clone(self).maintenance_loop(),
+		);
+		Ok(())
+	}
+}
+
 struct Instances<P: Platform> {
 	/// The transaction pool constructed during reth node setup.
 	/// In this iteration of the `OrderPool` implementation, this is where
 	/// individual transactions are handled. Future iterations are expected to
 	/// replace this implementation with a more sophisticated one.
-	#[expect(dead_code)]
-	system_pool: Arc<dyn Any + Send + Sync>,
+	system_pool: NativeTransactionPool<P>,
 
 	/// Access to the chain state provider.
-	provider: Box<dyn Provider<Primitives = types::Primitives<P>>>,
+	#[allow(dead_code)]
+	state_provider: Arc<dyn StateProviderFactory>,
+
+	/// Access to chain canonical chain updates stream
+	canonical_sub:
+		Arc<dyn CanonStateSubscriptions<Primitives = types::Primitives<P>>>,
 
 	/// The block header of the last safe block that we have received an update
 	/// for.
@@ -154,12 +197,13 @@ struct Instances<P: Platform> {
 	shutdown: Shutdown,
 }
 
-trait Provider:
-	StateProviderFactory + CanonStateSubscriptions + Send + Sync
-{
-}
-
-impl<T> Provider for T where
-	T: StateProviderFactory + CanonStateSubscriptions + Send + Sync
-{
+#[cfg(feature = "test-utils")]
+impl<P: PlatformWithRpcTypes> OrderPool<P> {
+	pub fn attach_to_test_node<C: crate::test_utils::ConsensusDriver<P>>(
+		&self,
+		node: &crate::test_utils::LocalNode<P, C>,
+	) -> eyre::Result<()> {
+		let inner = Arc::clone(&self.inner);
+		self.inner.host.attach_to_test_node(node, inner.outer())
+	}
 }

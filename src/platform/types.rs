@@ -22,6 +22,10 @@ pub type Primitives<P: Platform> =
 pub type Block<P: Platform> =
 	<Primitives<P> as reth::api::NodePrimitives>::Block;
 
+/// Extracts the receipt type from the platform definition.
+pub type Receipt<P: Platform> =
+	<Primitives<P> as reth::api::NodePrimitives>::Receipt;
+
 /// Extracts the block header type from the platform definition.
 pub type Header<P: Platform> = <Block<P> as reth::api::Block>::Header;
 

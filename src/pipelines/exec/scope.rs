@@ -70,6 +70,8 @@ impl RootScope {
 unsafe impl Send for RootScope {}
 unsafe impl Sync for RootScope {}
 
+/// Given a path to a step in the pipeline, returns a path to the immediate
+/// pipeline that contains it.
 #[inline]
 fn scope_of(step: &StepPath) -> StepPath {
 	step.clone().remove_leaf().unwrap_or(StepPath::empty())
@@ -79,14 +81,14 @@ fn scope_of(step: &StepPath) -> StepPath {
 ///
 /// Each pipeline has its scope that may include nested scopes for each nested
 /// pipeline. Scopes are used to manage limits and metrics for each pipeline
-/// execution. All steps in a pipeline run within the scope of the pipeline that
-/// contains it. When a scope is active, then all its parent scopes are active
-/// as well.
+/// execution. All steps in a pipeline run within the scopes of the pipelines
+/// that contain it. When a scope is active, then all its parent scopes are
+/// active as well.
 #[derive(Debug)]
 pub struct Scope {
 	limits: Limits,
 	metrics: Metrics,
-	entered: Cell<Option<Instant>>,
+	entered_at: Cell<Option<Instant>>,
 	enter_counter: AtomicU32,
 	nested: HashMap<usize, Scope>,
 }
@@ -96,18 +98,18 @@ impl Scope {
 	/// When a scope is active it means that one of its steps (or in its nested
 	/// scopes) is currently being executed,
 	pub const fn is_active(&self) -> bool {
-		self.entered.get().is_some()
+		self.entered_at.get().is_some()
 	}
 
 	/// Returns the elapsed time since the scope was entered.
 	/// This will only return a value if the scope is currently active.
 	pub fn elapsed(&self) -> Option<Duration> {
-		self.entered.get().map(|start| start.elapsed())
+		self.entered_at.get().map(|start| start.elapsed())
 	}
 
 	/// Returns when the scope was entered most recently.
 	pub fn started_at(&self) -> Option<Instant> {
-		self.entered.get()
+		self.entered_at.get()
 	}
 
 	/// Returns the payload limits for steps running within the current scope.
@@ -143,14 +145,14 @@ impl Scope {
 			limits,
 			metrics,
 			nested,
-			entered: Cell::new(None),
+			entered_at: Cell::new(None),
 			enter_counter: AtomicU32::new(0),
 		}
 	}
 
 	fn enter(&self) {
 		assert!(!self.is_active(), "Scope is already active");
-		self.entered.set(Some(Instant::now()));
+		self.entered_at.set(Some(Instant::now()));
 		self.enter_counter.fetch_add(1, Ordering::Relaxed);
 		self.metrics.iter_count_total.increment(1);
 	}
@@ -175,7 +177,7 @@ impl Scope {
 			.increment(duration.as_millis() as u64);
 
 		self.metrics.exec_duration_histogram.record(duration);
-		self.entered.replace(None);
+		self.entered_at.replace(None);
 	}
 
 	/// Returns the scope with a given path.
@@ -221,7 +223,7 @@ impl Scope {
 			limits,
 			metrics,
 			nested,
-			entered: Cell::new(None),
+			entered_at: Cell::new(None),
 			enter_counter: AtomicU32::new(0),
 		}
 	}

@@ -45,8 +45,8 @@ where
 	async fn spawn_payload_builder_service(
 		self,
 		ctx: &BuilderContext<Node>,
-		pool: Pool,
-		_evm_config: types::EvmConfig<Plat>,
+		_: Pool,
+		_: types::EvmConfig<Plat>,
 	) -> eyre::Result<PayloadBuilderHandle<types::PayloadTypes<Plat>>> {
 		let pipeline = self.pipeline;
 		debug!("Spawning payload builder service for: {pipeline:#?}");
@@ -54,7 +54,6 @@ where
 		let provider = Arc::new(ctx.provider().clone());
 
 		let service = ServiceContext {
-			pool,
 			provider: Arc::clone(&provider),
 			node_config: ctx.config().clone(),
 			metrics: metrics::Payload::with_scope(&format!(
@@ -99,30 +98,23 @@ where
 /// There is one service context instance per reth node. This type gives
 /// individual jobs access to the node state, transaction pool and other
 /// runtime facilities that are managed by reth.
-pub struct ServiceContext<Plat, Provider, Pool>
+pub struct ServiceContext<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
-	Pool: traits::PoolBounds<Plat>,
 {
-	pool: Pool,
 	provider: Arc<Provider>,
 	node_config: NodeConfig<types::ChainSpec<Plat>>,
 	metrics: metrics::Payload,
 }
 
-impl<Plat, Provider, Pool> ServiceContext<Plat, Provider, Pool>
+impl<Plat, Provider> ServiceContext<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
-	Pool: traits::PoolBounds<Plat>,
 {
 	pub fn provider(&self) -> &Provider {
 		&self.provider
-	}
-
-	pub const fn pool(&self) -> &Pool {
-		&self.pool
 	}
 
 	pub const fn node_config(&self) -> &NodeConfig<types::ChainSpec<Plat>> {
@@ -145,25 +137,23 @@ where
 /// The responsibility of this type is to respond to new payload requests when
 /// FCU calls come from the CL Node. Each FCU call will generate a new
 /// `PayloadID` on its side and will pass it to the `new_payload_job` method.
-pub struct JobGenerator<Plat, Provider, Pool>
+pub struct JobGenerator<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
-	Pool: traits::PoolBounds<Plat>,
 {
 	pipeline: Arc<Pipeline<Plat>>,
-	service: Arc<ServiceContext<Plat, Provider, Pool>>,
+	service: Arc<ServiceContext<Plat, Provider>>,
 }
 
-impl<Plat, Provider, Pool> JobGenerator<Plat, Provider, Pool>
+impl<Plat, Provider> JobGenerator<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
-	Pool: traits::PoolBounds<Plat>,
 {
 	pub fn new(
 		pipeline: Pipeline<Plat>,
-		service: ServiceContext<Plat, Provider, Pool>,
+		service: ServiceContext<Plat, Provider>,
 	) -> Self {
 		let pipeline = Arc::new(pipeline);
 		let service = Arc::new(service);
@@ -172,14 +162,12 @@ where
 	}
 }
 
-impl<Plat, Provider, Pool> PayloadJobGenerator
-	for JobGenerator<Plat, Provider, Pool>
+impl<Plat, Provider> PayloadJobGenerator for JobGenerator<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
-	Pool: traits::PoolBounds<Plat>,
 {
-	type Job = PayloadJob<Plat, Provider, Pool>;
+	type Job = PayloadJob<Plat, Provider>;
 
 	fn new_payload_job(
 		&self,

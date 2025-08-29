@@ -1,5 +1,5 @@
 use {
-	super::{select::PoolsDemux, *},
+	super::*,
 	crate::{alloy, reth},
 	alloy::{consensus::Transaction, primitives::B256},
 	core::sync::atomic::{AtomicU32, Ordering},
@@ -23,7 +23,7 @@ pub struct AppendOrders<P: Platform> {
 	/// An optional instance of the `OrderPool` that supports bundles.
 	/// If this is `None`, only the system transaction pool that supports only
 	/// loose transactions will be used.
-	order_pool: Option<OrderPool<P>>,
+	order_pool: OrderPool<P>,
 
 	/// Keeps track of the transactions that were added to the payload in this
 	/// payload building run. This is used to avoid infinite loops where some
@@ -71,12 +71,12 @@ pub struct AppendOrders<P: Platform> {
 	per_job: PerJobCounters,
 }
 
-impl<P: Platform> Default for AppendOrders<P> {
-	/// The default configuration for this step will only pull orders from the
-	/// system transaction pool hosted by Reth.
-	fn default() -> Self {
+/// Construction
+impl<P: Platform> AppendOrders<P> {
+	/// Attaches this step a an `OrderPool` that supports bundles.
+	pub fn from_pool(pool: &OrderPool<P>) -> Self {
 		Self {
-			order_pool: None,
+			order_pool: pool.clone(),
 			attempted: DashSet::new(),
 			enable_system_pool: true,
 			max_new_orders: None,
@@ -85,17 +85,6 @@ impl<P: Platform> Default for AppendOrders<P> {
 			break_on_limit: true,
 			metrics: Metrics::default(),
 			per_job: PerJobCounters::default(),
-		}
-	}
-}
-
-/// Construction
-impl<P: Platform> AppendOrders<P> {
-	/// Attaches this step a an `OrderPool` that supports bundles.
-	pub fn from_pool(pool: &OrderPool<P>) -> Self {
-		Self {
-			order_pool: Some(pool.clone()),
-			..Default::default()
 		}
 	}
 
@@ -179,13 +168,9 @@ impl<P: Platform> Step<P> for AppendOrders<P> {
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
 	) -> ControlFlow<P> {
-		// Create an iterator that will demultiplex orders coming from the
-		// orders pool that supports bundles and the system transaction pool.
-		let mut orders = PoolsDemux::new(
-			self.enable_system_pool.then(|| ctx.pool()),
-			self.order_pool.as_ref(),
-			ctx.block(),
-		);
+		// Create an iterator that will return the best orders for the given block.
+		// The logic for selecting those orders is inside the `select.rs` module.
+		let mut orders = self.order_pool.best_orders_for_block(ctx.block());
 
 		// state of one step invocation
 		let mut run = Run::new(&self, &ctx, payload);

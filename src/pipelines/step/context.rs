@@ -1,8 +1,7 @@
 use {
-	super::{
+	super::super::{
 		events::EventsBus,
 		exec::{navi::StepNavigator, scope::Scope},
-		service::ServiceContext,
 	},
 	crate::{
 		prelude::*,
@@ -10,40 +9,33 @@ use {
 	},
 	core::any::Any,
 	futures::Stream,
-	pool::TransactionPool,
 	std::{sync::Arc, time::Instant},
 };
 
-mod pool;
-
-pub struct StepContext<Plat: Platform> {
-	block: BlockContext<Plat>,
-	pool: TransactionPool<Plat>,
+/// Carries information specific to the step that is currently being executed.
+///
+/// An instance of this type is passed to `Step::step` method during pipeline
+/// execution of steps.
+pub struct StepContext<P: Platform> {
+	block: BlockContext<P>,
 	limits: Limits,
-	events_bus: Arc<EventsBus<Plat>>,
+	events_bus: Arc<EventsBus<P>>,
 	started_at: Option<Instant>,
 }
 
 impl<P: Platform> StepContext<P> {
-	pub(crate) fn new<Pool, Provider>(
+	pub(crate) fn new(
 		block: &BlockContext<P>,
-		service: &ServiceContext<P, Provider, Pool>,
 		step: &StepNavigator<P>,
 		scope: &Scope,
-	) -> Self
-	where
-		Pool: traits::PoolBounds<P>,
-		Provider: traits::ProviderBounds<P>,
-	{
+	) -> Self {
 		let block = block.clone();
-		let pool = TransactionPool::new(service.pool().clone());
 		let events_bus = Arc::clone(&step.root_pipeline().events);
 		let limits = scope.limits().clone();
 		let started_at = scope.started_at();
 
 		Self {
 			block,
-			pool,
 			limits,
 			events_bus,
 			started_at,
@@ -65,13 +57,8 @@ impl<P: Platform> StepContext<P> {
 	}
 
 	/// Access to the block context of the block that we are building.
-	pub fn block(&self) -> &BlockContext<P> {
+	pub const fn block(&self) -> &BlockContext<P> {
 		&self.block
-	}
-
-	/// Access to the transaction pool
-	pub const fn pool(&self) -> &impl traits::PoolBounds<P> {
-		&self.pool
 	}
 
 	/// Payload limits for the scope of the step.

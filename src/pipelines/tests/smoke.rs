@@ -6,6 +6,7 @@ use {
 			optimism::consensus::DEPOSIT_TX_TYPE_ID,
 			primitives::U256,
 		},
+		pool::OrderPool,
 		prelude::*,
 		reth::{
 			cli::Cli,
@@ -51,12 +52,15 @@ async fn empty_pipeline_builds_empty_payload<P: TestablePlatform>() {
 
 #[rblib_test(Ethereum, Optimism)]
 async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
+	let pool = OrderPool::default();
 	let pipeline = Pipeline::default()
-		.with_step(AppendOrders::default())
+		.with_step(AppendOrders::from_pool(&pool))
 		.with_step(OrderByPriorityFee::default())
 		.with_step(RemoveRevertedTransactions::default());
 
 	let node = P::create_test_node(pipeline).await.unwrap();
+	pool.attach_to_test_node(&node).unwrap();
+
 	let block = node.next_block().await.unwrap();
 	assert_eq!(block.header().number(), 1);
 
@@ -80,15 +84,17 @@ async fn pipeline_with_no_txs_builds_empty_payload<P: TestablePlatform>() {
 
 #[rblib_test(Ethereum, Optimism)]
 async fn all_transactions_included_by_one<P: TestablePlatform>() {
+	let pool = OrderPool::default();
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
 		(
-			AppendOrders::default().with_max_new_orders(1),
+			AppendOrders::from_pool(&pool).with_max_new_orders(1),
 			OrderByPriorityFee::default(),
 		),
 	);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
+	pool.attach_to_test_node(&node).unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
@@ -130,12 +136,17 @@ async fn all_transactions_included_by_one<P: TestablePlatform>() {
 
 #[rblib_test(Ethereum, Optimism)]
 async fn all_transactions_included_by_many<P: TestablePlatform>() {
+	let pool = OrderPool::default();
 	let pipeline = Pipeline::default().with_pipeline(
 		Loop,
-		(AppendOrders::default(), OrderByPriorityFee::default()),
+		(
+			AppendOrders::from_pool(&pool),
+			OrderByPriorityFee::default(),
+		),
 	);
 
 	let node = P::create_test_node(pipeline).await.unwrap();
+	pool.attach_to_test_node(&node).unwrap();
 
 	let mut transfers = vec![];
 	for i in 0..10 {
@@ -179,10 +190,11 @@ async fn all_transactions_included_by_many<P: TestablePlatform>() {
 #[ignore = "This test never completes but ensures that this syntax compiles"]
 #[allow(clippy::large_futures)]
 async fn reth_minimal_integration_example() {
+	let pool = OrderPool::default();
 	let pipeline = Pipeline::<Ethereum>::default().with_pipeline(
 		Loop,
 		(
-			AppendOrders::default(),
+			AppendOrders::from_pool(&pool),
 			OrderByPriorityFee::default(),
 			OrderByCoinbaseProfit::default(),
 			RemoveRevertedTransactions::default(),

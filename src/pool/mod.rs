@@ -17,6 +17,7 @@ use {
 
 mod host;
 mod maintain;
+mod native;
 mod report;
 mod rpc;
 mod select;
@@ -182,3 +183,6 @@ impl<P: Platform> From<Arc<OrderPoolInner<P>>> for OrderPool<P> {
 		inner.outer()
 	}
 }
+
+#[cfg(feature = "test-utils")]
+pub use native::NativeTransactionPool;

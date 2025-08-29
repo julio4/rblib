@@ -5,7 +5,7 @@
 //! etc.
 
 use {
-	super::super::step::instance::StepInstance,
+	super::StepInstance,
 	crate::prelude::*,
 	core::fmt::Formatter,
 	derive_more::{From, Into},

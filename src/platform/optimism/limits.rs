@@ -33,7 +33,7 @@ where
 		block: &BlockContext<P>,
 		enclosing: Option<&Limits>,
 	) -> Limits {
-		let mut limits = Limits::with_gas_limit(
+		let mut limits = Limits::gas_limit(
 			block
 				.attributes()
 				.gas_limit

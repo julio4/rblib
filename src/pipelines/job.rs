@@ -28,26 +28,24 @@ use {
 /// This is a long-running job that will be polled by the CL node until it is
 /// resolved. The job future must resolve within 1 second from the moment
 /// [`PayloadJob::resolve_kind`] is called with [`PaylodKind::Earliest`].
-pub struct PayloadJob<P, Provider, Pool>
+pub struct PayloadJob<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	block: BlockContext<P>,
-	fut: ExecutorFuture<P, Provider, Pool>,
+	fut: ExecutorFuture<P, Provider>,
 }
 
-impl<P, Provider, Pool> PayloadJob<P, Provider, Pool>
+impl<P, Provider> PayloadJob<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	pub fn new(
 		pipeline: &Arc<Pipeline<P>>,
 		block: BlockContext<P>,
-		service: &Arc<ServiceContext<P, Provider, Pool>>,
+		service: &Arc<ServiceContext<P, Provider>>,
 	) -> Self {
 		debug!(
 			"New Payload Job {} with block context: {block:#?}",
@@ -64,15 +62,14 @@ where
 	}
 }
 
-impl<P, Provider, Pool> RethPayloadJobTrait for PayloadJob<P, Provider, Pool>
+impl<P, Provider> RethPayloadJobTrait for PayloadJob<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	type BuiltPayload = types::BuiltPayload<P>;
 	type PayloadAttributes = types::PayloadBuilderAttributes<P>;
-	type ResolvePayloadFuture = ExecutorFuture<P, Provider, Pool>;
+	type ResolvePayloadFuture = ExecutorFuture<P, Provider>;
 
 	fn best_payload(&self) -> Result<Self::BuiltPayload, PayloadBuilderError> {
 		unimplemented!("PayloadJob::best_payload is not implemented");
@@ -111,10 +108,9 @@ where
 /// This future is polled for the first time by the Reth runtime when the
 /// `PayloadJob` is created. Here we want to immediately start executing
 /// the pipeline instead of waiting for the `resolve_kind` to be called.
-impl<P, Provider, Pool> Future for PayloadJob<P, Provider, Pool>
+impl<P, Provider> Future for PayloadJob<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	type Output = Result<(), PayloadBuilderError>;
@@ -144,14 +140,13 @@ where
 /// This future wraps the `PipelineExecutor` and is used to poll the
 /// internal executor of the pipeline. Once this future is resolved, it
 /// can be polled again and will return copie of the resolved payload.
-pub struct ExecutorFuture<P, Provider, Pool>
+pub struct ExecutorFuture<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	payload_id: PayloadId,
-	state: ExecutorFutureState<P, Provider, Pool>,
+	state: ExecutorFutureState<P, Provider>,
 }
 
 /// This enum allows us to wrap the `PipelineExecutor` future
@@ -162,23 +157,21 @@ where
 /// Whenever any of the copies of the future is polled, it will poll the
 /// executor, if any copy resolved, all copies will also resolve with the same
 /// result.
-enum ExecutorFutureState<P, Provider, Pool>
+enum ExecutorFutureState<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
 	Ready(Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>),
-	Future(Shared<PipelineExecutor<P, Provider, Pool>>),
+	Future(Shared<PipelineExecutor<P, Provider>>),
 }
 
-impl<P, Provider, Pool> ExecutorFuture<P, Provider, Pool>
+impl<P, Provider> ExecutorFuture<P, Provider>
 where
 	P: Platform,
-	Pool: traits::PoolBounds<P>,
 	Provider: traits::ProviderBounds<P>,
 {
-	pub fn new(executor: PipelineExecutor<P, Provider, Pool>) -> Self {
+	pub fn new(executor: PipelineExecutor<P, Provider>) -> Self {
 		Self {
 			payload_id: executor.payload_id(),
 			state: ExecutorFutureState::Future(executor.shared()),
@@ -186,11 +179,10 @@ where
 	}
 }
 
-impl<P, Provider, Pool> Future for ExecutorFuture<P, Provider, Pool>
+impl<P, Provider> Future for ExecutorFuture<P, Provider>
 where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
-	Pool: traits::PoolBounds<P>,
 {
 	type Output = Result<types::BuiltPayload<P>, PayloadBuilderError>;
 
@@ -230,11 +222,10 @@ where
 /// We want this to be clonable because the `resolve_kind` method could
 /// potentially return multiple copies of the future, and we want all of them to
 /// resolve with the same result at the same time.
-impl<P, Provider, Pool> Clone for ExecutorFuture<P, Provider, Pool>
+impl<P, Provider> Clone for ExecutorFuture<P, Provider>
 where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
-	Pool: traits::PoolBounds<P>,
 {
 	fn clone(&self) -> Self {
 		Self {

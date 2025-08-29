@@ -4,7 +4,8 @@ use {
 	core::{num::NonZero, time::Duration},
 };
 
-/// Scales limits from enclosing pipelines by a given factor of fixed value.
+/// Scales down the limits of the enclosing pipeline (or platform default) by a
+/// fixed factor.
 #[derive(Default)]
 pub struct Scaled {
 	gas: Option<ScaleOp<u64>>,
@@ -109,6 +110,38 @@ impl Scaled {
 			max_blobs_per_tx: None,
 			deadline: None,
 		}
+	}
+
+	pub fn from(&self, limits: &Limits) -> Limits {
+		let mut limits = limits.clone();
+
+		if let Some(ref op) = self.gas {
+			limits.gas_limit = op.apply(limits.gas_limit);
+		}
+
+		if let Some(ref op) = self.deadline {
+			limits.deadline = op.apply(limits.deadline);
+		}
+
+		if let Some(ref op) = self.max_txs {
+			limits.max_transactions = op.apply(limits.max_transactions);
+		}
+
+		if let Some(ref op) = self.max_blob_count {
+			limits.blob_params = limits.blob_params.map(|params| BlobParams {
+				max_blob_count: op.apply(params.max_blob_count),
+				..params
+			});
+		}
+
+		if let Some(ref op) = self.max_blobs_per_tx {
+			limits.blob_params = limits.blob_params.map(|params| BlobParams {
+				max_blobs_per_tx: op.apply(params.max_blobs_per_tx),
+				..params
+			});
+		}
+
+		limits
 	}
 
 	#[must_use]

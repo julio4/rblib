@@ -5,11 +5,13 @@ use {
 	std::sync::Arc,
 };
 
-pub mod instance;
-pub mod metrics;
-pub mod name;
+mod context;
+mod instance;
+mod metrics;
+mod name;
 
-pub use reth::payload::builder::PayloadBuilderError;
+pub(super) use instance::StepInstance;
+pub use {context::StepContext, reth::payload::builder::PayloadBuilderError};
 
 /// This trait defines a step in a pipeline.
 ///

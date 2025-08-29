@@ -10,10 +10,9 @@ use {
 	futures::Stream,
 	pipelines_macros::impl_into_pipeline_steps,
 	std::sync::Arc,
-	step::instance::StepInstance,
+	step::StepInstance,
 };
 
-mod context;
 mod events;
 mod exec;
 mod iter;
@@ -28,9 +27,8 @@ mod tests;
 // public API exports
 pub use {
 	Behavior::{Loop, Once},
-	context::StepContext,
 	events::system_events::*,
-	step::{ControlFlow, InitContext, PayloadBuilderError, Step},
+	step::{ControlFlow, InitContext, PayloadBuilderError, Step, StepContext},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,6 +9,9 @@ pub trait LimitsFactory<P: Platform>: Send + Sync + 'static {
 	///
 	/// As an input this method takes the block context that we're producing a
 	/// payload for and optionally any limits imposed by enclosing pipelines.
+	///
+	/// This is called when a new pipeline execution context for a new
+	/// payload job is created.
 	fn create(
 		&self,
 		block: &BlockContext<P>,
@@ -37,7 +40,7 @@ pub struct Limits {
 }
 
 impl Limits {
-	pub fn with_gas_limit(gas_limit: u64) -> Self {
+	pub fn gas_limit(gas_limit: u64) -> Self {
 		Self {
 			gas_limit,
 			blob_params: None,
@@ -67,6 +70,12 @@ impl Limits {
 	#[must_use]
 	pub fn with_deadline(mut self, deadline: Duration) -> Self {
 		self.deadline = Some(deadline);
+		self
+	}
+
+	#[must_use]
+	pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+		self.gas_limit = gas_limit;
 		self
 	}
 
@@ -286,7 +295,7 @@ mod tests {
 					.must_run(),
 			)
 			.with_limits(
-				Limits::with_gas_limit(1000).with_deadline(Duration::from_millis(500)),
+				Limits::gas_limit(1000).with_deadline(Duration::from_millis(500)),
 			);
 		P::create_test_node(pipeline).await?.next_block().await?;
 		Ok(())
@@ -308,7 +317,7 @@ mod tests {
 					),
 			)
 			.with_limits(
-				Limits::with_gas_limit(1000).with_deadline(Duration::from_millis(500)),
+				Limits::gas_limit(1000).with_deadline(Duration::from_millis(500)),
 			);
 		P::create_test_node(pipeline).await?.next_block().await?;
 		Ok(())
@@ -330,7 +339,7 @@ mod tests {
 					),
 			)
 			.with_limits(
-				Limits::with_gas_limit(1000).with_deadline(Duration::from_millis(500)),
+				Limits::gas_limit(1000).with_deadline(Duration::from_millis(500)),
 			);
 		P::create_test_node(pipeline).await?.next_block().await?;
 		Ok(())
@@ -365,7 +374,7 @@ mod tests {
 					),
 			)
 			.with_limits(
-				Limits::with_gas_limit(1000).with_deadline(Duration::from_millis(800)),
+				Limits::gas_limit(1000).with_deadline(Duration::from_millis(800)),
 			);
 		P::create_test_node(pipeline).await?.next_block().await?;
 		Ok(())

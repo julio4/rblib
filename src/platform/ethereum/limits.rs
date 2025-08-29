@@ -32,7 +32,7 @@ impl LimitsFactory<Ethereum> for EthereumDefaultLimits {
 		let parent_gas_limit = block.parent().gas_limit();
 		let gas_limit = self.0.gas_limit(parent_gas_limit);
 		let mut limits =
-			Limits::with_gas_limit(gas_limit).with_deadline(Duration::from_secs(
+			Limits::gas_limit(gas_limit).with_deadline(Duration::from_secs(
 				block.attributes().timestamp().saturating_sub(
 					SystemTime::now()
 						.duration_since(UNIX_EPOCH)

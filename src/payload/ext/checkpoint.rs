@@ -286,8 +286,10 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// by `Checkpoint::new_at_block`.
 	fn building_since(&self) -> Instant {
 		let mut created_at = self.created_at();
-		while let Some(prev) = self.prev() {
+		let mut current = self.clone();
+		while let Some(prev) = current.prev() {
 			created_at = prev.created_at();
+			current = prev;
 		}
 		created_at
 	}

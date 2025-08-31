@@ -107,13 +107,13 @@ impl<P: Platform> RootScope<P> {
 	) {
 		let next = scope_of(next_step);
 		let prev = self.current.replace(next.clone());
-		let mut root = self.root.write();
 
 		if prev != next {
 			// Scope changed. We will need to leave all scopes from `prev`
 			// up to the common ancestor, then enter all scopes from the
 			// common ancestor to `next`.
 			let common = prev.common_ancestor(&next);
+			let mut root = self.root.write();
 
 			for s in prev.between(&common) {
 				root.get_mut(&s).expect("scope should exist").leave();

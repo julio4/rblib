@@ -57,7 +57,7 @@ where
 
 	/// Execution scopes. This root scope represents the top-level pipeline that
 	/// may contain nested scopes for each nested pipeline.
-	scope: Arc<RootScope>,
+	scope: Arc<RootScope<P>>,
 }
 
 impl<P: Platform, Provider: traits::ProviderBounds<P>>
@@ -76,8 +76,12 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 			.metrics()
 			.record_payload_job_attributes::<P>(block.attributes());
 
+		// Create the initial payload checkpoint, this will implicitly capture the
+		// time we started executing the pipeline for this payload job.
+		let checkpoint = block.start();
+
 		// initialize pipeline scopes
-		let root = Arc::new(RootScope::new(&pipeline, &block));
+		let root = Arc::new(RootScope::new(&pipeline, &checkpoint));
 
 		// Initially set the execution cursor to initializing state, that will call
 		// all `before_job` methods of the steps in the pipeline.
@@ -88,19 +92,17 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 				let scope = Arc::clone(&root);
 
 				async move {
-					// enter the scope of the root pipeline
-					scope.enter();
-
 					for step in pipeline.iter_steps() {
 						let navi = step.navigator(&pipeline).expect(
 							"Invalid step path. This is a bug in the pipeline executor \
 							 implementation.",
 						);
-						let scope = scope.of(&step).expect("invalid step path");
-						let ctx = StepContext::new(&block, &navi, scope);
+						let limits = scope.limits_of(&step).expect("invalid step path");
+						let ctx = StepContext::new(&block, &navi, limits, None);
 						navi.instance().before_job(ctx).await?;
 					}
-					Ok(())
+
+					Ok(checkpoint)
 				}
 				.boxed()
 			}),
@@ -133,18 +135,19 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 		path: &StepPath,
 		input: Checkpoint<P>,
 	) -> Pin<Box<dyn Future<Output = ControlFlow<P>> + Send>> {
-		let scope = self.scope.of(path).expect(
+		let limits = self.scope.limits_of(path).expect(
 			"Invalid step path. This is a bug in the pipeline executor \
 			 implementation.",
 		);
 
-		let step_navi = path.navigator(&self.pipeline).expect(
+		let navi = path.navigator(&self.pipeline).expect(
 			"Invalid step path. This is a bug in the pipeline executor \
 			 implementation.",
 		);
 
-		let ctx = StepContext::new(&self.block, &step_navi, scope);
-		let step = Arc::clone(step_navi.instance());
+		let entered_at = self.scope.entered_at(path);
+		let ctx = StepContext::new(&self.block, &navi, limits, entered_at);
+		let step = Arc::clone(navi.instance());
 		async move { step.step(input, ctx).await }.boxed()
 	}
 
@@ -194,13 +197,17 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 		// there is a next step to be executed, create a cursor that will
 		// start running the next step with the output of the current step
 		// as input on next executor future poll
-		self.scope.switch_context(step.path());
+
+		// enter the scope of the next step
+		self.scope.switch_context(step.path(), &input);
+
+		// schedule execution on next future poll
 		Cursor::BeforeStep(step.into(), input)
 	}
 
 	/// After pipeline steps are initialized, this method will identify the first
 	/// step to execute in the pipeline and prepare the cursor to run it.
-	fn first_step(&self) -> Cursor<P> {
+	fn first_step(&self, checkpoint: Checkpoint<P>) -> Cursor<P> {
 		let Some(navigator) = StepNavigator::entrypoint(&self.pipeline) else {
 			debug!(
 				"empty pipeline, building empty payload for attributes: {:?}",
@@ -215,7 +222,11 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 			);
 		};
 
-		Cursor::BeforeStep(navigator.into(), self.block.start())
+		// enter the scope of the root pipeline
+		self.scope.enter(&checkpoint);
+
+		// Begin executing the first step of the pipeline in the next future poll
+		Cursor::BeforeStep(navigator.into(), checkpoint)
 	}
 
 	/// This method will walk through the pipeline steps and invoke the
@@ -239,13 +250,16 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 					"Invalid step path. This is a bug in the pipeline executor \
 					 implementation.",
 				);
-				let scope = scope.of(&step).expect("invalid step path");
-				let ctx = StepContext::new(&block, &navi, scope);
+				let limits = scope.limits_of(&step).expect("invalid step path");
+				let ctx = StepContext::new(&block, &navi, limits, None);
 				navi.instance().after_job(ctx, output.clone()).await?;
 			}
 
-			// leave the scope of the root pipeline
-			scope.leave();
+			// leave the scope of the root pipeline (if entered, we never enter the
+			// root scope only in empty pipelines).
+			if scope.is_active() {
+				scope.leave();
+			}
 
 			Arc::into_inner(output)
 				.expect("unexpected > 1 strong reference count")
@@ -270,9 +284,9 @@ where
 		if let Cursor::Initializing(ref mut future) = executor.cursor {
 			if let Poll::Ready(output) = future.as_mut().poll_unpin(cx) {
 				match output {
-					Ok(()) => {
+					Ok(checkpoint) => {
 						trace!("{} initialized successfully", executor.pipeline);
-						executor.cursor = executor.first_step();
+						executor.cursor = executor.first_step(checkpoint);
 					}
 					Err(error) => {
 						trace!(
@@ -393,7 +407,11 @@ enum Cursor<P: Platform> {
 	/// This happens once before any step is executed and it calls the
 	/// `before_job` method of each step in the pipeline.
 	Initializing(
-		Pin<Box<dyn Future<Output = Result<(), PayloadBuilderError>> + Send>>,
+		Pin<
+			Box<
+				dyn Future<Output = Result<Checkpoint<P>, PayloadBuilderError>> + Send,
+			>,
+		>,
 	),
 
 	/// This state occurs after the `Completed` state is reached. It calls

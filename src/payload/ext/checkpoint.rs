@@ -13,6 +13,7 @@ use {
 		},
 	},
 	itertools::Itertools,
+	std::time::Instant,
 };
 
 /// Quality of Life extensions for the `Checkpoint` type.
@@ -123,6 +124,12 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 
 	/// Returns true if the checkpoint represents a bundle of transactions.
 	fn is_bundle(&self) -> bool;
+
+	/// Returns the timestamp of initial checkpoint that was created at the very
+	/// beginning of the payload building process. It is the timestamp if the
+	/// first checkpoint in the history of this checkpoint that is created
+	/// by `Checkpoint::new_at_block`.
+	fn building_since(&self) -> Instant;
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
@@ -271,5 +278,17 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// Returns true if the checkpoint represents a bundle of transactions.
 	fn is_bundle(&self) -> bool {
 		self.as_bundle().is_some()
+	}
+
+	/// Returns the timestamp of initial checkpoint that was created at the very
+	/// beginning of the payload building process. It is the timestamp if the
+	/// first barrier checkpoint in the history of this checkpoint that is created
+	/// by `Checkpoint::new_at_block`.
+	fn building_since(&self) -> Instant {
+		let mut created_at = self.created_at();
+		while let Some(prev) = self.prev() {
+			created_at = prev.created_at();
+		}
+		created_at
 	}
 }

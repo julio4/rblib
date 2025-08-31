@@ -17,6 +17,7 @@ mod events;
 mod exec;
 mod iter;
 mod job;
+mod limits;
 mod metrics;
 mod service;
 mod step;
@@ -28,6 +29,7 @@ mod tests;
 pub use {
 	Behavior::{Loop, Once},
 	events::system_events::*,
+	limits::*,
 	step::{ControlFlow, InitContext, PayloadBuilderError, Step, StepContext},
 };
 
@@ -41,7 +43,7 @@ pub struct Pipeline<P: Platform> {
 	epilogue: Option<Arc<StepInstance<P>>>,
 	prologue: Option<Arc<StepInstance<P>>>,
 	steps: Vec<StepOrPipeline<P>>,
-	limits: Option<Box<dyn LimitsFactory<P>>>,
+	limits: Option<Arc<dyn ScopedLimits<P>>>,
 	name: String,
 	events: Arc<EventsBus<P>>,
 }
@@ -122,10 +124,10 @@ impl<P: Platform> Pipeline<P> {
 	/// limits dynamically according to a user-defined logic, or we can use a
 	/// fixed `Limits` instance.
 	#[must_use]
-	pub fn with_limits<T, L: IntoLimitsFactory<P, T>>(self, limits: L) -> Self {
+	pub fn with_limits<T, L: IntoScopedLimits<P, T>>(self, limits: L) -> Self {
 		let mut this = self;
-		let factory = limits.into_limits_factory();
-		this.limits = Some(Box::new(factory) as Box<dyn LimitsFactory<P>>);
+		let factory = limits.into_scoped_limits();
+		this.limits = Some(Arc::new(factory) as Arc<dyn ScopedLimits<P>>);
 		this
 	}
 }
@@ -182,8 +184,8 @@ impl<P: Platform> Pipeline<P> {
 		&self.steps
 	}
 
-	pub(crate) fn limits(&self) -> Option<&dyn LimitsFactory<P>> {
-		self.limits.as_deref()
+	pub(crate) fn limits(&self) -> Option<&Arc<dyn ScopedLimits<P>>> {
+		self.limits.as_ref()
 	}
 
 	/// Iterates over all steps in this and all nested pipelines, for each step
@@ -269,7 +271,7 @@ impl_into_pipeline_steps!(128);
 pub trait PipelineBuilderExt<P: Platform> {
 	fn with_prologue(self, step: impl Step<P>) -> Pipeline<P>;
 	fn with_epilogue(self, step: impl Step<P>) -> Pipeline<P>;
-	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P>;
+	fn with_limits<L: ScopedLimits<P>>(self, limits: L) -> Pipeline<P>;
 	fn with_name(self, name: impl Into<String>) -> Pipeline<P>;
 }
 
@@ -285,7 +287,7 @@ impl<P: Platform, T: IntoPipeline<P, Variant<0>>> PipelineBuilderExt<P> for T {
 	}
 
 	#[track_caller]
-	fn with_limits<L: LimitsFactory<P>>(self, limits: L) -> Pipeline<P> {
+	fn with_limits<L: ScopedLimits<P>>(self, limits: L) -> Pipeline<P> {
 		self.into_pipeline().with_limits(limits)
 	}
 

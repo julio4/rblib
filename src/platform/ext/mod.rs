@@ -12,9 +12,8 @@ use {
 };
 
 mod bundle;
-mod limits;
 
-pub use {bundle::BundleExt, limits::*};
+pub use bundle::BundleExt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionBuilderError<P: PlatformWithRpcTypes> {

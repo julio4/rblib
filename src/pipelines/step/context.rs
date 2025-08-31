@@ -1,8 +1,5 @@
 use {
-	super::super::{
-		events::EventsBus,
-		exec::{navi::StepNavigator, scope::Scope},
-	},
+	super::super::{events::EventsBus, exec::navi::StepNavigator},
 	crate::{
 		prelude::*,
 		reth::{primitives::SealedHeader, providers::StateProvider},
@@ -27,12 +24,12 @@ impl<P: Platform> StepContext<P> {
 	pub(crate) fn new(
 		block: &BlockContext<P>,
 		step: &StepNavigator<P>,
-		scope: &Scope,
+		limits: Limits,
+		in_scope_since: Option<Instant>,
 	) -> Self {
 		let block = block.clone();
 		let events_bus = Arc::clone(&step.root_pipeline().events);
-		let limits = scope.limits().clone();
-		let started_at = scope.started_at();
+		let started_at = in_scope_since;
 
 		Self {
 			block,
@@ -64,6 +61,11 @@ impl<P: Platform> StepContext<P> {
 	/// Payload limits for the scope of the step.
 	pub const fn limits(&self) -> &Limits {
 		&self.limits
+	}
+
+	/// Returns the instant when the scope of this step was last entered.
+	pub const fn in_scope_since(&self) -> Option<Instant> {
+		self.started_at
 	}
 
 	/// Checks if the scope of this step has been running longer than the deadline

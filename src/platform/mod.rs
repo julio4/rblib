@@ -73,10 +73,7 @@ pub trait Platform:
 	/// Type that represents transactions that are inside the transaction pool.
 	type PooledTransaction: reth::transaction_pool::EthPoolTransaction<
 			Consensus = types::Transaction<Self>,
-		> + Send
-		+ Sync
-		+ Unpin
-		+ 'static;
+		>;
 
 	/// Type that configures how bundles are represented and handled by the
 	/// platform.
@@ -85,7 +82,7 @@ pub trait Platform:
 	/// Type that can provide limits for the payload building process.
 	/// If no limits are set on a pipeline explicitly, a default instance of this
 	/// type will be used automatically.
-	type DefaultLimits: LimitsFactory<Self> + Default + Send + Sync + 'static;
+	type DefaultLimits: PlatformLimits<Self>;
 
 	/// Instantiate the EVM configuration for the platform with a given chain
 	/// specification.

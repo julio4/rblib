@@ -67,7 +67,7 @@ impl<P: PlatformWithRpcTypes> BuilderEpilogue<P> {
 	/// transaction when calculating the limits for the block and inherit all
 	/// limits from either the enclosing limits or the default limits for the
 	/// platform.
-	pub fn limiter(&self) -> impl LimitsFactory<P> {
+	pub fn limiter(&self) -> impl ScopedLimits<P> {
 		LimitsMinusEpilogue {
 			message_fn: Arc::clone(&self.message_fn),
 		}
@@ -133,32 +133,12 @@ struct LimitsMinusEpilogue<P: Platform> {
 	message_fn: MessageFn<P>,
 }
 
-impl<P: Platform> LimitsFactory<P> for LimitsMinusEpilogue<P> {
-	fn create(
-		&self,
-		block: &BlockContext<P>,
-		enclosing: Option<&Limits>,
-	) -> Limits {
-		// Identify the baseline gas budget we have to work with.
-		let mut baseline = enclosing
-			.cloned()
-			.unwrap_or_else(|| P::DefaultLimits::default().create(block, None));
-
+impl<P: Platform> ScopedLimits<P> for LimitsMinusEpilogue<P> {
+	fn create(&self, payload: &Checkpoint<P>, enclosing: &Limits) -> Limits {
 		// calculate the gas usage for the epilogue transaction
-		let message = (self.message_fn)(block);
+		let message = (self.message_fn)(payload.block());
 		let gas_estimate = estimate_gas_for_tx(message.as_bytes());
-
-		// Subtract the gas estimate for the epilogue transaction from the
-		// baseline gas limit.
-		baseline.gas_limit = baseline.gas_limit.saturating_sub(gas_estimate);
-
-		if let Some(ref mut max_tx_count) = baseline.max_transactions {
-			// If we have a max transaction count, we need to account for the
-			// epilogue transaction.
-			*max_tx_count = max_tx_count.saturating_sub(1);
-		}
-
-		baseline
+		Scaled::default().gas(Minus(gas_estimate)).from(enclosing)
 	}
 }
 

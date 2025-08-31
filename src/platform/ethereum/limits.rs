@@ -22,12 +22,8 @@ impl EthereumDefaultLimits {
 	}
 }
 
-impl LimitsFactory<Ethereum> for EthereumDefaultLimits {
-	fn create(
-		&self,
-		block: &BlockContext<Ethereum>,
-		enclosing: Option<&Limits>,
-	) -> Limits {
+impl PlatformLimits<Ethereum> for EthereumDefaultLimits {
+	fn create(&self, block: &BlockContext<Ethereum>) -> Limits {
 		let timestamp = block.attributes().timestamp();
 		let parent_gas_limit = block.parent().gas_limit();
 		let gas_limit = self.0.gas_limit(parent_gas_limit);
@@ -45,10 +41,6 @@ impl LimitsFactory<Ethereum> for EthereumDefaultLimits {
 			block.chainspec().blob_params_at_timestamp(timestamp)
 		{
 			limits = limits.with_blob_params(blob_params);
-		}
-
-		if let Some(enclosing) = enclosing {
-			limits = limits.clamp(enclosing);
 		}
 
 		limits

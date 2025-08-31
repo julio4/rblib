@@ -17,7 +17,7 @@ use {
 			state::{AccountInfo, Bytecode},
 		},
 	},
-	std::sync::Arc,
+	std::{sync::Arc, time::Instant},
 	thiserror::Error,
 };
 
@@ -84,8 +84,14 @@ impl<P: Platform> Checkpoint<P> {
 		self.inner.depth
 	}
 
+	/// Returns the timestamp when this checkpoint was created.
+	pub fn created_at(&self) -> Instant {
+		self.inner.created_at
+	}
+
 	/// The returns the payload version before the current checkpoint.
-	/// Working with the previous checkpoint is equivalent to discarding the
+	///
+	/// Using the previous checkpoint is equivalent to discarding the
 	/// state mutations made in the current checkpoint.
 	///
 	/// There may be multiple parallel forks of the payload under construction,
@@ -181,6 +187,7 @@ impl<P: Platform> Checkpoint<P> {
 						.try_into_executable()?
 						.execute(self.block(), self)?,
 				),
+				created_at: Instant::now(),
 			}),
 		})
 	}
@@ -196,6 +203,7 @@ impl<P: Platform> Checkpoint<P> {
 				prev: Some(Arc::clone(&self.inner)),
 				depth: self.inner.depth + 1,
 				mutation: Mutation::Barrier,
+				created_at: Instant::now(),
 			}),
 		}
 	}
@@ -213,6 +221,7 @@ impl<P: Platform> Checkpoint<P> {
 				prev: None,
 				depth: 0,
 				mutation: Mutation::Barrier,
+				created_at: Instant::now(),
 			}),
 		}
 	}
@@ -257,6 +266,9 @@ struct CheckpointInner<P: Platform> {
 
 	/// The mutation
 	mutation: Mutation<P>,
+
+	/// The timestamp when this checkpoint was created.
+	created_at: Instant,
 }
 
 /// Converts a checkpoint into a vector of transactions that were applied to

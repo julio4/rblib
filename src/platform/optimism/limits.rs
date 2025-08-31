@@ -16,7 +16,7 @@ use {
 #[derive(Debug, Clone, Default)]
 pub struct OptimismDefaultLimits;
 
-impl<P> LimitsFactory<P> for OptimismDefaultLimits
+impl<P> PlatformLimits<P> for OptimismDefaultLimits
 where
 	P: Platform<
 		NodeTypes: NodeTypes<
@@ -28,11 +28,7 @@ where
 		>,
 	>,
 {
-	fn create(
-		&self,
-		block: &BlockContext<P>,
-		enclosing: Option<&Limits>,
-	) -> Limits {
+	fn create(&self, block: &BlockContext<P>) -> Limits {
 		let mut limits = Limits::gas_limit(
 			block
 				.attributes()
@@ -57,10 +53,6 @@ where
 			.blob_params_at_timestamp(block.attributes().payload_attributes.timestamp)
 		{
 			limits = limits.with_blob_params(blob_params);
-		}
-
-		if let Some(enclosing) = enclosing {
-			limits = limits.clamp(enclosing);
 		}
 
 		limits

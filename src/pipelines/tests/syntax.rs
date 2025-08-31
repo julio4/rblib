@@ -103,8 +103,8 @@ fn flashblocks_example_closure() {
 
 	#[derive(Debug)]
 	struct FlashblockLimits(FlashblocksConfig);
-	impl<P: Platform> LimitsFactory<P> for FlashblockLimits {
-		fn create(&self, _: &BlockContext<P>, _: Option<&Limits>) -> Limits {
+	impl<P: Platform> ScopedLimits<P> for FlashblockLimits {
+		fn create(&self, _: &Checkpoint<P>, _: &Limits) -> Limits {
 			unimplemented!()
 		}
 	}

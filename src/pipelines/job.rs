@@ -1,20 +1,23 @@
 use {
 	super::traits,
 	crate::{
+		alloy,
 		pipelines::{exec::PipelineExecutor, service::ServiceContext},
 		prelude::*,
-		reth::{
-			api::PayloadBuilderAttributes,
-			payload::builder::{PayloadJob as RethPayloadJobTrait, *},
-		},
+		reth,
 	},
+	alloy::consensus::BlockHeader,
 	core::{
 		pin::Pin,
 		task::{Context, Poll},
 	},
 	futures::{FutureExt, future::Shared},
-	reth_node_builder::BuiltPayload,
-	std::sync::Arc,
+	reth::{
+		api::PayloadBuilderAttributes,
+		node::builder::{BlockBody, BuiltPayload},
+		payload::builder::{PayloadJob as RethPayloadJobTrait, *},
+	},
+	std::{fmt::Write as _, sync::Arc, time::Instant},
 	tracing::{debug, warn},
 };
 
@@ -146,6 +149,7 @@ where
 	Provider: traits::ProviderBounds<P>,
 {
 	payload_id: PayloadId,
+	started_at: Instant,
 	state: ExecutorFutureState<P, Provider>,
 }
 
@@ -173,9 +177,57 @@ where
 {
 	pub fn new(executor: PipelineExecutor<P, Provider>) -> Self {
 		Self {
+			started_at: Instant::now(),
 			payload_id: executor.payload_id(),
 			state: ExecutorFutureState::Future(executor.shared()),
 		}
+	}
+
+	fn log_payload_job_result(
+		&self,
+		result: &Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>,
+	) -> core::fmt::Result {
+		match &result {
+			Ok(built_payload) => {
+				let built_block = built_payload.block();
+				let fees = built_payload.fees();
+
+				let mut out = String::new();
+				writeln!(&mut out, "Payload job {}:", self.payload_id)?;
+				writeln!(&mut out, "  Status: Success")?;
+				writeln!(&mut out, "  Duration: {:?}", self.started_at.elapsed())?;
+				writeln!(&mut out, "  Fees: {fees}")?;
+				writeln!(&mut out, "  Built Block:")?;
+				writeln!(&mut out, "    Number: {:?}", built_block.number())?;
+				writeln!(&mut out, "    Hash: {:?}", built_block.hash())?;
+				writeln!(&mut out, "    Parent: {:?}", built_block.parent_hash())?;
+				writeln!(&mut out, "    Timestamp: {:?}", built_block.timestamp())?;
+				writeln!(
+					&mut out,
+					"    Gas: {}/{} ({}%)",
+					built_block.gas_used(),
+					built_block.gas_limit(),
+					built_block.gas_used() * 100 / built_block.gas_limit()
+				)?;
+				writeln!(
+					&mut out,
+					"    Transactions: {}",
+					built_block.body().transactions().len()
+				)?;
+
+				debug!("{out}");
+			}
+			Err(error) => {
+				let mut out = String::new();
+				writeln!(&mut out, "Payload job {}:", self.payload_id)?;
+				writeln!(&mut out, "  Status: Failed")?;
+				writeln!(&mut out, "  Duration: {:?}", self.started_at.elapsed())?;
+				writeln!(&mut out, "  Error: {error:#?}")?;
+				warn!("{out}");
+			}
+		}
+
+		Ok(())
 	}
 }
 
@@ -202,7 +254,7 @@ where
 					Poll::Ready(result) => {
 						// got a result. All future polls will return the result directly
 						// without polling the executor again.
-						log_payload_job_result::<P>(this.payload_id, &result);
+						let _ = this.log_payload_job_result(&result);
 
 						this.state = ExecutorFutureState::Ready(result.clone());
 						Poll::Ready(
@@ -230,6 +282,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			payload_id: self.payload_id,
+			started_at: self.started_at,
 			state: match &self.state {
 				ExecutorFutureState::Ready(result) => {
 					ExecutorFutureState::Ready(result.clone())
@@ -238,25 +291,6 @@ where
 					ExecutorFutureState::Future(future.clone())
 				}
 			},
-		}
-	}
-}
-
-fn log_payload_job_result<P: Platform>(
-	payload_id: PayloadId,
-	result: &Result<types::BuiltPayload<P>, Arc<PayloadBuilderError>>,
-) {
-	match &result {
-		Ok(built_payload) => {
-			let built_block = built_payload.block();
-			let fees = built_payload.fees();
-
-			debug!(
-				"Payload job {payload_id} completed: {built_block:#?}, fees: {fees}"
-			);
-		}
-		Err(error) => {
-			warn!("Payload job {payload_id} failed: {error:#?}");
 		}
 	}
 }

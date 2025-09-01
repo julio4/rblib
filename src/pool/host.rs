@@ -11,6 +11,7 @@ use {
 			StateProviderFactory,
 		},
 		tasks::shutdown::Shutdown,
+		transaction_pool::TransactionPool,
 	},
 	std::sync::OnceLock,
 	tracing::debug,
@@ -103,6 +104,14 @@ impl<P: Platform> HostNode<P> {
 	/// native transaction pool.
 	pub fn system_pool(&self) -> Option<&impl traits::PoolBounds<P>> {
 		self.instances.get().map(|i| &i.system_pool)
+	}
+
+	/// If attached to a host node, this will remove a transaction from the reth
+	/// native transaction pool.
+	pub fn remove_transaction(&self, txhash: TxHash) {
+		if let Some(pool) = self.instances.get().map(|i| &i.system_pool) {
+			pool.remove_transactions(vec![txhash]);
+		}
 	}
 }
 

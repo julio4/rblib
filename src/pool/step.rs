@@ -6,6 +6,7 @@ use {
 	dashmap::DashSet,
 	metrics::{Counter, Histogram},
 	reth::{
+		chainspec::MIN_TRANSACTION_GAS,
 		ethereum::primitives::SignedTransaction,
 		payload::builder::PayloadId,
 	},
@@ -279,7 +280,13 @@ impl<'a, P: Platform> Run<'a, P> {
 			return true;
 		}
 
-		if self.payload.cumulative_gas_used() >= self.limits().gas_limit {
+		let remaining_gas = self
+			.limits()
+			.gas_limit
+			.saturating_sub(self.payload.cumulative_gas_used());
+
+		if remaining_gas < MIN_TRANSACTION_GAS {
+			// won't be able to fit any more transactions
 			return true;
 		}
 
@@ -388,7 +395,6 @@ impl<'a, P: Platform> Run<'a, P> {
 			if candidate.is_bundle() {
 				self.step.metrics.bundles_skipped.increment(1);
 			}
-
 			return;
 		}
 

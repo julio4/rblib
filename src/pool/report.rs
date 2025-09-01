@@ -7,6 +7,7 @@
 use {
 	super::*,
 	reth::{node::builder::BlockBody, primitives::SealedBlock},
+	reth_payload_builder::PayloadId,
 	tracing::trace,
 };
 
@@ -48,12 +49,8 @@ impl<P: Platform> OrderPool<P> {
 	/// and there was an attempt to include it in a payload. Once an order was
 	/// proposed once by the pool, it will be removed from the orders list and
 	/// will not be proposed again.
-	pub fn report_inclusion_attempt(
-		&self,
-		_order_hash: B256,
-		_block: &BlockContext<P>,
-	) {
-		// todo
+	pub fn report_inclusion_attempt(&self, _order_hash: B256, _: PayloadId) {
+		// self.remove(&order_hash);
 	}
 
 	/// Signals to the order pool that a block has been committed to the chain.

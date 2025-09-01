@@ -108,12 +108,14 @@ impl<P: Platform> OrderPool<P> {
 
 	/// Removes an order from the pool and makes it no longer available through
 	/// `best_orders()`.
-	pub fn remove(&self, order_hash: &B256) -> Option<Order<P>> {
-		self.inner.orders.remove(order_hash).map(|(_, order)| order)
+	pub fn remove(&self, order_hash: &B256) {
+		self.inner.orders.remove(order_hash);
+		self.inner.host.remove_transaction(*order_hash);
 	}
 
 	/// Removes all orders that contain the a specific transaction hash.
 	pub fn remove_any_with(&self, txhash: TxHash) {
+		self.inner.host.remove_transaction(txhash);
 		if let Some((_, orders)) = self.inner.txmap.remove(&txhash) {
 			for order_hash in orders {
 				self.remove(&order_hash);

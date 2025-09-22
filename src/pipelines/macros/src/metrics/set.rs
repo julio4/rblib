@@ -35,7 +35,7 @@ use {
 ///       before registering.
 /// - Adds a simple Debug impl (non-exhaustive) similar to metrics-derive style.
 #[allow(clippy::too_many_lines)]
-pub fn metrics_set_derive(input: TokenStream) -> TokenStream {
+pub(crate) fn metrics_set_derive(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 	let ident = &input.ident;
 

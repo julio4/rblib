@@ -341,7 +341,7 @@ impl<'a, P: Platform> Run<'a, P> {
 
 	/// Tries to extend the current payload with the contents of the given order.
 	/// If the order is skipped, the payload checkpoint remains unchanged.
-	pub fn try_include(&mut self, order: Order<P>) {
+	pub(crate) fn try_include(&mut self, order: Order<P>) {
 		self.step.metrics.considered(&order);
 		self.step.per_job.considered(&order);
 
@@ -416,7 +416,7 @@ impl<'a, P: Platform> Run<'a, P> {
 		));
 	}
 
-	pub fn end(self) -> ControlFlow<P> {
+	pub(crate) fn end(self) -> ControlFlow<P> {
 		if self.step.break_on_limit && self.txs_included == 0 {
 			ControlFlow::Break(self.payload)
 		} else {
@@ -512,7 +512,7 @@ struct Metrics {
 
 #[allow(clippy::cast_possible_truncation)]
 impl Metrics {
-	pub fn considered<P: Platform>(&self, order: &Order<P>) {
+	pub(crate) fn considered<P: Platform>(&self, order: &Order<P>) {
 		self.orders_considered.increment(1);
 		self
 			.txs_considered
@@ -526,7 +526,7 @@ impl Metrics {
 		}
 	}
 
-	pub fn skipped<P: Platform>(&self, order: &Order<P>) {
+	pub(crate) fn skipped<P: Platform>(&self, order: &Order<P>) {
 		self.orders_skipped.increment(1);
 		self
 			.txs_skipped
@@ -536,7 +536,7 @@ impl Metrics {
 		}
 	}
 
-	pub fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
+	pub(crate) fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
 		self.orders_included.increment(1);
 		self
 			.txs_included
@@ -558,7 +558,7 @@ impl Metrics {
 		}
 	}
 
-	pub fn record_per_job(&self, counters: &PerJobCounters) {
+	pub(crate) fn record_per_job(&self, counters: &PerJobCounters) {
 		self
 			.per_job_orders_considered
 			.record(counters.orders_considered.load(Ordering::Relaxed));
@@ -594,7 +594,7 @@ struct PerJobCounters {
 
 #[allow(clippy::cast_possible_truncation)]
 impl PerJobCounters {
-	pub fn reset(&self) {
+	pub(crate) fn reset(&self) {
 		self.orders_considered.store(0, Ordering::Relaxed);
 		self.txs_considered.store(0, Ordering::Relaxed);
 		self.bundles_considered.store(0, Ordering::Relaxed);
@@ -604,7 +604,7 @@ impl PerJobCounters {
 		self.bundles_included.store(0, Ordering::Relaxed);
 	}
 
-	pub fn considered<P: Platform>(&self, order: &Order<P>) {
+	pub(crate) fn considered<P: Platform>(&self, order: &Order<P>) {
 		self.orders_considered.fetch_add(1, Ordering::Relaxed);
 
 		self
@@ -616,7 +616,7 @@ impl PerJobCounters {
 		}
 	}
 
-	pub fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
+	pub(crate) fn included<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
 		self.orders_included.fetch_add(1, Ordering::Relaxed);
 
 		self

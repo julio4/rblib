@@ -31,7 +31,7 @@ struct PoolsDemux<'o, P: Platform> {
 }
 
 impl<'o, P: Platform> PoolsDemux<'o, P> {
-	pub fn new(
+	pub(crate) fn new(
 		system_pool: Option<&impl traits::PoolBounds<P>>,
 		order_pool: impl Iterator<Item = Order<P>> + 'o,
 	) -> Self {

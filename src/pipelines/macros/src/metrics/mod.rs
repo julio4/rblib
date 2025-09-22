@@ -1,6 +1,6 @@
 mod set;
 
-pub use set::metrics_set_derive;
+pub(crate) use set::metrics_set_derive;
 
 fn rblib_path() -> proc_macro2::TokenStream {
 	use {

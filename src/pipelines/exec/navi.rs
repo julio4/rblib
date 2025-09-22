@@ -34,7 +34,7 @@ impl StepPath {
 	/// If the step path points at a nested pipeline, this method will create a
 	/// navigator that points to the first executable step starting from the
 	/// nested pipeline.
-	pub fn navigator<'a, P: Platform>(
+	pub(crate) fn navigator<'a, P: Platform>(
 		&self,
 		root: &'a Pipeline<P>,
 	) -> Option<StepNavigator<'a, P>> {
@@ -67,7 +67,7 @@ impl StepPath {
 	///
 	/// When this path points to an item, this value is the number of pipelines
 	/// that contain the item starting from the top-level pipeline.
-	pub fn depth(&self) -> usize {
+	pub(crate) fn depth(&self) -> usize {
 		self.0.len()
 	}
 
@@ -75,17 +75,17 @@ impl StepPath {
 	/// This means that this path is inside a pipeline that has no parents.
 	///
 	/// In other words, it checks if the path is a single element path.
-	pub fn is_toplevel(&self) -> bool {
+	pub(crate) fn is_toplevel(&self) -> bool {
 		self.depth() == 1
 	}
 
 	/// Returns `true` the the path is pointing to a prologue of a pipeline.
-	pub fn is_prologue(&self) -> bool {
+	pub(crate) fn is_prologue(&self) -> bool {
 		self.leaf() == PROLOGUE_INDEX
 	}
 
 	/// Returns `true` if the path is pointing to an epilogue of a pipeline.
-	pub fn is_epilogue(&self) -> bool {
+	pub(crate) fn is_epilogue(&self) -> bool {
 		self.leaf() == EPILOGUE_INDEX
 	}
 }
@@ -324,7 +324,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// deeper into the nested pipeline to find the first executable item.
 	///
 	/// In empty pipelines, this will return None.
-	pub fn entrypoint(pipeline: &'a Pipeline<P>) -> Option<Self> {
+	pub(crate) fn entrypoint(pipeline: &'a Pipeline<P>) -> Option<Self> {
 		if pipeline.is_empty() {
 			return None;
 		}
@@ -351,7 +351,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 
 	/// Returns a reference to the instance of the step that this path is
 	/// currently pointing to.
-	pub fn instance(&self) -> &Arc<StepInstance<P>> {
+	pub(crate) fn instance(&self) -> &Arc<StepInstance<P>> {
 		let step_index = self.0.leaf();
 		let enclosing_pipeline = self.pipeline();
 
@@ -380,7 +380,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 
 	/// Returns a reference to the immediate enclosing pipeline that contains the
 	/// current step.
-	pub fn pipeline(&self) -> &'a Pipeline<P> {
+	pub(crate) fn pipeline(&self) -> &'a Pipeline<P> {
 		self.1.last().expect(
 			"StepNavigator should always have at least one enclosing pipeline",
 		)
@@ -388,7 +388,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 
 	/// Returns a reference to the top-level pipeline that contains the
 	/// current step.
-	pub fn root_pipeline(&self) -> &'a Pipeline<P> {
+	pub(crate) fn root_pipeline(&self) -> &'a Pipeline<P> {
 		self.1.first().expect(
 			"StepNavigator should always have at least one enclosing pipeline",
 		)
@@ -398,7 +398,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// step's execution returns `ControlFlow::Ok`.
 	///
 	/// Returns `None` if there are no more steps to execute in the pipeline.
-	pub fn next_ok(self) -> Option<Self> {
+	pub(crate) fn next_ok(self) -> Option<Self> {
 		if self.is_epilogue() {
 			// the loop is over.
 			return self.next_in_parent();
@@ -447,7 +447,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// step's execution returns `ControlFlow::Break`.
 	///
 	/// Returns `None` if there are no more steps to execute in the pipeline.
-	pub fn next_break(self) -> Option<Self> {
+	pub(crate) fn next_break(self) -> Option<Self> {
 		if self.is_epilogue() {
 			// the loop is over.
 			return self.next_in_parent();

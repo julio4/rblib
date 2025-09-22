@@ -16,7 +16,7 @@ use {
 macro_rules! fake_step {
 	($name:ident) => {
 		#[derive(Debug, Default, Clone)]
-		pub struct $name;
+		pub(super) struct $name;
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -59,7 +59,7 @@ macro_rules! fake_step {
 	($name:ident, $state:ident) => {
 		#[allow(dead_code)]
 		#[derive(Debug, Clone)]
-		pub struct $name($state);
+		pub(super) struct $name($state);
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -277,7 +277,7 @@ struct PopulatePayload<P: PlatformWithRpcTypes> {
 }
 
 impl<P: PlatformWithRpcTypes> PopulatePayload<P> {
-	pub fn new() -> (Self, UnboundedSender<InputPayloadItem<P>>) {
+	pub(crate) fn new() -> (Self, UnboundedSender<InputPayloadItem<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(
 			Self {
@@ -316,7 +316,7 @@ struct RecordOk<P: Platform> {
 }
 
 impl<P: Platform> RecordOk<P> {
-	pub fn new() -> (Self, UnboundedReceiver<Checkpoint<P>>) {
+	pub(crate) fn new() -> (Self, UnboundedReceiver<Checkpoint<P>>) {
 		let (sender, receiver) = unbounded_channel();
 		(Self { sender }, receiver)
 	}
@@ -339,7 +339,7 @@ struct RecordBreakAndFail<P: Platform> {
 }
 
 impl<P: Platform> RecordBreakAndFail<P> {
-	pub fn new() -> (
+	pub(crate) fn new() -> (
 		Self,
 		UnboundedReceiver<PayloadBuilderError>,
 		UnboundedReceiver<Checkpoint<P>>,

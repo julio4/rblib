@@ -15,7 +15,7 @@ struct Frame<'a, P: Platform> {
 }
 
 impl<'a, P: Platform> StepPathIter<'a, P> {
-	pub fn new(pipeline: &'a Pipeline<P>) -> Self {
+	pub(crate) fn new(pipeline: &'a Pipeline<P>) -> Self {
 		Self {
 			stack: vec![Frame {
 				pipeline,

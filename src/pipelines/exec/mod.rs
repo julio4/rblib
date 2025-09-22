@@ -64,7 +64,7 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 	PipelineExecutor<P, Provider>
 {
 	/// Begins the execution of a pipeline for a new block/payload job.
-	pub fn run(
+	pub(super) fn run(
 		pipeline: Arc<Pipeline<P>>,
 		block: BlockContext<P>,
 		service: Arc<ServiceContext<P, Provider>>,
@@ -114,7 +114,7 @@ impl<P: Platform, Provider: traits::ProviderBounds<P>>
 	}
 
 	/// Returns the payload id for which we are building a payload.
-	pub fn payload_id(&self) -> PayloadId {
+	pub(super) fn payload_id(&self) -> PayloadId {
 		self.block.payload_id()
 	}
 }

@@ -181,7 +181,7 @@ impl<'a, P: Platform, S: OrderScore<P>> IntoIterator
 }
 
 impl<'a, P: Platform, S: OrderScore<P>> SortedOrders<'a, P, S> {
-	pub fn pop_best(&mut self) -> Option<&'a Checkpoint<P>> {
+	pub(crate) fn pop_best(&mut self) -> Option<&'a Checkpoint<P>> {
 		let mut skip = 0;
 
 		let (order, score) = 'order: loop {

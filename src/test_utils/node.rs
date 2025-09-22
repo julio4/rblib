@@ -231,7 +231,7 @@ where
 	}
 
 	/// Returns a reference to the native transaction pool.
-	pub const fn pool(&self) -> &NativeTransactionPool<P> {
+	pub(crate) const fn pool(&self) -> &NativeTransactionPool<P> {
 		&self.pool
 	}
 

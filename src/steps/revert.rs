@@ -192,31 +192,31 @@ struct PerJobCounters {
 
 impl PerJobCounters {
 	/// Called at the end of a payload job
-	pub fn reset(&self) {
+	pub(crate) fn reset(&self) {
 		self.txs_dropped.store(0, Ordering::Relaxed);
 		self.gas_dropped.store(0, Ordering::Relaxed);
 	}
 
 	/// Increment the number of dropped transactions for this job.
-	pub fn inc_txs_dropped(&self, count: usize) {
+	pub(crate) fn inc_txs_dropped(&self, count: usize) {
 		let count: u32 = count.try_into().expect("realistically impossible");
 		self.txs_dropped.fetch_add(count, Ordering::Relaxed);
 	}
 
-	pub fn inc_gas_dropped(&self, amount: u64) {
+	pub(crate) fn inc_gas_dropped(&self, amount: u64) {
 		self.gas_dropped.fetch_add(amount, Ordering::Relaxed);
 	}
 
-	pub fn mark_dropped<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
+	pub(crate) fn mark_dropped<P: Platform>(&self, checkpoint: &Checkpoint<P>) {
 		self.inc_txs_dropped(checkpoint.transactions().len());
 		self.inc_gas_dropped(checkpoint.gas_used());
 	}
 
-	pub fn txs_dropped_count(&self) -> u32 {
+	pub(crate) fn txs_dropped_count(&self) -> u32 {
 		self.txs_dropped.load(Ordering::Relaxed)
 	}
 
-	pub fn gas_dropped_count(&self) -> u64 {
+	pub(crate) fn gas_dropped_count(&self) -> u64 {
 		self.gas_dropped.load(Ordering::Relaxed)
 	}
 }

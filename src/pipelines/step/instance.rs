@@ -72,7 +72,7 @@ pub(crate) struct StepInstance<P: Platform> {
 }
 
 impl<P: Platform> StepInstance<P> {
-	pub fn new<S: Step<P>>(step: S) -> Self {
+	pub(crate) fn new<S: Step<P>>(step: S) -> Self {
 		let step: Arc<dyn Any + Send + Sync> = Arc::new(step);
 
 		// This is the only place where we have access to the concrete step type
@@ -148,7 +148,7 @@ impl<P: Platform> StepInstance<P> {
 	/// This is invoked from places where we know the kind of the step and
 	/// all other concrete types needed to execute the step and consume its
 	/// output.
-	pub async fn step(
+	pub(crate) async fn step(
 		&self,
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
@@ -179,7 +179,7 @@ impl<P: Platform> StepInstance<P> {
 	}
 
 	/// This is invoked once per pipeline run before any steps are executed.
-	pub async fn before_job(
+	pub(crate) async fn before_job(
 		&self,
 		ctx: StepContext<P>,
 	) -> Result<(), PayloadBuilderError> {
@@ -212,7 +212,7 @@ impl<P: Platform> StepInstance<P> {
 	}
 
 	/// This is invoked once after the pipeline run has been completed.
-	pub async fn after_job(
+	pub(crate) async fn after_job(
 		&self,
 		ctx: StepContext<P>,
 		result: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
@@ -261,12 +261,12 @@ impl<P: Platform> StepInstance<P> {
 
 	/// This is invoked exactly once when a pipeline is instantiated as a payload
 	/// builder service.
-	pub fn setup(&self, ctx: InitContext<P>) -> Result<(), PayloadBuilderError> {
+	pub(crate) fn setup(&self, ctx: InitContext<P>) -> Result<(), PayloadBuilderError> {
 		(self.setup_fn)(&self.instance, ctx)
 	}
 
 	/// Returns the name of the type that implements this step.
-	pub const fn name(&self) -> &str {
+	pub(crate) const fn name(&self) -> &str {
 		self.name.pretty()
 	}
 
@@ -275,7 +275,7 @@ impl<P: Platform> StepInstance<P> {
 	/// The input string is the metric name assigned to this step. This name is
 	/// not known before the pipeline instance is fully built and converted into a
 	/// service using [`PipelineServiceBuilder`]. It should be called only once.
-	pub fn init_metrics(&self, name: &str) {
+	pub(crate) fn init_metrics(&self, name: &str) {
 		// Initialize the metrics name for this step.
 		self.name.init_metrics(name);
 

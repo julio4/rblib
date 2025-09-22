@@ -63,14 +63,14 @@ use {
 /// Scopes manage:
 /// 	- The metrics name for each pipeline and its nested pipelines
 ///   - Limits calculation and renewal for pipeline steps.
-pub struct RootScope<P: Platform> {
+pub(crate) struct RootScope<P: Platform> {
 	root: RwLock<Scope<P>>,
 	current: RefCell<StepPath>,
 }
 
 impl<P: Platform> RootScope<P> {
 	/// Initialize all scopes in a given top-level pipeline.
-	pub fn new(pipeline: &Pipeline<P>, init_checkpoint: &Checkpoint<P>) -> Self {
+	pub(crate) fn new(pipeline: &Pipeline<P>, init_checkpoint: &Checkpoint<P>) -> Self {
 		let current = RefCell::new(StepPath::empty());
 		let root = Scope::rooted_at(pipeline, init_checkpoint);
 		let root = RwLock::new(root);
@@ -79,7 +79,7 @@ impl<P: Platform> RootScope<P> {
 	}
 
 	/// Given a path to a step in the pipeline, returns its current limits.
-	pub fn limits_of(&self, step_path: &StepPath) -> Option<Limits> {
+	pub(crate) fn limits_of(&self, step_path: &StepPath) -> Option<Limits> {
 		self
 			.root
 			.read()
@@ -88,7 +88,7 @@ impl<P: Platform> RootScope<P> {
 	}
 
 	/// Returns the instant when the scope was last entered.
-	pub fn entered_at(&self, step_path: &StepPath) -> Option<Instant> {
+	pub(crate) fn entered_at(&self, step_path: &StepPath) -> Option<Instant> {
 		self
 			.root
 			.read()
@@ -100,7 +100,7 @@ impl<P: Platform> RootScope<P> {
 	/// It detects if the next step is in a different scope and enters and leaves
 	/// scopes accordingly. This will leave and enter all intermediate scopes
 	/// between the previous and next steps.
-	pub fn switch_context(
+	pub(crate) fn switch_context(
 		&self,
 		next_step: &StepPath,
 		checkpoint: &Checkpoint<P>,
@@ -132,18 +132,18 @@ impl<P: Platform> RootScope<P> {
 		}
 	}
 
-	pub fn enter(&self, checkpoint: &Checkpoint<P>) {
+	pub(crate) fn enter(&self, checkpoint: &Checkpoint<P>) {
 		let mut root = self.root.write();
 		let limits = root.limits;
 		root.enter(checkpoint, &limits);
 	}
 
-	pub fn leave(&self) {
+	pub(crate) fn leave(&self) {
 		let mut root = self.root.write();
 		root.leave();
 	}
 
-	pub fn is_active(&self) -> bool {
+	pub(crate) fn is_active(&self) -> bool {
 		self.root.read().is_active()
 	}
 }
@@ -165,7 +165,7 @@ fn scope_of(step: &StepPath) -> StepPath {
 /// execution. All steps in a pipeline run within the scopes of the pipelines
 /// that contain it. When a scope is active, then all its parent scopes are
 /// active as well.
-pub struct Scope<P: Platform> {
+pub(crate) struct Scope<P: Platform> {
 	limits: Limits,
 	metrics: Metrics,
 	limits_factory: Option<Arc<dyn ScopedLimits<P>>>,
@@ -178,23 +178,23 @@ pub struct Scope<P: Platform> {
 impl<P: Platform> Scope<P> {
 	/// When a scope is active it means that one of its steps (or in its nested
 	/// scopes) is currently being executed,
-	pub const fn is_active(&self) -> bool {
+	pub(crate) const fn is_active(&self) -> bool {
 		self.entered_at.is_some()
 	}
 
 	/// Returns the elapsed time since the scope was entered.
 	/// This will only return a value if the scope is currently active.
-	pub fn elapsed(&self) -> Option<Duration> {
+	pub(crate) fn elapsed(&self) -> Option<Duration> {
 		self.entered_at.map(|start| start.elapsed())
 	}
 
 	/// Returns when the scope was entered most recently.
-	pub fn started_at(&self) -> Option<Instant> {
+	pub(crate) fn started_at(&self) -> Option<Instant> {
 		self.entered_at
 	}
 
 	/// Returns the payload limits for steps running within the current scope.
-	pub const fn limits(&self) -> &Limits {
+	pub(crate) const fn limits(&self) -> &Limits {
 		&self.limits
 	}
 }
@@ -353,7 +353,7 @@ unsafe impl<P: Platform> Send for Scope<P> {}
 unsafe impl<P: Platform> Sync for Scope<P> {}
 
 #[derive(MetricsSet)]
-pub struct Metrics {
+pub(crate) struct Metrics {
 	/// Histogram of the number of iterations.
 	pub iter_count_histogram: Histogram,
 

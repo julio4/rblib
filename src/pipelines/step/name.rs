@@ -1,13 +1,13 @@
 use {crate::prelude::*, core::any::type_name, std::sync::OnceLock};
 
 #[derive(Debug, Clone)]
-pub struct Name {
+pub(super) struct Name {
 	pretty: String,
 	metrics: OnceLock<String>,
 }
 
 impl Name {
-	pub fn new<S: Step<P>, P: Platform>() -> Self {
+	pub(super) fn new<S: Step<P>, P: Platform>() -> Self {
 		Self {
 			pretty: short_type_name(type_name::<S>()),
 			metrics: OnceLock::new(),
@@ -17,7 +17,7 @@ impl Name {
 	/// Returns a short type name of the step.
 	///
 	/// Strips away all type paths and leaves only the last component.
-	pub const fn pretty(&self) -> &str {
+	pub(super) const fn pretty(&self) -> &str {
 		self.pretty.as_str()
 	}
 
@@ -26,7 +26,7 @@ impl Name {
 	/// # Panics
 	/// This value can only be used only after initializing the metric name
 	/// through `init_metric`.
-	pub fn metric(&self) -> &str {
+	pub(super) fn metric(&self) -> &str {
 		self
 			.metrics
 			.get()
@@ -42,7 +42,7 @@ impl Name {
 	///
 	/// # Panics
 	/// This function will panic if the metric name has already been initialized.
-	pub fn init_metrics(&self, name: impl Into<String>) {
+	pub(super) fn init_metrics(&self, name: impl Into<String>) {
 		self
 			.metrics
 			.set(name.into())
@@ -50,7 +50,7 @@ impl Name {
 	}
 
 	/// Returns true if the metric name has been initialized.
-	pub fn has_metrics(&self) -> bool {
+	pub(super) fn has_metrics(&self) -> bool {
 		self.metrics.get().is_some()
 	}
 }

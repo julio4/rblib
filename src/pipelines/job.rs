@@ -31,7 +31,7 @@ use {
 /// This is a long-running job that will be polled by the CL node until it is
 /// resolved. The job future must resolve within 1 second from the moment
 /// [`PayloadJob::resolve_kind`] is called with [`PaylodKind::Earliest`].
-pub struct PayloadJob<P, Provider>
+pub(super) struct PayloadJob<P, Provider>
 where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
@@ -45,7 +45,7 @@ where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
 {
-	pub fn new(
+	pub(super) fn new(
 		pipeline: &Arc<Pipeline<P>>,
 		block: BlockContext<P>,
 		service: &Arc<ServiceContext<P, Provider>>,
@@ -143,7 +143,7 @@ where
 /// This future wraps the `PipelineExecutor` and is used to poll the
 /// internal executor of the pipeline. Once this future is resolved, it
 /// can be polled again and will return copie of the resolved payload.
-pub struct ExecutorFuture<P, Provider>
+pub(super) struct ExecutorFuture<P, Provider>
 where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
@@ -175,7 +175,7 @@ where
 	P: Platform,
 	Provider: traits::ProviderBounds<P>,
 {
-	pub fn new(executor: PipelineExecutor<P, Provider>) -> Self {
+	pub(super) fn new(executor: PipelineExecutor<P, Provider>) -> Self {
 		Self {
 			started_at: Instant::now(),
 			payload_id: executor.payload_id(),

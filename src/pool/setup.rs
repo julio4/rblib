@@ -141,7 +141,10 @@ struct SystemPoolWrapper<P: Platform, Builder> {
 }
 
 impl<P: Platform, Builder> SystemPoolWrapper<P, Builder> {
-	pub(crate) fn new<Node>(builder: Builder, order_pool: Arc<OrderPoolInner<P>>) -> Self
+	pub(crate) fn new<Node>(
+		builder: Builder,
+		order_pool: Arc<OrderPoolInner<P>>,
+	) -> Self
 	where
 		Builder: PoolBuilderBounds<P, Node>,
 		Node: FullNodeTypes<Types: NodeTypes<Primitives = types::Primitives<P>>>,

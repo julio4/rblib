@@ -29,7 +29,9 @@ impl<P: Platform> EventsBus<P> {
 	}
 
 	/// Returns a stream that yields events of type `E`.
-	pub(super) fn subscribe<E>(&self) -> impl Stream<Item = E> + Send + Sync + 'static
+	pub(super) fn subscribe<E>(
+		&self,
+	) -> impl Stream<Item = E> + Send + Sync + 'static
 	where
 		E: Clone + Any + Send + Sync + 'static,
 	{

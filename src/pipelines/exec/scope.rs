@@ -70,7 +70,10 @@ pub(crate) struct RootScope<P: Platform> {
 
 impl<P: Platform> RootScope<P> {
 	/// Initialize all scopes in a given top-level pipeline.
-	pub(crate) fn new(pipeline: &Pipeline<P>, init_checkpoint: &Checkpoint<P>) -> Self {
+	pub(crate) fn new(
+		pipeline: &Pipeline<P>,
+		init_checkpoint: &Checkpoint<P>,
+	) -> Self {
 		let current = RefCell::new(StepPath::empty());
 		let root = Scope::rooted_at(pipeline, init_checkpoint);
 		let root = RwLock::new(root);

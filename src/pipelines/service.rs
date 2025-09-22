@@ -117,7 +117,9 @@ where
 		&self.provider
 	}
 
-	pub(super) const fn node_config(&self) -> &NodeConfig<types::ChainSpec<Plat>> {
+	pub(super) const fn node_config(
+		&self,
+	) -> &NodeConfig<types::ChainSpec<Plat>> {
 		&self.node_config
 	}
 

@@ -261,7 +261,10 @@ impl<P: Platform> StepInstance<P> {
 
 	/// This is invoked exactly once when a pipeline is instantiated as a payload
 	/// builder service.
-	pub(crate) fn setup(&self, ctx: InitContext<P>) -> Result<(), PayloadBuilderError> {
+	pub(crate) fn setup(
+		&self,
+		ctx: InitContext<P>,
+	) -> Result<(), PayloadBuilderError> {
 		(self.setup_fn)(&self.instance, ctx)
 	}
 

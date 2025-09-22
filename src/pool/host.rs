@@ -145,7 +145,9 @@ impl<P: Platform> HostNode<P> {
 
 #[cfg(feature = "test-utils")]
 impl<P: PlatformWithRpcTypes> HostNode<P> {
-	pub(crate) fn attach_to_test_node<C: crate::test_utils::ConsensusDriver<P>>(
+	pub(crate) fn attach_to_test_node<
+		C: crate::test_utils::ConsensusDriver<P>,
+	>(
 		self: &Arc<Self>,
 		node: &crate::test_utils::LocalNode<P, C>,
 		order_pool: OrderPool<P>,

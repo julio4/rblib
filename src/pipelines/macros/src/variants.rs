@@ -13,7 +13,7 @@ use {
 /// ```
 ///
 /// This will generate implementations for tuples of size 1 through 10.
-pub fn impl_into_pipeline_steps(input: TokenStream) -> TokenStream {
+pub(crate) fn impl_into_pipeline_steps(input: TokenStream) -> TokenStream {
 	let count = parse_macro_input!(input as LitInt);
 	let count_value = count
 		.base10_parse::<usize>()

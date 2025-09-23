@@ -8,7 +8,7 @@ use {
 };
 
 #[derive(MetricsSet)]
-pub struct Metrics {
+pub(super) struct Metrics {
 	/// The total number of times this step's `step` method has been invoked.
 	pub invoked_total: Counter,
 
@@ -71,7 +71,7 @@ pub struct Metrics {
 /// Tracks metrics aggregates per job. Those counters get reset before each new
 /// payload job.
 #[derive(Default, Debug)]
-pub struct PerJobCounters {
+pub(super) struct PerJobCounters {
 	/// The number of times this step was invoked during the last job.
 	pub invoked: AtomicU32,
 
@@ -82,27 +82,27 @@ pub struct PerJobCounters {
 
 impl PerJobCounters {
 	/// Called at the end of a payload job
-	pub fn reset(&self) {
+	pub(super) fn reset(&self) {
 		self.invoked.store(0, Ordering::Relaxed);
 		self.exec_duration_micros.store(0, Ordering::Relaxed);
 	}
 
-	pub fn increment_exec_time(&self, duration: Duration) {
+	pub(super) fn increment_exec_time(&self, duration: Duration) {
 		#[expect(clippy::cast_possible_truncation)]
 		self
 			.exec_duration_micros
 			.fetch_add(duration.as_micros() as u64, Ordering::Relaxed);
 	}
 
-	pub fn increment_invocation(&self) {
+	pub(super) fn increment_invocation(&self) {
 		self.invoked.fetch_add(1, Ordering::Relaxed);
 	}
 
-	pub fn exec_duration(&self) -> Duration {
+	pub(super) fn exec_duration(&self) -> Duration {
 		Duration::from_micros(self.exec_duration_micros.load(Ordering::Relaxed))
 	}
 
-	pub fn invoked_count(&self) -> u32 {
+	pub(super) fn invoked_count(&self) -> u32 {
 		self.invoked.load(Ordering::Relaxed)
 	}
 }

@@ -18,6 +18,7 @@ exclude = [".github/"]
 
 [workspace.lints.rust]
 type_alias_bounds = "allow"
+unreachable_pub = "warn"
 
 [workspace.lints.clippy]
 tabs_in_doc_comments = "allow"

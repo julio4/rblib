@@ -27,7 +27,7 @@ use {
 ///
 /// It is unfortunate that Reth's `TransactionPool` trait is not dyn-safe,
 /// because it inherits from `Clone`, which forces us to wrap it here.
-pub struct NativeTransactionPool<P: Platform> {
+pub(crate) struct NativeTransactionPool<P: Platform> {
 	vtable: TransactionPoolVTable<P>,
 }
 
@@ -40,7 +40,7 @@ impl<P: Platform> Clone for NativeTransactionPool<P> {
 }
 
 impl<P: Platform> NativeTransactionPool<P> {
-	pub fn new<Pool: traits::PoolBounds<P>>(pool: Arc<Pool>) -> Self {
+	pub(crate) fn new<Pool: traits::PoolBounds<P>>(pool: Arc<Pool>) -> Self {
 		let vtable = TransactionPoolVTable::new(pool);
 		Self { vtable }
 	}
@@ -245,7 +245,7 @@ struct TransactionPoolVTable<P: Platform> {
 impl<P: Platform> TransactionPoolVTable<P> {
 	/// Creates a new vtable from a `TransactionPool` implementation
 	#[allow(clippy::too_many_lines)]
-	pub fn new<Pool: traits::PoolBounds<P>>(pool: Pool) -> Self {
+	pub(crate) fn new<Pool: traits::PoolBounds<P>>(pool: Pool) -> Self {
 		let self_ptr = Box::into_raw(Box::new(pool)) as *const u8;
 
 		Self {

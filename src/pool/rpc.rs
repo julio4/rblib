@@ -16,7 +16,7 @@ pub(super) struct BundleRpcApi<P: Platform> {
 }
 
 impl<P: Platform> BundleRpcApi<P> {
-	pub fn new(pool: &OrderPool<P>) -> Self {
+	pub(super) fn new(pool: &OrderPool<P>) -> Self {
 		Self { pool: pool.clone() }
 	}
 }

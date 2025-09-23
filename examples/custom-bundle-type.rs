@@ -131,7 +131,7 @@ struct CustomBundleType {
 }
 
 impl CustomBundleType {
-	pub fn with_min_profit(min_profit: U256) -> Self {
+	fn with_min_profit(min_profit: U256) -> Self {
 		Self {
 			txs: Vec::new(),
 			reverting_txs: Vec::new(),

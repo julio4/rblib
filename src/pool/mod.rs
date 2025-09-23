@@ -173,7 +173,7 @@ struct OrderPoolInner<P: Platform> {
 }
 
 impl<P: Platform> OrderPoolInner<P> {
-	pub fn outer(self: &Arc<Self>) -> OrderPool<P> {
+	pub(crate) fn outer(self: &Arc<Self>) -> OrderPool<P> {
 		OrderPool {
 			inner: Arc::clone(self),
 		}
@@ -187,4 +187,4 @@ impl<P: Platform> From<Arc<OrderPoolInner<P>>> for OrderPool<P> {
 }
 
 #[cfg(feature = "test-utils")]
-pub use native::NativeTransactionPool;
+pub(crate) use native::NativeTransactionPool;

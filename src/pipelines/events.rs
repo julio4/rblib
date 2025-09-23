@@ -13,7 +13,7 @@ use {
 ///  - In a pipeline with nested pipelines, the top-level pipline's event bus is
 ///    responsible for handling all events of all contained pipelines and steps.
 #[derive(Default, Debug)]
-pub struct EventsBus<P: Platform> {
+pub(super) struct EventsBus<P: Platform> {
 	publishers: DashMap<TypeId, Sender<Arc<dyn Any + Send + Sync>>>,
 	phantom: PhantomData<P>,
 }
@@ -21,7 +21,7 @@ pub struct EventsBus<P: Platform> {
 impl<P: Platform> EventsBus<P> {
 	/// Publishes an event of type `E` to all current subscribers.
 	/// Each subscriber will receive a clone of the event.
-	pub fn publish<E>(&self, event: E)
+	pub(super) fn publish<E>(&self, event: E)
 	where
 		E: Clone + Any + Send + Sync + 'static,
 	{
@@ -29,7 +29,9 @@ impl<P: Platform> EventsBus<P> {
 	}
 
 	/// Returns a stream that yields events of type `E`.
-	pub fn subscribe<E>(&self) -> impl Stream<Item = E> + Send + Sync + 'static
+	pub(super) fn subscribe<E>(
+		&self,
+	) -> impl Stream<Item = E> + Send + Sync + 'static
 	where
 		E: Clone + Any + Send + Sync + 'static,
 	{
@@ -63,7 +65,7 @@ impl<P: Platform> EventsBus<P> {
 }
 
 /// System events emitted by the pipeline itself.
-pub mod system_events {
+pub(super) mod system_events {
 	use {
 		super::*,
 		derive_more::{Deref, From, Into},

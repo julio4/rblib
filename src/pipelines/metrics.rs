@@ -8,7 +8,7 @@ use {
 };
 
 #[derive(MetricsSet)]
-pub struct Payload {
+pub(super) struct Payload {
 	/// Number of new payload jobs that have started.
 	pub jobs_started: Counter,
 
@@ -60,7 +60,7 @@ pub struct Payload {
 }
 
 impl Payload {
-	pub fn record_payload<P: Platform>(
+	pub(super) fn record_payload<P: Platform>(
 		&self,
 		payload: &types::BuiltPayload<P>,
 		block: &BlockContext<P>,
@@ -96,7 +96,7 @@ impl Payload {
 		self.block_number.absolute(payload.block().number());
 	}
 
-	pub fn record_payload_job_attributes<P: Platform>(
+	pub(super) fn record_payload_job_attributes<P: Platform>(
 		&self,
 		attributes: &types::PayloadBuilderAttributes<P>,
 	) {

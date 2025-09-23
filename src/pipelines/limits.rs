@@ -317,38 +317,38 @@ mod tests {
 
 	impl TestStep {
 		#[allow(dead_code)]
-		pub fn break_after(self, iterations: u32) -> Self {
+		fn break_after(self, iterations: u32) -> Self {
 			self.break_after.store(iterations, Ordering::Relaxed);
 			self
 		}
 
-		pub fn expect_gas_limit(mut self, gas_limit: u64) -> Self {
+		fn expect_gas_limit(mut self, gas_limit: u64) -> Self {
 			self.expected_gas_limit = Some(gas_limit);
 			self
 		}
 
-		pub fn expect_deadline(mut self, deadline: Duration) -> Self {
+		fn expect_deadline(mut self, deadline: Duration) -> Self {
 			self.expected_deadline = Some(deadline);
 			self
 		}
 
-		pub fn expect_minimum_iterations(mut self, iterations: u32) -> Self {
+		fn expect_minimum_iterations(mut self, iterations: u32) -> Self {
 			self.minimum_iterations = Some(iterations);
 			self
 		}
 
-		pub fn expect_maximum_iterations(mut self, iterations: u32) -> Self {
+		fn expect_maximum_iterations(mut self, iterations: u32) -> Self {
 			self.maximum_iterations = Some(iterations);
 			self
 		}
 
-		pub fn sleep_on_step(mut self, duration: Duration) -> Self {
+		fn sleep_on_step(mut self, duration: Duration) -> Self {
 			self.sleep_on_step = Some(duration);
 			self
 		}
 
 		#[track_caller]
-		pub fn must_run(mut self) -> Self {
+		fn must_run(mut self) -> Self {
 			self.must_run = true;
 			self
 		}

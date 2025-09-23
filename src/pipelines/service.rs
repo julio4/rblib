@@ -30,7 +30,7 @@ pub(super) struct PipelineServiceBuilder<P: Platform> {
 }
 
 impl<P: Platform> PipelineServiceBuilder<P> {
-	pub fn new(pipeline: Pipeline<P>) -> Self {
+	pub(super) fn new(pipeline: Pipeline<P>) -> Self {
 		Self { pipeline }
 	}
 }
@@ -98,7 +98,7 @@ where
 /// There is one service context instance per reth node. This type gives
 /// individual jobs access to the node state, transaction pool and other
 /// runtime facilities that are managed by reth.
-pub struct ServiceContext<Plat, Provider>
+pub(super) struct ServiceContext<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
@@ -113,19 +113,21 @@ where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
 {
-	pub fn provider(&self) -> &Provider {
+	pub(super) fn provider(&self) -> &Provider {
 		&self.provider
 	}
 
-	pub const fn node_config(&self) -> &NodeConfig<types::ChainSpec<Plat>> {
+	pub(super) const fn node_config(
+		&self,
+	) -> &NodeConfig<types::ChainSpec<Plat>> {
 		&self.node_config
 	}
 
-	pub const fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
+	pub(super) const fn chain_spec(&self) -> &Arc<types::ChainSpec<Plat>> {
 		&self.node_config().chain
 	}
 
-	pub const fn metrics(&self) -> &metrics::Payload {
+	pub(super) const fn metrics(&self) -> &metrics::Payload {
 		&self.metrics
 	}
 }
@@ -137,7 +139,7 @@ where
 /// The responsibility of this type is to respond to new payload requests when
 /// FCU calls come from the CL Node. Each FCU call will generate a new
 /// `PayloadID` on its side and will pass it to the `new_payload_job` method.
-pub struct JobGenerator<Plat, Provider>
+pub(super) struct JobGenerator<Plat, Provider>
 where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
@@ -151,7 +153,7 @@ where
 	Plat: Platform,
 	Provider: traits::ProviderBounds<Plat>,
 {
-	pub fn new(
+	pub(super) fn new(
 		pipeline: Pipeline<Plat>,
 		service: ServiceContext<Plat, Provider>,
 	) -> Self {

@@ -17,14 +17,14 @@ use {
 	std::{collections::hash_map::Entry, sync::Arc},
 };
 
-pub struct FixedTransactions<P: Platform> {
+pub(super) struct FixedTransactions<P: Platform> {
 	txs: Vec<Recovered<types::Transaction<P>>>,
 	senders: SenderIdentifiers,
 	invalid: HashMap<SenderId, TransactionId>,
 }
 
 impl<P: Platform> FixedTransactions<P> {
-	pub fn new(txs: Vec<Recovered<types::Transaction<P>>>) -> Self {
+	pub(super) fn new(txs: Vec<Recovered<types::Transaction<P>>>) -> Self {
 		// reverse because we want to pop from the end
 		// in the iterator.
 		let mut txs = txs;

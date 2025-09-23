@@ -27,7 +27,7 @@ use {
 /// - garbage collection of orders that have transactions that were included in
 ///   a committed block.
 #[derive(Default)]
-pub struct HostNode<P: Platform> {
+pub(super) struct HostNode<P: Platform> {
 	instances: OnceLock<Instances<P>>,
 }
 
@@ -36,7 +36,7 @@ impl<P: Platform> HostNode<P> {
 	/// This binds the host Reth node to the order pool instance.
 	/// This method should be called only once and will fail if the pool is
 	/// already attached to a host node.
-	pub fn attach<Node, Pool>(
+	pub(super) fn attach<Node, Pool>(
 		self: &Arc<Self>,
 		system_pool: Arc<Pool>,
 		order_pool: Arc<OrderPoolInner<P>>,
@@ -88,12 +88,12 @@ impl<P: Platform> HostNode<P> {
 	/// Returns true if the host Reth node is attached to the `OrderPool`.
 	/// Attachment is done by the `attach_pool` method during node components
 	/// setup.
-	pub fn is_attached(&self) -> bool {
+	pub(super) fn is_attached(&self) -> bool {
 		self.instances.get().is_some()
 	}
 
 	/// If attached, invokes the provided function with the current tip header.
-	pub fn map_tip_header<F, R>(&self, op: F) -> Option<R>
+	pub(super) fn map_tip_header<F, R>(&self, op: F) -> Option<R>
 	where
 		F: FnOnce(&SealedHeader<types::Header<P>>) -> R,
 	{
@@ -102,13 +102,13 @@ impl<P: Platform> HostNode<P> {
 
 	/// If attached to a host node, this will return a reference to the reth
 	/// native transaction pool.
-	pub fn system_pool(&self) -> Option<&impl traits::PoolBounds<P>> {
+	pub(super) fn system_pool(&self) -> Option<&impl traits::PoolBounds<P>> {
 		self.instances.get().map(|i| &i.system_pool)
 	}
 
 	/// If attached to a host node, this will remove a transaction from the reth
 	/// native transaction pool.
-	pub fn remove_transaction(&self, txhash: TxHash) {
+	pub(super) fn remove_transaction(&self, txhash: TxHash) {
 		if let Some(pool) = self.instances.get().map(|i| &i.system_pool) {
 			pool.remove_transactions(vec![txhash]);
 		}
@@ -145,7 +145,9 @@ impl<P: Platform> HostNode<P> {
 
 #[cfg(feature = "test-utils")]
 impl<P: PlatformWithRpcTypes> HostNode<P> {
-	pub fn attach_to_test_node<C: crate::test_utils::ConsensusDriver<P>>(
+	pub(crate) fn attach_to_test_node<
+		C: crate::test_utils::ConsensusDriver<P>,
+	>(
 		self: &Arc<Self>,
 		node: &crate::test_utils::LocalNode<P, C>,
 		order_pool: OrderPool<P>,

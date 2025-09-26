@@ -165,3 +165,11 @@ See `examples/` and `bin/flashblocks/src/main.rs` for integration examples.
 ## Contributing
 
 Contributions, issues, and feature requests are welcome. Please see the codebase and examples for guidance on extending platforms, steps, or pipelines.
+
+ ## License
+
+The code in this project is free software under the [MIT License](/LICENSE).
+
+---
+
+Made with ☀️ by the ⚡🤖 collective.

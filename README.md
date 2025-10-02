@@ -163,8 +163,12 @@ The project includes a comprehensive testing infrastructure to ensure reliabilit
     ```bash
     TEST_TRACE=on cargo test smoke::all_transactions_included_ethereum
     ```
-  * **Multi-Platform Testing:** Use the `#[rblib_test(..)]` macro to run a single test case across multiple platforms (`Ethereum`, `Optimism`, etc.).
-  * **Test Utilities:** The `rblib::test_utils` module provides helpers like `LocalNode` (`src/test_utils/node.rs`) for full Reth integration tests, `OneStep` (`src/test_utils/step.rs`) for isolated step testing, and `FundedAccounts` for transaction signing.
+- **Multi-Platform Testing**: Use `#[rblib_test(Ethereum, Optimism, YourCustomPlatform)]` to run tests across platforms.
+- **Local Test Nodes**: `LocalNode<P, C>` (`src/test_utils/node.rs`) provides full Reth nodes for integration testing.
+- **Step Testing**: `OneStep<P>` (`src/test_utils/step.rs`) enables isolated step testing.
+- **Funded Accounts**: Use `FundedAccounts::by_address()` or `.with_random_funded_signer()` for test transactions.
+- **Mocks**: Mocking utilities are available for types like `BlockContext` and `PayloadAttributes`.
+
 
 -----
 
@@ -175,6 +179,7 @@ Contributions are welcome. Please feel free to open an issue to discuss a bug, f
 ## License
 
 This project is licensed under the [MIT License](https://www.google.com/search?q=/LICENSE).
----
+
+-----
 
 Made with ☀️ by the ⚡🤖 collective.

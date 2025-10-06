@@ -5,28 +5,29 @@ use {
 	thiserror::Error,
 };
 
-#[derive(Debug, Clone, Error)]
-pub enum Error {
-	/// This error means that the one of the checkpoints is not a descendant of
-	/// the other.
-	#[error("There is no linear history between the checkpoints")]
-	NonlinearHistory,
-}
-
 /// A span represents a sequence of checkpoints in the payload building process
-/// with linear history. While checkpoints only allow to traverse the history
-/// backwards, a span allows to traverse the history forwards as well.
+/// with linear history. While checkpoints only allow traversing the history
+/// backwards, a span allows traversing the history forwards as well.
 ///
-/// Using a span you can also treat a number of checkpoints as a single
+/// Using a span, you can also treat a number of checkpoints as a single
 /// aggregate of state transitions.
 ///
 /// A span can be used as a database reference for an evm instance. When a span
-/// is used as a database, only new state that was created or modified by
-/// checkpoints in the span are visible, any state from checkpoints outside of
-/// the span or the base state of the block is not available.
+/// is used as a database, only new states that were created or modified by
+/// checkpoints in the span are visible. Any states from checkpoints outside
+/// the span or the base state of the block are not available.
 #[derive(Clone)]
 pub struct Span<P: Platform> {
 	checkpoints: VecDeque<Checkpoint<P>>,
+}
+
+#[derive(Debug, Clone, Error)]
+pub enum Error {
+	/// This error means that one of the checkpoints is not a descendant of
+	/// the other. A span cannot be created as the history between the checkpoints
+	/// is not linear.
+	#[error("There is no linear history between the checkpoints")]
+	NonlinearHistory,
 }
 
 /// Construction
@@ -60,12 +61,8 @@ impl<P: Platform> Span<P> {
 		// Gather all checkpoints from the descendant to the ancestor
 		// and ensure that the history is linear.
 
-		let mut checkpoints = Vec::with_capacity(
-			descendant
-				.depth()
-				.saturating_sub(ancestor.depth())
-				.saturating_add(1),
-		);
+		let distance = descendant.depth().saturating_sub(ancestor.depth());
+		let mut checkpoints = Vec::with_capacity(distance.saturating_add(1));
 
 		let mut current = descendant;
 		checkpoints.push(current.clone());
@@ -78,9 +75,9 @@ impl<P: Platform> Span<P> {
 			checkpoints.push(prev.clone());
 
 			if prev == ancestor {
-				// we've reached the ancestor checkpoint and we have linear history. The
-				// collected checkpoints are in reverse order, so we need to reverse
-				// them before returning.
+				// we've reached the ancestor checkpoint, and we have linear history.
+				// The collected checkpoints are in reverse order, so we need to
+				// reverse them before returning.
 				return Ok(Self {
 					checkpoints: checkpoints.into_iter().rev().collect(),
 				});

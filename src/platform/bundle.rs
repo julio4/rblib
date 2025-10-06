@@ -137,34 +137,6 @@ pub enum Eligibility {
 	PermanentlyIneligible,
 }
 
-/// This is a quality of life helper that allows users of this api to say:
-/// `if bundle.is_eligible(block) { .. }`, without going into the details of
-/// the eligibility.
-impl PartialEq<bool> for Eligibility {
-	fn eq(&self, other: &bool) -> bool {
-		match self {
-			Eligibility::Eligible => *other,
-			Eligibility::TemporarilyIneligible
-			| Eligibility::PermanentlyIneligible => !(*other),
-		}
-	}
-}
-
-/// This is a quality of life helper that allows users of this api to say:
-/// `if !bundle.is_eligible(block) { .. }`, without going into the details of
-/// the ineligibility.
-impl Not for Eligibility {
-	type Output = bool;
-
-	fn not(self) -> Self::Output {
-		match self {
-			Eligibility::Eligible => false,
-			Eligibility::TemporarilyIneligible
-			| Eligibility::PermanentlyIneligible => true,
-		}
-	}
-}
-
 impl Eligibility {
 	/// Returns `Some(f())` if the eligibility is `Eligible`, otherwise returns
 	/// `None`.
@@ -184,6 +156,26 @@ impl Eligibility {
 		} else {
 			None
 		}
+	}
+}
+
+/// This is a quality of life helper that allows users of this api to say:
+/// `if bundle.is_eligible(block).into() {.}`, without going into the
+/// details of the eligibility.
+impl From<Eligibility> for bool {
+	fn from(el: Eligibility) -> Self {
+		matches!(el, Eligibility::Eligible)
+	}
+}
+
+/// This is a quality of life helper that allows users of this api to say:
+/// `if !bundle.is_eligible(block) {.}`, without going into the details of
+/// the ineligibility.
+impl Not for Eligibility {
+	type Output = bool;
+
+	fn not(self) -> Self::Output {
+		!<Eligibility as Into<bool>>::into(self)
 	}
 }
 

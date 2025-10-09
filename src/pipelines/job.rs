@@ -30,7 +30,7 @@ use {
 ///
 /// This is a long-running job that will be polled by the CL node until it is
 /// resolved. The job future must resolve within 1 second from the moment
-/// [`PayloadJob::resolve_kind`] is called with [`PaylodKind::Earliest`].
+/// [`PayloadJob::resolve_kind`] is called with [`PayloadKind::Earliest`].
 pub(super) struct PayloadJob<P, Provider>
 where
 	P: Platform,
@@ -96,7 +96,7 @@ where
 			// protocol.
 			PayloadKind::Earliest => {
 				debug!(
-					"Resolving earliest payload for job {}",
+					"Resolving the earliest payload for job {}",
 					self.block.attributes().payload_id()
 				);
 				(self.fut.clone(), KeepPayloadJobAlive::No)
@@ -120,7 +120,7 @@ where
 
 	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 		// When the payload job future is polled, we begin executing the pipeline
-		// production future immediatelly as well, so that the time between the
+		// production future immediately as well, so that the time between the
 		// creation of the job and the call to `resolve_kind` is utilized for the
 		// pipeline execution.
 		//
@@ -134,7 +134,7 @@ where
 			return Poll::Ready(Err(e));
 		}
 
-		// On happy paths or in-progress pipielines, keep the future alive. Reth
+		// On happy paths or in-progress pipelines, keep the future alive. Reth
 		// will drop it when a payload is resolved.
 		Poll::Pending
 	}
@@ -142,7 +142,7 @@ where
 
 /// This future wraps the `PipelineExecutor` and is used to poll the
 /// internal executor of the pipeline. Once this future is resolved, it
-/// can be polled again and will return copie of the resolved payload.
+/// can be polled again and will return copy of the resolved payload.
 pub(super) struct ExecutorFuture<P, Provider>
 where
 	P: Platform,
@@ -154,8 +154,8 @@ where
 }
 
 /// This enum allows us to wrap the `PipelineExecutor` future
-/// and cache the result of the execution. Also it makes the executor future
-/// clonable, so that many copies of the future could be returned from
+/// and cache the result of the execution. Also, it makes the executor future
+/// cloneable, so that many copies of the future could be returned from
 /// `resolve_kind`.
 ///
 /// Whenever any of the copies of the future is polled, it will poll the
@@ -271,7 +271,7 @@ where
 	}
 }
 
-/// We want this to be clonable because the `resolve_kind` method could
+/// We want this to be cloneable because the `resolve_kind` method could
 /// potentially return multiple copies of the future, and we want all of them to
 /// resolve with the same result at the same time.
 impl<P, Provider> Clone for ExecutorFuture<P, Provider>

@@ -2,7 +2,7 @@ use {
 	crate::{
 		alloy::{
 			consensus::transaction::{Transaction, TxHashRef},
-			primitives::{Address, B256, U256},
+			primitives::{Address, B256, TxHash, U256},
 		},
 		prelude::*,
 		reth::{errors::ProviderError, primitives::Recovered, revm::DatabaseRef},
@@ -14,7 +14,7 @@ use {
 /// Quality of Life extensions for the `Checkpoint` type.
 pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// Returns `true` if this checkpoint is the baseline checkpoint in the
-	/// history, and has no transactions in its history.
+	/// history and has no transactions in its history.
 	fn is_empty(&self) -> bool;
 
 	/// Returns the first checkpoint in the chain of checkpoints since the
@@ -37,24 +37,33 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 		self.history().blob_gas_used()
 	}
 
-	/// Returns the effective tip for this transaction.
+	/// Returns the effective tip of the checkpoint, as the cumulative effective
+	/// tip of all transactions in this checkpoint.
 	fn effective_tip_per_gas(&self) -> u128;
 
-	/// If this checkpoint was created by applying a blob transaction,
-	/// returns the blob gas used by the blob transaction, `None` otherwise.
+	/// If this checkpoint was created by applying one or more blobs transactions,
+	/// returns the cumulative blob gas used by theses, `None` otherwise.
 	fn blob_gas_used(&self) -> Option<u64>;
 
-	/// Returns `true` if this checkpoint was created by applying EIP-4844 blob
-	/// transaction, `false` otherwise.
+	/// Returns `true` if this checkpoint was created by applying at least one
+	/// EIP-4844 blob transaction, `false` otherwise.
 	fn has_blobs(&self) -> bool;
 
+	//// Iterates over all blob transactions in the checkpoint.
+	fn blobs(&self) -> impl Iterator<Item = &Recovered<types::Transaction<P>>>;
+
 	/// Returns a span that includes all checkpoints from the beginning of the
-	/// block payload we're building to the current checkpoint.
+	/// block payload we're building up to the current one (included).
 	fn history(&self) -> Span<P>;
 
-	/// Returns a span that includes all staging history of this checkpoint,
-	/// which is all preceding checkpoints from the last barrier, or the entire
-	/// history if there is no barrier checkpoint.
+	/// Check if the checkpoint contains a transaction with a given hash.
+	fn contains(&self, tx_hash: impl Into<TxHash>) -> bool;
+
+	/// Returns a span that includes the staging history of this checkpoint.
+	/// The staging history of a checkpoint is all the preceding checkpoints from
+	/// the last barrier up to this current checkpoint, or the entire history if
+	/// there is no barrier checkpoint. If the current checkpoint is a barrier
+	/// the staging history will be empty.
 	fn history_staging(&self) -> Span<P> {
 		let history = self.history();
 		let immutable_prefix = history
@@ -64,20 +73,20 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 		history.skip(immutable_prefix)
 	}
 
-	/// Returns a span that includes all checkpoints in the sealed history,
-	/// that is the history from the beginning of the block until the last
-	/// barrier included. If there are no barriers, the entire history is
-	/// returned.
+	/// Returns a span that includes the sealed history of this checkpoint.
+	/// The sealed history of a checkpoint is all checkpoints from the
+	/// beginning of the block building job until the last barrier included.
+	/// If there are no barriers, the sealed history is empty
 	fn history_sealed(&self) -> Span<P> {
 		let history = self.history();
-		let immutable_prefix = history
+		let mutable_start = history
 			.iter()
 			.rposition(Checkpoint::is_barrier)
-			.unwrap_or(0);
-		history.take(immutable_prefix + 1)
+			.map_or(0, |i| i + 1);
+		history.take(mutable_start)
 	}
 
-	/// Creates a new span that includes this checkpoints and all other
+	/// Creates a new span that includes this checkpoint and all other
 	/// checkpoints that are between this checkpoint and the given checkpoint.
 	///
 	/// The two checkpoints must be part of the same linear history, meaning that
@@ -92,7 +101,8 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// Returns the nonce of a given account at this checkpoint.
 	fn nonce_of(&self, address: Address) -> Result<u64, ProviderError>;
 
-	/// Returns all nonces for each signer in this checkpoint.
+	/// Returns tuples of signer and nonce for each transaction in this
+	/// checkpoint.
 	fn nonces(&self) -> Vec<(Address, u64)>;
 
 	/// Returns a list of all unique signers in this checkpoint.
@@ -102,8 +112,8 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// hash.
 	fn hash(&self) -> Option<B256>;
 
-	/// Returns `true` if this checkpoint has any transactions with non-success
-	/// execution outcome.
+	/// Returns `true` if this checkpoint has any transactions with a
+	/// non-successful execution outcome.
 	fn has_failures(&self) -> bool;
 
 	/// Returns an iterator over all transactions in this checkpoint that did not
@@ -171,7 +181,18 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 	/// Returns `true` if this checkpoint was created by applying an EIP-4844 blob
 	/// transaction, `false` otherwise.
 	fn has_blobs(&self) -> bool {
-		self.blob_gas_used().is_some()
+		self
+			.transactions()
+			.iter()
+			.any(|tx| tx.blob_gas_used().is_some())
+	}
+
+	//// Iterates over all blob transactions in the checkpoint.
+	fn blobs(&self) -> impl Iterator<Item = &Recovered<types::Transaction<P>>> {
+		self
+			.transactions()
+			.iter()
+			.filter(|tx| tx.blob_gas_used().is_some())
 	}
 
 	/// Returns a span that includes all checkpoints from the beginning of the
@@ -185,7 +206,13 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 			.expect("history is always linear between self and root")
 	}
 
-	/// Creates a new span that includes this checkpoints and all other
+	/// Check if the checkpoint contains a transaction with a given hash.
+	fn contains(&self, tx_hash: impl Into<TxHash>) -> bool {
+		let hash = tx_hash.into();
+		self.transactions().iter().any(|tx| *tx.tx_hash() == hash)
+	}
+
+	/// Creates a new span that includes this checkpoint and all other
 	/// checkpoints that are between this checkpoint and the given checkpoint.
 	///
 	/// The two checkpoints must be part of the same linear history, meaning that
@@ -216,7 +243,8 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 		)
 	}
 
-	/// Returns all nonces for each signer in this checkpoint.
+	/// Returns tuples of signer and nonce for each transaction in this
+	/// checkpoint.
 	fn nonces(&self) -> Vec<(Address, u64)> {
 		self
 			.transactions()
@@ -245,8 +273,8 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 		}
 	}
 
-	/// Returns `true` if this checkpoint has any transactions with non-success
-	/// execution outcome.
+	/// Returns `true` if this checkpoint has any transactions with a
+	/// non-successful execution outcome.
 	fn has_failures(&self) -> bool {
 		self.failed_txs().next().is_some()
 	}
@@ -275,17 +303,11 @@ impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {
 		self.as_bundle().is_some()
 	}
 
-	/// Returns the timestamp of initial checkpoint that was created at the very
-	/// beginning of the payload building process. It is the timestamp if the
-	/// first barrier checkpoint in the history of this checkpoint that is created
-	/// by `Checkpoint::new_at_block`.
+	/// Returns the timestamp of the initial checkpoint that was created at the
+	/// very beginning of the payload building process. It is the timestamp if
+	/// the first barrier checkpoint in the history of this checkpoint that is
+	/// created by `Checkpoint::new_at_block`.
 	fn building_since(&self) -> Instant {
-		let mut created_at = self.created_at();
-		let mut current = self.clone();
-		while let Some(prev) = current.prev() {
-			created_at = prev.created_at();
-			current = prev;
-		}
-		created_at
+		self.root().created_at()
 	}
 }

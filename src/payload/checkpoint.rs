@@ -116,7 +116,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// - Multiple transactions if this checkpoint represents a bundle.
 	pub fn transactions(&self) -> &[Recovered<types::Transaction<P>>] {
 		match &self.inner.mutation {
-			Mutation::Barrier | Mutation::NamedBarrier(_) => &[],
+			Mutation::Barrier => &[],
 			Mutation::Executable(result) => result.transactions(),
 		}
 	}
@@ -125,7 +125,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// checkpoint.
 	pub fn result(&self) -> Option<&ExecutionResult<P>> {
 		match &self.inner.mutation {
-			Mutation::Barrier | Mutation::NamedBarrier(_) => None,
+			Mutation::Barrier => None,
 			Mutation::Executable(result) => Some(result),
 		}
 	}
@@ -134,7 +134,7 @@ impl<P: Platform> Checkpoint<P> {
 	/// transaction(s) that created this checkpoint.
 	pub fn state(&self) -> Option<&BundleState> {
 		match self.inner.mutation {
-			Mutation::Barrier | Mutation::NamedBarrier(_) => None,
+			Mutation::Barrier => None,
 			Mutation::Executable(ref result) => Some(result.state()),
 		}
 	}
@@ -144,9 +144,14 @@ impl<P: Platform> Checkpoint<P> {
 		matches!(self.inner.mutation, Mutation::Barrier)
 	}
 
-	/// Returns true if this checkpoint is a named barrier checkpoint.
-	pub fn is_named_barrier(&self, name: &str) -> bool {
-		matches!(self.inner.mutation, Mutation::NamedBarrier(ref barrier_name) if barrier_name == name)
+	/// Returns true if this checkpoint has the given tag.
+	pub fn is_tagged(&self, tag: &str) -> bool {
+		self.tag().is_some_and(|t| t == tag)
+	}
+
+	/// Returns the tag of this checkpoint, if any.
+	pub fn tag(&self) -> Option<&str> {
+		self.inner.tag.as_deref()
 	}
 
 	/// If this checkpoint is created from a single transaction, returns a
@@ -187,7 +192,23 @@ impl<P: Platform> Checkpoint<P> {
 				.try_into_executable()?
 				.execute(self.block(), self)?,
 		);
-		Ok(self.apply_with(mutation))
+		Ok(self.apply_with(mutation, None))
+	}
+
+	/// Creates a new checkpoint on top of the current checkpoint and tags it.
+	/// The execution will use the cumulative state of all checkpoints in the
+	/// current checkpoint history as its state.
+	pub fn apply_with_tag<S>(
+		&self,
+		executable: impl IntoExecutable<P, S>,
+		tag: impl Into<Box<str>>,
+	) -> Result<Self, ExecutionError<P>> {
+		let mutation = Mutation::Executable(
+			executable
+				.try_into_executable()?
+				.execute(self.block(), self)?,
+		);
+		Ok(self.apply_with(mutation, Some(tag.into())))
 	}
 
 	/// Creates a new checkpoint on top of the current checkpoint that introduces
@@ -195,7 +216,13 @@ impl<P: Platform> Checkpoint<P> {
 	/// staging history.
 	#[must_use]
 	pub fn barrier(&self) -> Self {
-		Self::apply_with(self, Mutation::Barrier)
+		Self::apply_with(self, Mutation::Barrier, None)
+	}
+
+	/// Creates a new tagged barrier checkpoint on top of the current checkpoint.
+	#[must_use]
+	pub fn barrier_with_tag(&self, tag: impl Into<Box<str>>) -> Self {
+		Self::apply_with(self, Mutation::Barrier, Some(tag.into()))
 	}
 }
 
@@ -204,7 +231,7 @@ impl<P: Platform> Checkpoint<P> {
 	// Create a new checkpoint on top of the current one with the given mutation.
 	// See public builder API.
 	#[must_use]
-	fn apply_with(&self, mutation: Mutation<P>) -> Self {
+	fn apply_with(&self, mutation: Mutation<P>, tag: Option<Box<str>>) -> Self {
 		Self {
 			inner: Arc::new(CheckpointInner {
 				block: self.inner.block.clone(),
@@ -212,22 +239,7 @@ impl<P: Platform> Checkpoint<P> {
 				depth: self.inner.depth + 1,
 				mutation,
 				created_at: Instant::now(),
-			}),
-		}
-	}
-
-	/// Creates a new checkpoint on top of the current checkpoint that introduces
-	/// a named barrier. This new checkpoint will be now considered the new
-	/// beginning of staging history.
-	#[must_use]
-	pub fn named_barrier(&self, name: impl Into<String>) -> Self {
-		Self {
-			inner: Arc::new(CheckpointInner {
-				block: self.inner.block.clone(),
-				prev: Some(Arc::clone(&self.inner)),
-				depth: self.inner.depth + 1,
-				mutation: Mutation::NamedBarrier(name.into()),
-				created_at: Instant::now(),
+				tag,
 			}),
 		}
 	}
@@ -244,6 +256,7 @@ impl<P: Platform> Checkpoint<P> {
 				depth: 0,
 				mutation: Mutation::Barrier,
 				created_at: Instant::now(),
+				tag: None,
 			}),
 		}
 	}
@@ -292,11 +305,6 @@ enum Mutation<P: Platform> {
 	/// the previous checkpoint. The executable item can be a single transaction
 	/// or a bundle of transactions.
 	Executable(ExecutionResult<P>),
-
-	/// A checkpoint that was created by applying a named barrier on top of the
-	/// previous checkpoint. The named barrier is used to indicate that any prior
-	/// checkpoints are immutable and should not be discarded or reordered.
-	NamedBarrier(String),
 }
 
 struct CheckpointInner<P: Platform> {
@@ -318,6 +326,11 @@ struct CheckpointInner<P: Platform> {
 
 	/// The timestamp when this checkpoint was created.
 	created_at: Instant,
+
+	/// Optional tag for this checkpoint. Tags are metadata used to mark
+	/// checkpoints for later reference in history queries and display/debug
+	/// output.
+	tag: Option<Box<str>>,
 }
 
 /// Converts a checkpoint into a vector of transactions that were applied to
@@ -460,6 +473,7 @@ impl<P: Platform> Debug for Checkpoint<P> {
 		f.debug_struct("Checkpoint")
 			.field("depth", &self.depth())
 			.field("block", &format!("{} + 1", self.block().parent().hash()))
+			.field("tag", &self.tag())
 			.field(
 				"txs",
 				&self
@@ -475,6 +489,11 @@ impl<P: Platform> Debug for Checkpoint<P> {
 
 impl<P: Platform> Display for Checkpoint<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		let tag_suffix = self
+			.tag()
+			.map(|tag| format!(" '{tag}'"))
+			.unwrap_or_default();
+
 		let Mutation::Executable(exec_result) = &self.inner.mutation else {
 			if self.depth() == 0 {
 				// this is the initial checkpoint
@@ -484,9 +503,8 @@ impl<P: Platform> Display for Checkpoint<P> {
 			// this is a barrier checkpoint, which has no transactions
 			// applied to it.
 			return match &self.inner.mutation {
-				Mutation::Barrier => write!(f, "[{}] barrier", self.depth()),
-				Mutation::NamedBarrier(name) => {
-					write!(f, "[{}] barrier '{}'", self.depth(), name)
+				Mutation::Barrier => {
+					write!(f, "[{}] barrier{}", self.depth(), tag_suffix)
 				}
 				Mutation::Executable(_) => {
 					unreachable!("Executable variant handled above")
@@ -497,7 +515,7 @@ impl<P: Platform> Display for Checkpoint<P> {
 		match exec_result.source() {
 			Executable::Transaction(tx) => write!(
 				f,
-				"[{}] tx {} ({}, {} gas)",
+				"[{}] tx {} ({}, {} gas){}",
 				self.depth(),
 				tx.tx_hash(),
 				match exec_result.results()[0] {
@@ -506,13 +524,15 @@ impl<P: Platform> Display for Checkpoint<P> {
 					types::TransactionExecutionResult::<P>::Halt { .. } => "halt",
 				},
 				self.gas_used(),
+				tag_suffix,
 			),
 			Executable::Bundle(bundle) => write!(
 				f,
-				"[{}] (bundle {} txs, {} gas)",
+				"[{}] (bundle {} txs, {} gas){}",
 				self.depth(),
 				bundle.transactions().len(),
 				self.gas_used(),
+				tag_suffix,
 			),
 		}
 	}

@@ -135,6 +135,22 @@ pub trait CheckpointExt<P: Platform>: super::sealed::Sealed {
 	/// first checkpoint in the history of this checkpoint that is created
 	/// by `Checkpoint::new_at_block`.
 	fn building_since(&self) -> Instant;
+
+	/// Returns a span starting at the last checkpoint tagged with `tag`.
+	/// Returns `None` if no such tag exists in history.
+	fn history_since_last_tag(&self, tag: &str) -> Option<Span<P>> {
+		let history = self.history();
+		let start = history.iter().rposition(|cp| cp.is_tagged(tag))?;
+		Some(history.skip(start))
+	}
+
+	/// Returns a span starting at the first checkpoint tagged with `tag`.
+	/// Returns `None` if no such tag exists in history.
+	fn history_since_first_tag(&self, tag: &str) -> Option<Span<P>> {
+		let history = self.history();
+		let start = history.iter().position(|cp| cp.is_tagged(tag))?;
+		Some(history.skip(start))
+	}
 }
 
 impl<P: Platform> CheckpointExt<P> for Checkpoint<P> {

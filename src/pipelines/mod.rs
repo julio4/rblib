@@ -40,7 +40,7 @@ pub enum Behavior {
 }
 
 pub struct Pipeline<P: Platform> {
-	epilogue: Option<Arc<StepInstance<P>>>,
+	epilogue: Vec<Arc<StepInstance<P>>>,
 	prologue: Option<Arc<StepInstance<P>>>,
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Arc<dyn ScopedLimits<P>>>,
@@ -53,7 +53,7 @@ impl<P: Platform> Default for Pipeline<P> {
 	#[track_caller]
 	fn default() -> Self {
 		Self {
-			epilogue: None,
+			epilogue: Vec::new(),
 			prologue: None,
 			steps: Vec::new(),
 			limits: None,
@@ -82,11 +82,12 @@ impl<P: Platform> Pipeline<P> {
 	}
 
 	/// A step that happens as the last step of the block after the whole payload
-	/// has been built.
+	/// has been built. Can be called multiple times to add multiple epilogue
+	/// steps.
 	#[must_use]
 	pub fn with_epilogue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
-		this.epilogue = Some(Arc::new(StepInstance::new(step)));
+		this.epilogue.push(Arc::new(StepInstance::new(step)));
 		this
 	}
 
@@ -151,7 +152,7 @@ impl<P: Platform> Pipeline<P> {
 impl<P: Platform> Pipeline<P> {
 	/// Returns true if the pipeline has no steps, prologue or epilogue.
 	pub fn is_empty(&self) -> bool {
-		self.prologue.is_none() && self.epilogue.is_none() && self.steps.is_empty()
+		self.prologue.is_none() && self.epilogue.is_empty() && self.steps.is_empty()
 	}
 
 	/// An optional name of the pipeline.
@@ -176,8 +177,8 @@ impl<P: Platform> Pipeline<P> {
 		self.prologue.as_ref()
 	}
 
-	pub(crate) fn epilogue(&self) -> Option<&Arc<StepInstance<P>>> {
-		self.epilogue.as_ref()
+	pub(crate) fn epilogue(&self) -> &[Arc<StepInstance<P>>] {
+		&self.epilogue
 	}
 
 	pub(crate) fn steps(&self) -> &[StepOrPipeline<P>] {
@@ -315,7 +316,7 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 		f.debug_struct("Pipeline")
 			.field("name", &self.name())
 			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
-			.field("epilogue", &self.epilogue.as_ref().map(|e| e.name()))
+			.field("epilogue", &self.epilogue)
 			.field("steps", &self.steps)
 			.field("limits", &self.limits.is_some())
 			.finish_non_exhaustive()

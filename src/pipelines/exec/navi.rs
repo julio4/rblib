@@ -10,7 +10,7 @@ use {
 	core::fmt::Formatter,
 	derive_more::{From, Into},
 	smallvec::{SmallVec, smallvec},
-	std::sync::Arc,
+	std::{cmp::min, sync::Arc},
 };
 
 /// Represents a path to a step or a nested pipeline in a pipeline.
@@ -24,9 +24,10 @@ use {
 #[derive(PartialEq, Eq, Clone, From, Into, Hash)]
 pub(crate) struct StepPath(SmallVec<[usize; 8]>);
 
+const EXTRA_SECTIONS_SIZE: usize = 1024;
 const PROLOGUE_INDEX: usize = usize::MIN;
-const EPILOGUE_START_INDEX: usize = usize::MAX - 1024; // Reserve space for epilogue steps
-const STEP0_INDEX: usize = PROLOGUE_INDEX + 1;
+const STEP0_INDEX: usize = PROLOGUE_INDEX + EXTRA_SECTIONS_SIZE + 1;
+const EPILOGUE_START_INDEX: usize = usize::MAX - EXTRA_SECTIONS_SIZE;
 
 /// Public API
 impl StepPath {
@@ -81,7 +82,7 @@ impl StepPath {
 
 	/// Returns `true` if the path is pointing to a prologue of a pipeline.
 	pub(crate) fn is_prologue(&self) -> bool {
-		self.leaf() == PROLOGUE_INDEX
+		self.leaf() < STEP0_INDEX
 	}
 
 	/// Returns `true` if the path is pointing to an epilogue of a pipeline.
@@ -227,9 +228,26 @@ impl StepPath {
 ///
 /// None of those methods do any checks on the validity of the path.
 impl StepPath {
-	/// Returns a step path that points to the prologue step.
+	/// Returns a leaf step path pointing at a specific prologue step with the
+	/// given index.
+	pub(in crate::pipelines) fn prologue_step(prologue_index: usize) -> Self {
+		Self(smallvec![min(
+			prologue_index + PROLOGUE_INDEX,
+			STEP0_INDEX - 1,
+		)])
+	}
+
+	/// Returns a step path that points to the first prologue step.
 	pub(in crate::pipelines) fn prologue() -> Self {
-		Self(smallvec![PROLOGUE_INDEX])
+		Self::prologue_step(0)
+	}
+
+	/// Returns a leaf step path pointing at a specific epilogue step with the
+	/// given index.
+	pub(in crate::pipelines) fn epilogue_step(epilogue_index: usize) -> Self {
+		Self(smallvec![
+			epilogue_index.saturating_add(EPILOGUE_START_INDEX)
+		])
 	}
 
 	/// Returns a leaf step path pointing at the first epilogue step.
@@ -237,20 +255,17 @@ impl StepPath {
 		Self::epilogue_step(0)
 	}
 
-	/// Returns a leaf step path pointing at a specific epilogue step with the
-	/// given index.
-	pub(in crate::pipelines) fn epilogue_step(epilogue_index: usize) -> Self {
-		Self(smallvec![epilogue_index + EPILOGUE_START_INDEX])
+	/// Returns a leaf step path pointing at a step with the given index.
+	pub(in crate::pipelines) fn step(step_index: usize) -> Self {
+		Self(smallvec![min(
+			step_index + STEP0_INDEX,
+			EPILOGUE_START_INDEX - 1
+		)])
 	}
 
 	/// Returns a new step path that points to the first non-prologue step.
 	pub(in crate::pipelines) fn step0() -> Self {
 		Self::step(0)
-	}
-
-	/// Returns a leaf step path pointing at a step with the given index.
-	pub(in crate::pipelines) fn step(step_index: usize) -> Self {
-		Self(smallvec![step_index + STEP0_INDEX])
 	}
 
 	/// Appends a new path to the current path.
@@ -280,20 +295,22 @@ impl core::fmt::Display for StepPath {
 
 		if let Some(&first) = iter.next() {
 			match first {
-				PROLOGUE_INDEX => write!(f, "p"),
+				idx if idx < STEP0_INDEX => write!(f, "p{}", idx - PROLOGUE_INDEX),
 				idx if idx >= EPILOGUE_START_INDEX => {
 					write!(f, "e{}", idx - EPILOGUE_START_INDEX)
 				}
-				index => write!(f, "{index}"),
+				idx => write!(f, "{}", idx - STEP0_INDEX),
 			}?;
 
 			for &index in iter {
 				match index {
-					PROLOGUE_INDEX => write!(f, "_p"),
+					idx if idx < STEP0_INDEX => {
+						write!(f, "_p{}", idx - PROLOGUE_INDEX)
+					}
 					idx if idx >= EPILOGUE_START_INDEX => {
 						write!(f, "_e{}", idx - EPILOGUE_START_INDEX)
 					}
-					index => write!(f, "_{index}"),
+					idx => write!(f, "_{}", idx - STEP0_INDEX),
 				}?;
 			}
 		}
@@ -325,7 +342,7 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	/// Given a pipeline, returns a navigator that points at the first executable
 	/// item in the pipeline.
 	///
-	/// In pipelines with a prologue, this will point to the prologue step.
+	/// In pipelines with a prologue, this will point to the first prologue step.
 	/// In pipelines without a prologue, this will point to the first step.
 	/// In pipelines with no steps, but with an epilogue, this will point to the
 	/// first epilogue step.
@@ -340,8 +357,8 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 		}
 
 		// pipeline has a prologue, return it.
-		if pipeline.prologue().is_some() {
-			return Some(Self(StepPath::prologue(), vec![pipeline]));
+		if !pipeline.prologue().is_empty() {
+			return Self(StepPath::prologue(), vec![pipeline]).enter();
 		}
 
 		// pipeline has no prologue
@@ -369,6 +386,11 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 		if self.is_prologue() {
 			enclosing_pipeline
 				.prologue()
+				.get(
+					step_index
+						.checked_sub(PROLOGUE_INDEX)
+						.expect("step index should be >= prologue index"),
+				)
 				.expect("Step path points to a non-existing prologue")
 		} else if self.is_epilogue() {
 			enclosing_pipeline
@@ -419,9 +441,10 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	///
 	/// Returns `None` if there are no more steps to execute in the pipeline.
 	pub(crate) fn next_ok(self) -> Option<Self> {
+		let enclosing_pipeline = self.pipeline();
+
 		if self.is_epilogue() {
 			// we are in an epilogue step, check if there are more epilogue steps
-			let enclosing_pipeline = self.pipeline();
 			let epilogue_index = self
 				.0
 				.leaf()
@@ -437,11 +460,21 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 		}
 
 		if self.is_prologue() {
-			// start looping (if possible)
+			// we are in a prologue step, check if there are more prologue steps
+			let prologue_index = self
+				.0
+				.leaf()
+				.checked_sub(PROLOGUE_INDEX)
+				.expect("invalid prologue step index in the step path");
+
+			if prologue_index + 1 < enclosing_pipeline.prologue.len() {
+				// there are more prologue step, go to the next one
+				return Self(self.0.increment_leaf(), self.1.clone()).enter();
+			}
+
+			// this is the last prologue step, enter step section
 			return self.after_prologue();
 		}
-
-		let enclosing_pipeline = self.pipeline();
 
 		// we are in a regular step.
 		assert!(
@@ -480,7 +513,8 @@ impl<'a, P: Platform> StepNavigator<'a, P> {
 	///
 	/// Returns `None` if there are no more steps to execute in the pipeline.
 	pub(crate) fn next_break(self) -> Option<Self> {
-		if self.is_epilogue() {
+		// breaking in prologue or epilogue directly stop pipeline execution
+		if self.is_epilogue() || self.is_prologue() {
 			// the loop is over.
 			return self.next_in_parent();
 		}
@@ -553,7 +587,7 @@ impl<P: Platform> StepNavigator<'_, P> {
 
 		if path.is_prologue() {
 			assert!(
-				enclosing_pipeline.prologue().is_some(),
+				!enclosing_pipeline.prologue().is_empty(),
 				"path is prologue, but the enclosing pipeline has none",
 			);
 			// if we are in a prologue, we can just return ourselves.
@@ -673,6 +707,7 @@ mod test {
 
 	fake_step!(Prologue1);
 	fake_step!(Prologue2);
+	fake_step!(Prologue3);
 
 	fake_step!(Step1);
 	fake_step!(Step2);
@@ -704,6 +739,7 @@ mod test {
 						(StepX, StepY, StepZ)
 							.with_name("nested1.1")
 							.with_prologue(Prologue2)
+							.with_prologue(Prologue3)
 							.with_epilogue(Epilogue2),
 					)
 					.with_step(StepC)
@@ -722,6 +758,10 @@ mod test {
 	impl StepPath {
 		fn append_prologue(self) -> Self {
 			self.concat(StepPath::prologue())
+		}
+
+		fn append_prologue_step(self, step_index: usize) -> Self {
+			self.concat(StepPath::prologue_step(step_index))
 		}
 
 		fn append_epilogue(self) -> Self {
@@ -787,7 +827,7 @@ mod test {
 			vec!["one", "two"]
 		);
 
-		// one nested step with prologue
+		// one nested step with a one-step prologue
 		assert_entrypoint!(
 			Pipeline::<Ethereum>::named("one").with_pipeline(
 				Loop,
@@ -905,7 +945,16 @@ mod test {
 		assert_eq!(cursor.0, StepPath::step(2).append_step(0));
 
 		let cursor = cursor.next_ok().unwrap();
-		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
+		assert_eq!(
+			cursor.0,
+			StepPath::step(2).append_step(1).append_prologue_step(0)
+		);
+
+		let cursor = cursor.next_ok().unwrap();
+		assert_eq!(
+			cursor.0,
+			StepPath::step(2).append_step(1).append_prologue_step(1)
+		);
 
 		let cursor = cursor.next_ok().unwrap();
 		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_step(0));
@@ -947,12 +996,12 @@ mod test {
 		assert_eq!(cursor.0, StepPath::step(2).append_step(0));
 
 		let cursor = cursor.next_ok().unwrap();
-		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
+		assert_eq!(
+			cursor.0,
+			StepPath::step(2).append_step(1).append_prologue_step(0)
+		);
 
 		let cursor = cursor.next_break().unwrap();
-		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_epilogue());
-
-		let cursor = cursor.next_ok().unwrap();
 		assert_eq!(cursor.0, StepPath::step(2).append_step(2));
 
 		let cursor = cursor.next_break().unwrap();
@@ -998,12 +1047,15 @@ mod test {
 		assert_eq!(navigator.instance().name(), cursor.instance().name());
 
 		let cursor = cursor.next_ok().unwrap();
-		assert_eq!(cursor.0, StepPath::step(2).append_step(1).append_prologue());
+		assert_eq!(
+			cursor.0,
+			StepPath::step(2).append_step(1).append_prologue_step(0)
+		);
 		let navigator = cursor.0.navigator(&pipeline).unwrap();
 		assert_eq!(navigator.1.len(), cursor.1.len());
 		assert_eq!(
 			navigator.0,
-			StepPath::step(2).append_step(1).append_prologue()
+			StepPath::step(2).append_step(1).append_prologue_step(0)
 		);
 		assert_eq!(navigator.instance().name(), cursor.instance().name());
 

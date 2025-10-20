@@ -41,7 +41,7 @@ pub enum Behavior {
 
 pub struct Pipeline<P: Platform> {
 	epilogue: Vec<Arc<StepInstance<P>>>,
-	prologue: Option<Arc<StepInstance<P>>>,
+	prologue: Vec<Arc<StepInstance<P>>>,
 	steps: Vec<StepOrPipeline<P>>,
 	limits: Option<Arc<dyn ScopedLimits<P>>>,
 	name: String,
@@ -54,7 +54,7 @@ impl<P: Platform> Default for Pipeline<P> {
 	fn default() -> Self {
 		Self {
 			epilogue: Vec::new(),
-			prologue: None,
+			prologue: Vec::new(),
 			steps: Vec::new(),
 			limits: None,
 			events: Arc::default(),
@@ -77,7 +77,7 @@ impl<P: Platform> Pipeline<P> {
 	#[must_use]
 	pub fn with_prologue(self, step: impl Step<P>) -> Self {
 		let mut this = self;
-		this.prologue = Some(Arc::new(StepInstance::new(step)));
+		this.prologue.push(Arc::new(StepInstance::new(step)));
 		this
 	}
 
@@ -152,7 +152,9 @@ impl<P: Platform> Pipeline<P> {
 impl<P: Platform> Pipeline<P> {
 	/// Returns true if the pipeline has no steps, prologue or epilogue.
 	pub fn is_empty(&self) -> bool {
-		self.prologue.is_none() && self.epilogue.is_empty() && self.steps.is_empty()
+		self.prologue.is_empty()
+			&& self.epilogue.is_empty()
+			&& self.steps.is_empty()
 	}
 
 	/// An optional name of the pipeline.
@@ -173,8 +175,8 @@ impl<P: Platform> Pipeline<P> {
 
 /// Internal API
 impl<P: Platform> Pipeline<P> {
-	pub(crate) fn prologue(&self) -> Option<&Arc<StepInstance<P>>> {
-		self.prologue.as_ref()
+	pub(crate) fn prologue(&self) -> &[Arc<StepInstance<P>>] {
+		&self.prologue
 	}
 
 	pub(crate) fn epilogue(&self) -> &[Arc<StepInstance<P>>] {
@@ -315,7 +317,7 @@ impl<P: Platform> core::fmt::Debug for Pipeline<P> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("Pipeline")
 			.field("name", &self.name())
-			.field("prologue", &self.prologue.as_ref().map(|p| p.name()))
+			.field("prologue", &self.prologue)
 			.field("epilogue", &self.epilogue)
 			.field("steps", &self.steps)
 			.field("limits", &self.limits.is_some())

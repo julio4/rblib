@@ -269,6 +269,7 @@ impl<P: Platform> StepInstance<P> {
 	}
 
 	/// Returns the name of the type that implements this step.
+	#[allow(dead_code)]
 	pub(crate) const fn name(&self) -> &str {
 		self.name.pretty()
 	}

@@ -18,6 +18,7 @@ use {
 		ethereum::primitives::SignedTransaction,
 		optimism::primitives::OpTransactionSigned,
 		primitives::Recovered,
+		providers::StateProvider,
 		revm::db::BundleState,
 	},
 	serde::{Deserialize, Serialize},
@@ -50,21 +51,20 @@ impl Platform for CustomPlatform {
 		)
 	}
 
-	fn build_payload<P, Provider>(
+	fn build_payload<P>(
 		payload: Checkpoint<P>,
-		provider: &Provider,
+		provider: &dyn StateProvider,
 	) -> Result<types::BuiltPayload<Self>, PayloadBuilderError>
 	where
 		P: traits::PlatformExecBounds<Self>,
-		Provider: traits::ProviderBounds<Self>,
 	{
-		Optimism::build_payload::<P, Provider>(payload, provider)
+		Optimism::build_payload::<P>(payload, provider)
 	}
 }
 
 fn main() -> eyre::Result<()> {
 	// Construct a mock build context for the custom platform.
-	let (block, provider) = BlockContext::<CustomPlatform>::mocked();
+	let block = BlockContext::<CustomPlatform>::mocked();
 
 	// begin building the payload by creating the first checkpoint for the block.
 	let start = block.start();
@@ -97,7 +97,9 @@ fn main() -> eyre::Result<()> {
 		))
 	));
 
-	let built_payload = CustomPlatform::build_payload(payload, &provider)
+	// build payload
+	let built_payload = payload
+		.build_payload()
 		.expect("payload should be built successfully");
 
 	println!("{built_payload:#?}");

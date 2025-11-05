@@ -404,7 +404,11 @@ mod tests {
 		let block = BlockContext::<Ethereum>::mocked();
 		let cp1 = Checkpoint::new_at_block(block);
 
-		let tx1 = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(50_000u64));
+		let tx1 = transfer_tx::<Ethereum>(
+			&FundedAccounts::signer(0),
+			0,
+			U256::from(50_000u64),
+		);
 		let tx1_hash = *tx1.hash();
 		assert!(!cp1.contains(tx1_hash));
 		let cp2 = cp1.apply(tx1).unwrap();
@@ -456,10 +460,12 @@ mod tests {
 		let base = Checkpoint::new_at_block(block);
 
 		// base -> x -> y
-		let tx_x = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(10u64));
+		let tx_x =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(0), 0, U256::from(10u64));
 		let x = base.apply(tx_x).unwrap();
 
-		let tx_y = transfer_tx(&FundedAccounts::signer(1), 0, U256::from(20u64));
+		let tx_y =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(1), 0, U256::from(20u64));
 		let y = x.apply(tx_y).unwrap();
 
 		let x_barrier = x.barrier();
@@ -487,7 +493,8 @@ mod tests {
 		let root1 = Checkpoint::new_at_block(block1);
 		let root2 = Checkpoint::new_at_block(block2);
 
-		let tx = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(5u64));
+		let tx =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(0), 0, U256::from(5u64));
 		let root1_child = root1.apply(tx).unwrap();
 
 		assert!(root1_child.to(&root2).is_err());
@@ -504,7 +511,11 @@ mod tests {
 			"Empty checkpoint should have zero tip"
 		);
 
-		let tx = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(100u64));
+		let tx = transfer_tx::<Ethereum>(
+			&FundedAccounts::signer(0),
+			0,
+			U256::from(100u64),
+		);
 		let cp2 = cp.apply(tx.clone()).unwrap();
 
 		let tip = cp2.effective_tip_per_gas();
@@ -516,10 +527,12 @@ mod tests {
 		let block = BlockContext::<Ethereum>::mocked();
 		let base = Checkpoint::new_at_block(block);
 
-		let tx1 = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(50u64));
+		let tx1 =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(0), 0, U256::from(50u64));
 		let cp1 = base.apply(tx1).unwrap();
 
-		let tx2 = transfer_tx(&FundedAccounts::signer(1), 0, U256::from(75u64));
+		let tx2 =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(1), 0, U256::from(75u64));
 		let cp2 = cp1.apply(tx2).unwrap();
 
 		let staging = cp2.history_staging();
@@ -537,12 +550,14 @@ mod tests {
 		let block = BlockContext::<Ethereum>::mocked();
 		let base = Checkpoint::new_at_block(block);
 
-		let tx1 = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(50u64));
+		let tx1 =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(0), 0, U256::from(50u64));
 		let cp1 = base.apply(tx1).unwrap();
 
 		let barrier = cp1.barrier();
 
-		let tx2 = transfer_tx(&FundedAccounts::signer(1), 0, U256::from(75u64));
+		let tx2 =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(1), 0, U256::from(75u64));
 		let cp2 = barrier.apply(tx2).unwrap();
 
 		let staging = cp2.history_staging();

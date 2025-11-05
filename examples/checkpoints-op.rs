@@ -3,24 +3,17 @@
 //! In this example are creating a new [`BlockContext`] instance using the
 //! test-utils provided helpers for creating mock instances.
 
-use {
+use rblib::{
 	alloy::{
-		consensus::Transaction,
-		network::{TransactionBuilder, TxSignerSync},
-		optimism::{consensus::OpTxEnvelope, rpc_types::OpTransactionRequest},
-		primitives::{Address, U256},
+		consensus::{Transaction, transaction::Recovered},
+		primitives::U256,
 		signers::local::PrivateKeySigner,
 	},
-	rblib::{
-		alloy,
-		prelude::*,
-		reth,
-		test_utils::{BlockContextMocked, FundedAccounts},
-	},
-	reth::{
-		ethereum::primitives::SignedTransaction,
-		optimism::primitives::OpTransactionSigned,
-		primitives::Recovered,
+	prelude::*,
+	test_utils::{
+		BlockContextMocked,
+		FundedAccounts,
+		transfer_tx as test_transfer_tx,
 	},
 };
 
@@ -72,26 +65,10 @@ fn main() -> eyre::Result<()> {
 	Ok(())
 }
 
-fn transfer_tx(
+pub fn transfer_tx(
 	signer: &PrivateKeySigner,
 	nonce: u64,
 	value: U256,
-) -> Recovered<OpTxEnvelope> {
-	let mut tx = OpTransactionRequest::default()
-		.with_nonce(nonce)
-		.with_to(Address::random())
-		.value(value)
-		.with_gas_price(1_000_000_000)
-		.with_gas_limit(21_000)
-		.with_max_priority_fee_per_gas(1_000_000)
-		.with_max_fee_per_gas(2_000_000)
-		.build_unsigned()
-		.expect("valid transaction request");
-
-	let sig = signer
-		.sign_transaction_sync(&mut tx)
-		.expect("signing should succeed");
-
-	OpTransactionSigned::new_unhashed(tx, sig) //
-		.with_signer(signer.address())
+) -> Recovered<types::Transaction<Optimism>> {
+	test_transfer_tx::<Optimism>(signer, nonce, value)
 }

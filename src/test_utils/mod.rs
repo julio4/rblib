@@ -33,7 +33,7 @@ pub use {
 	platform::{TestNodeFactory, TestablePlatform},
 	rblib_tests_macros::{assert_is_dyn_safe, if_platform, rblib_test},
 	step::{AlwaysBreakStep, AlwaysFailStep, AlwaysOkStep, OneStep},
-	transactions::transfer_tx,
+	transactions::{mock_tx, transfer_tx},
 };
 
 #[cfg(feature = "optimism")]

@@ -15,7 +15,7 @@ use {
 	std::sync::Arc,
 };
 
-/// Those accounts are defined in the gensis block of the test local node,
+/// Those accounts are defined in the genesis block of the test local node,
 /// each prefunded with 100 ETH and nonces starting from 0.
 pub struct FundedAccounts;
 

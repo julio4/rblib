@@ -608,7 +608,8 @@ mod tests {
 		let checkpoint2 = checkpoint.barrier();
 		let checkpoint3 = checkpoint2.barrier();
 
-		let tx = transfer_tx(&FundedAccounts::signer(0), 0, U256::from(10u64));
+		let tx =
+			transfer_tx::<Ethereum>(&FundedAccounts::signer(0), 0, U256::from(10u64));
 		let checkpoint4 = checkpoint3.apply(tx).unwrap();
 
 		let history: Vec<_> = checkpoint4.into_iter().collect();

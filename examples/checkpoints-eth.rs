@@ -3,12 +3,17 @@
 //! In this example are creating a new [`BlockContext`] instance using the
 //! test-utils provided helpers for creating mock instances.
 
-use {
-	alloy::{consensus::Transaction, primitives::U256},
-	rblib::{
-		alloy,
-		prelude::*,
-		test_utils::{BlockContextMocked, FundedAccounts, transfer_tx},
+use rblib::{
+	alloy::{
+		consensus::{Transaction, transaction::Recovered},
+		primitives::U256,
+		signers::local::PrivateKeySigner,
+	},
+	prelude::*,
+	test_utils::{
+		BlockContextMocked,
+		FundedAccounts,
+		transfer_tx as test_transfer_tx,
 	},
 };
 
@@ -57,4 +62,12 @@ fn main() -> eyre::Result<()> {
 	assert_eq!(transactions[3].value(), U256::from(5_000u64));
 
 	Ok(())
+}
+
+pub fn transfer_tx(
+	signer: &PrivateKeySigner,
+	nonce: u64,
+	value: U256,
+) -> Recovered<types::Transaction<Ethereum>> {
+	test_transfer_tx::<Ethereum>(signer, nonce, value)
 }

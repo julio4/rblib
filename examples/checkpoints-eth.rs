@@ -64,7 +64,7 @@ fn main() -> eyre::Result<()> {
 	Ok(())
 }
 
-pub fn transfer_tx(
+fn transfer_tx(
 	signer: &PrivateKeySigner,
 	nonce: u64,
 	value: U256,

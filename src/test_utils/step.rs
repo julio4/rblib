@@ -17,6 +17,7 @@ macro_rules! fake_step {
 	($name:ident) => {
 		#[derive(Debug, Default, Clone)]
 		pub(super) struct $name;
+		#[async_trait::async_trait]
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -31,6 +32,7 @@ macro_rules! fake_step {
 	($name:ident, noop_ok) => {
 		#[derive(Debug, Default, Clone)]
 		pub struct $name;
+		#[async_trait::async_trait]
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -45,6 +47,7 @@ macro_rules! fake_step {
 	($name:ident, noop_break) => {
 		#[derive(Debug, Default, Clone)]
 		pub struct $name;
+		#[async_trait::async_trait]
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -60,6 +63,7 @@ macro_rules! fake_step {
 		#[allow(dead_code)]
 		#[derive(Debug, Clone)]
 		pub(super) struct $name($state);
+		#[async_trait::async_trait]
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -76,6 +80,7 @@ pub(crate) use fake_step;
 
 /// A step that always return `ControlFlow::Break` with the input payload.
 pub struct AlwaysBreakStep;
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for AlwaysBreakStep {
 	async fn step(
 		self: Arc<Self>,
@@ -88,6 +93,7 @@ impl<P: Platform> Step<P> for AlwaysBreakStep {
 
 /// A step that always returns `ControlFlow::Ok` with the input payload.
 pub struct AlwaysOkStep;
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for AlwaysOkStep {
 	async fn step(
 		self: Arc<Self>,
@@ -101,6 +107,7 @@ impl<P: Platform> Step<P> for AlwaysOkStep {
 /// A step that always returns `ControlFlow::Fail` with
 /// `PayloadBuilderError::Other`.
 pub struct AlwaysFailStep;
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for AlwaysFailStep {
 	async fn step(
 		self: Arc<Self>,
@@ -308,6 +315,7 @@ impl<P: PlatformWithRpcTypes> PopulatePayload<P> {
 	}
 }
 
+#[async_trait::async_trait]
 impl<P: PlatformWithRpcTypes> Step<P> for PopulatePayload<P> {
 	async fn step(
 		self: Arc<Self>,
@@ -343,6 +351,7 @@ impl<P: Platform> RecordOk<P> {
 	}
 }
 
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for RecordOk<P> {
 	async fn step(
 		self: Arc<Self>,
@@ -378,6 +387,7 @@ impl<P: Platform> RecordBreakAndFail<P> {
 	}
 }
 
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for RecordBreakAndFail<P> {
 	async fn step(
 		self: Arc<Self>,

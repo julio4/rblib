@@ -158,6 +158,7 @@ tracing-subscriber = { version = "0.3", features = [
     "env-filter",
     "json",
 ], optional = true }
+async-trait = "0.1.89"
 
 [target.'cfg(unix)'.dependencies]
 tikv-jemallocator = { version = "0.6", optional = true }

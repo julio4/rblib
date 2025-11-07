@@ -140,7 +140,7 @@ impl<P: Platform> StepInstance<P> {
 						&mut *mut_ptr
 					};
 
-					step.setup(ctx).boxed()
+					step.setup(ctx)
 				},
 			) as WrappedSetupFn<P>,
 			name: Name::new::<S, P>(),

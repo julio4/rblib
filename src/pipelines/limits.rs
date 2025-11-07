@@ -353,6 +353,7 @@ mod tests {
 		}
 	}
 
+	#[async_trait::async_trait]
 	impl<P: Platform> Step<P> for TestStep {
 		async fn step(
 			self: Arc<Self>,

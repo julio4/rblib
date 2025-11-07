@@ -74,6 +74,7 @@ impl<P: PlatformWithRpcTypes> BuilderEpilogue<P> {
 	}
 }
 
+#[async_trait::async_trait]
 impl<P: PlatformWithRpcTypes> Step<P> for BuilderEpilogue<P> {
 	async fn step(
 		self: Arc<Self>,

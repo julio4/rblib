@@ -1,6 +1,6 @@
 use {
 	crate::{prelude::*, reth},
-	core::{fmt::Debug, future::Future, marker::PhantomData},
+	core::{fmt::Debug, marker::PhantomData},
 	reth::providers::StateProviderFactory,
 	std::sync::Arc,
 };
@@ -37,17 +37,18 @@ pub use {context::StepContext, reth::payload::builder::PayloadBuilderError};
 /// There may be multiple instances of the same step in a pipeline.
 ///
 /// A step instance is guaranteed to not be called concurrently by the runtime.
+#[async_trait::async_trait]
 pub trait Step<P: Platform>: Send + Sync + 'static {
 	/// Gets called every time this step is executed in the pipeline.
 	///
 	/// As an input it takes the payload that has been built so far and outputs
 	/// a new payload that will be used in the next step of the pipeline, or a
 	/// failure that will terminate the pipeline execution.
-	fn step(
+	async fn step(
 		self: Arc<Self>,
 		payload: Checkpoint<P>,
 		ctx: StepContext<P>,
-	) -> impl Future<Output = ControlFlow<P>> + Send + Sync;
+	) -> ControlFlow<P>;
 
 	/// This function is called once per new payload job before any steps are
 	/// executed. It can be used by steps to perform any optional initialization
@@ -55,11 +56,11 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 	///
 	/// If this function returns an error, the pipeline execution will be
 	/// terminated immediately and no steps will be executed.
-	fn before_job(
+	async fn before_job(
 		self: Arc<Self>,
 		_: StepContext<P>,
-	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
-		async { Ok(()) }
+	) -> Result<(), PayloadBuilderError> {
+		Ok(())
 	}
 
 	/// This function is called once after all steps in the pipeline have been
@@ -68,21 +69,21 @@ pub trait Step<P: Platform>: Send + Sync + 'static {
 	///
 	/// A failure in this function will invalidate the whole payload job
 	/// and will not produce a valid payload.
-	fn after_job(
+	async fn after_job(
 		self: Arc<Self>,
 		_: StepContext<P>,
 		_: Arc<Result<types::BuiltPayload<P>, PayloadBuilderError>>,
-	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
-		async { Ok(()) }
+	) -> Result<(), PayloadBuilderError> {
+		Ok(())
 	}
 
 	/// Optional setup function called exactly once when a pipeline is
 	/// instantiated as a payload builder service, before any payload jobs run.
-	fn setup(
+	async fn setup(
 		&mut self,
 		_: InitContext<P>,
-	) -> impl Future<Output = Result<(), PayloadBuilderError>> + Send + Sync {
-		async { Ok(()) }
+	) -> Result<(), PayloadBuilderError> {
+		Ok(())
 	}
 }
 

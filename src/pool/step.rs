@@ -130,6 +130,7 @@ impl<P: Platform> AppendOrders<P> {
 	}
 }
 
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for AppendOrders<P> {
 	// Called exactly once by the runtime when the enclosing pipeline is
 	/// instantiated into a payload builder service.

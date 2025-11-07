@@ -113,6 +113,7 @@ mod tests {
 	struct UInt32Event(u32);
 
 	struct StepEmittingOneTypeOfEvent;
+	#[async_trait::async_trait]
 	impl<P: Platform> Step<P> for StepEmittingOneTypeOfEvent {
 		async fn before_job(
 			self: Arc<Self>,
@@ -142,6 +143,7 @@ mod tests {
 	}
 
 	struct StepEmittingTwoTypesOfEvents;
+	#[async_trait::async_trait]
 	impl<P: Platform> Step<P> for StepEmittingTwoTypesOfEvents {
 		async fn before_job(
 			self: Arc<Self>,

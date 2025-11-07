@@ -5,6 +5,7 @@ use {crate::prelude::*, std::sync::Arc};
 /// It requires that the payload has no existing transactions in it as the
 /// sequencer expects its transactions to be at the top of the block.
 pub struct OptimismPrologue;
+#[async_trait::async_trait]
 impl<P> Step<P> for OptimismPrologue
 where
 	P: traits::PlatformExecBounds<Optimism>,
@@ -77,6 +78,7 @@ mod tests {
 	};
 
 	struct NoOpStep;
+	#[async_trait::async_trait]
 	impl Step<Optimism> for NoOpStep {
 		async fn step(
 			self: Arc<Self>,

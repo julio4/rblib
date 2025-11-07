@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
 pub struct BreakAfterDeadline;
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for BreakAfterDeadline {
 	async fn step(
 		self: std::sync::Arc<Self>,

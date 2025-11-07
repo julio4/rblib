@@ -38,6 +38,7 @@ pub trait OrderScore<P: Platform>:
 /// checkpoint is considered immutable and will not be reordered.
 #[derive(Debug, Clone, Default)]
 pub struct OrderBy<P: Platform, S: OrderScore<P>>(PhantomData<(P, S)>);
+#[async_trait::async_trait]
 impl<P: Platform, S: OrderScore<P>> Step<P> for OrderBy<P, S> {
 	async fn step(
 		self: Arc<Self>,

@@ -21,6 +21,7 @@ pub struct RemoveRevertedTransactions {
 	per_job: PerJobCounters,
 }
 
+#[async_trait::async_trait]
 impl<P: Platform> Step<P> for RemoveRevertedTransactions {
 	/// Called exactly once by the runtime when the enclosing pipeline is
 	/// instantiated into a payload builder service.

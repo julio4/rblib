@@ -10,6 +10,8 @@ use {
 	std::sync::Arc,
 };
 
+pub mod atomic;
+
 /// A composite step with a list of steps.
 /// The associated mode defines the specific behavior of executing steps
 pub struct CompositeStep<P: Platform, M> {

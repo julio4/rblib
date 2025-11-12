@@ -1,8 +1,8 @@
 use {super::*, crate::platform::types::BuiltPayload};
 
-combinator!(All, then);
+combinator!(Chain, then);
 
-impl<P: Platform> Step<P> for All<P> {
+impl<P: Platform> Step<P> for Chain<P> {
 	async fn before_job(
 		self: Arc<Self>,
 		ctx: StepContext<P>,
@@ -62,7 +62,7 @@ impl<P: Platform> Step<P> for All<P> {
 }
 
 #[macro_export]
-macro_rules! all {
+macro_rules! chain {
     ($first:expr $(, $rest:expr)* $(,)?) => {{
         let mut c = Atomic::of(vec![Arc::new(StepInstance::new($first))]);
         $(

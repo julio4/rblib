@@ -54,7 +54,7 @@ macro_rules! combinator {
 	};
 }
 
-mod all;
 mod atomic;
+mod chain;
 
-pub use {all::All, atomic::Atomic};
+pub use {atomic::Atomic, chain::Chain};

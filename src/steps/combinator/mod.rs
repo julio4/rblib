@@ -23,12 +23,13 @@ macro_rules! combinator {
 
 		impl<P: Platform> $name<P> {
 			#[must_use]
-			pub fn $append(mut self, other: impl Step<P>) -> Self {
+			#[allow(unused)]
+			fn $append(mut self, other: impl Step<P>) -> Self {
 				self.0.push(Arc::new(StepInstance::new(other)));
 				self
 			}
 
-			pub fn steps(&self) -> &[Arc<StepInstance<P>>] {
+			fn steps(&self) -> &[Arc<StepInstance<P>>] {
 				&self.0
 			}
 		}
@@ -53,8 +54,7 @@ macro_rules! combinator {
 	};
 }
 
-combinator!(Atomic, and);
+mod all;
 mod atomic;
 
-combinator!(All, then);
-mod all;
+pub use {all::All, atomic::Atomic};

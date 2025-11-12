@@ -1,18 +1,6 @@
-use {
-	super::Atomic,
-	crate::{
-		payload::Checkpoint,
-		pipelines::{
-			ControlFlow,
-			InitContext,
-			PayloadBuilderError,
-			Step,
-			StepContext,
-		},
-		platform::{Platform, types::BuiltPayload},
-	},
-	std::sync::Arc,
-};
+use {super::*, crate::platform::types::BuiltPayload};
+
+combinator!(Atomic, and);
 
 impl<P: Platform> Step<P> for Atomic<P> {
 	async fn before_job(

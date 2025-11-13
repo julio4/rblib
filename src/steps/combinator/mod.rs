@@ -48,10 +48,11 @@ pub trait CombinatorStep<P: Platform>: Step<P> {
 /// - `$append()` method to append a step to the collection
 /// - `steps()` method to get a slice of the steps for the `Step` implementation
 macro_rules! combinator {
+	// meta is rustdoc for the combinator struct,
 	// name is the combinator struct name,
 	// append the method name of adding a step (optional)
-	($name:ident, $append:ident) => {
-		/// Combinator step that executes a sequence of steps in order.
+	($(#[$meta:meta])*, $name:ident, $append:ident) => {
+		$(#[$meta])*
 		pub struct $name<P: Platform>(pub Steps<P>);
 
 		impl<P: Platform> CombinatorStep<P> for $name<P> {
@@ -89,8 +90,8 @@ macro_rules! combinator {
 	};
 
 	// default method name for adding a step: append
-	($name:ident) => {
-		combinator!($name, append);
+	($(#[$meta:meta])*, $name:ident) => {
+		combinator!($(#[$meta])*, $name, append);
 	};
 }
 
@@ -122,7 +123,10 @@ impl<P: Platform, S: Step<P>> IntoSteps<P> for S {
 pub mod tests {
 	use {super::*, crate::test_utils::*};
 
-	combinator!(TestCombinator, test_append);
+	combinator!(
+		/// `TestCombinator` doc
+		 , TestCombinator, test_append
+	);
 	impl<P: Platform> Step<P> for TestCombinator<P> {
 		async fn step(
 			self: Arc<Self>,

@@ -22,7 +22,6 @@ mod platform;
 mod step;
 mod transactions;
 
-#[allow(unused_imports)]
 pub(crate) use step::fake_step;
 pub use {
 	accounts::{FundedAccounts, WithFundedAccounts},
@@ -32,7 +31,14 @@ pub use {
 	node::{ConsensusDriver, LocalNode},
 	platform::{TestNodeFactory, TestablePlatform},
 	rblib_tests_macros::{assert_is_dyn_safe, if_platform, rblib_test},
-	step::{AlwaysBreakStep, AlwaysFailStep, AlwaysOkStep, OneStep},
+	step::{
+		AlwaysBreakStep,
+		AlwaysFailStep,
+		AlwaysOkStep,
+		OkWithEventStep,
+		OneStep,
+		StringEvent,
+	},
 	transactions::{
 		invalid_tx,
 		reverting_tx,

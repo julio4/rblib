@@ -1,6 +1,9 @@
 use {super::*, crate::platform::types::BuiltPayload};
 
-combinator!(Atomic, and);
+combinator!(
+	/// TODO
+	, Atomic, and
+);
 
 impl<P: Platform> Step<P> for Atomic<P> {
 	async fn before_job(

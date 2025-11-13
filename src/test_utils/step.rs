@@ -12,11 +12,15 @@ use {
 	},
 };
 
-#[allow(unused_macros)]
+/// A simple `String` event that can be emitted by a step.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StringEvent(pub String);
+
 macro_rules! fake_step {
 	($name:ident) => {
+		#[allow(unreachable_pub)]
 		#[derive(Debug, Default, Clone)]
-		pub(super) struct $name;
+		pub struct $name;
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -29,37 +33,109 @@ macro_rules! fake_step {
 	};
 
 	($name:ident, noop_ok) => {
+		/// A step that always returns `ControlFlow::Ok` with the input payload.
+		#[allow(unreachable_pub)]
 		#[derive(Debug, Default, Clone)]
 		pub struct $name;
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
-				checkpoint: $crate::prelude::Checkpoint<P>,
+				payload: $crate::prelude::Checkpoint<P>,
 				_: $crate::prelude::StepContext<P>,
 			) -> $crate::prelude::ControlFlow<P> {
-				$crate::prelude::ControlFlow::Ok(checkpoint)
+				$crate::prelude::ControlFlow::Ok(payload)
 			}
 		}
 	};
 
 	($name:ident, noop_break) => {
+		/// A step that always returns `ControlFlow::Break` with the input payload.
+		#[allow(unreachable_pub)]
 		#[derive(Debug, Default, Clone)]
 		pub struct $name;
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
-				checkpoint: $crate::prelude::Checkpoint<P>,
+				payload: $crate::prelude::Checkpoint<P>,
 				_: $crate::prelude::StepContext<P>,
 			) -> $crate::prelude::ControlFlow<P> {
-				$crate::prelude::ControlFlow::Break(checkpoint)
+				$crate::prelude::ControlFlow::Break(payload)
+			}
+		}
+	};
+
+	($name:ident, noop_fail) => {
+		/// A step that always returns `ControlFlow::Fail` with
+		/// `PayloadBuilderError::Other`.
+		#[allow(unreachable_pub)]
+		#[derive(Debug, Default, Clone)]
+		pub struct $name;
+
+		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
+			async fn step(
+				self: std::sync::Arc<Self>,
+				_: $crate::prelude::Checkpoint<P>,
+				_: $crate::prelude::StepContext<P>,
+			) -> $crate::prelude::ControlFlow<P> {
+				$crate::prelude::ControlFlow::Fail(
+					$crate::prelude::PayloadBuilderError::Other("always fail".into()),
+				)
+			}
+		}
+	};
+
+	($name:ident, emit_events, noop_ok) => {
+		#[allow(unreachable_pub)]
+		#[derive(Debug, Default, Clone)]
+		pub struct $name;
+
+		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
+			async fn before_job(
+				self: std::sync::Arc<Self>,
+				ctx: $crate::prelude::StepContext<P>,
+			) -> Result<(), $crate::prelude::PayloadBuilderError> {
+				ctx.emit($crate::test_utils::StringEvent(format!(
+					"{}: before_job",
+					stringify!($name),
+				)));
+				Ok(())
+			}
+
+			async fn step(
+				self: std::sync::Arc<Self>,
+				payload: $crate::prelude::Checkpoint<P>,
+				ctx: $crate::prelude::StepContext<P>,
+			) -> $crate::prelude::ControlFlow<P> {
+				ctx.emit($crate::test_utils::StringEvent(format!(
+					"{}: step",
+					stringify!($name),
+				)));
+				$crate::prelude::ControlFlow::Ok(payload)
+			}
+
+			async fn after_job(
+				self: std::sync::Arc<Self>,
+				ctx: $crate::prelude::StepContext<P>,
+				_: std::sync::Arc<
+					Result<
+						$crate::prelude::types::BuiltPayload<P>,
+						$crate::prelude::PayloadBuilderError,
+					>,
+				>,
+			) -> Result<(), $crate::prelude::PayloadBuilderError> {
+				ctx.emit($crate::test_utils::StringEvent(format!(
+					"{}: after_job",
+					stringify!($name),
+				)));
+				Ok(())
 			}
 		}
 	};
 
 	($name:ident, $state:ident) => {
-		#[allow(dead_code)]
+		#[allow(unreachable_pub)]
 		#[derive(Debug, Clone)]
-		pub(super) struct $name($state);
+		pub struct $name($state);
 		impl<P: $crate::prelude::Platform> $crate::prelude::Step<P> for $name {
 			async fn step(
 				self: std::sync::Arc<Self>,
@@ -74,47 +150,17 @@ macro_rules! fake_step {
 
 pub(crate) use fake_step;
 
-/// A step that always return `ControlFlow::Break` with the input payload.
-pub struct AlwaysBreakStep;
-impl<P: Platform> Step<P> for AlwaysBreakStep {
-	async fn step(
-		self: Arc<Self>,
-		payload: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Break(payload)
-	}
-}
+fake_step!(AlwaysOkStep, noop_ok);
+fake_step!(AlwaysBreakStep, noop_break);
+fake_step!(AlwaysFailStep, noop_fail);
 
-/// A step that always returns `ControlFlow::Ok` with the input payload.
-pub struct AlwaysOkStep;
-impl<P: Platform> Step<P> for AlwaysOkStep {
-	async fn step(
-		self: Arc<Self>,
-		payload: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Ok(payload)
-	}
-}
-
-/// A step that always returns `ControlFlow::Fail` with
-/// `PayloadBuilderError::Other`.
-pub struct AlwaysFailStep;
-impl<P: Platform> Step<P> for AlwaysFailStep {
-	async fn step(
-		self: Arc<Self>,
-		_: Checkpoint<P>,
-		_: StepContext<P>,
-	) -> ControlFlow<P> {
-		ControlFlow::Fail(PayloadBuilderError::Other("always fail".into()))
-	}
-}
+fake_step!(OkWithEventStep, emit_events, noop_ok);
 
 /// This test util is used in unit tests for testing a single step in isolation.
 ///
-/// It allows to run a single step with a predefined list of transactions in the
-/// payload as an input and returns the output of the step control flow result.
+/// It allows running a single step with a predefined list of transactions in
+/// the payload as an input and returns the output of the step control flow
+/// result.
 ///
 /// The step is invoked with full node facilities and in realistic condition.
 pub struct OneStep<P: PlatformWithRpcTypes> {
@@ -160,9 +206,9 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 	/// Adds a new transaction to the input payload of the step.
 	///
 	/// Note that transactions added through this method will not go through the
-	/// mempool and directly into the payload of the step, which means that nonces
-	/// need to be set manually because they will not be reported by the mempool
-	/// "pending" transactions count
+	/// mempool and instead directly into the payload of the step.
+	/// Nonces need to be set manually because they will not be reported by the
+	/// mempool "pending" transactions count
 	#[must_use]
 	pub fn with_payload_tx(
 		mut self,

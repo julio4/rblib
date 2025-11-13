@@ -107,9 +107,6 @@ mod tests {
 	};
 
 	#[derive(Clone, Debug, PartialEq, Eq)]
-	struct StringEvent(String);
-
-	#[derive(Clone, Debug, PartialEq, Eq)]
 	struct UInt32Event(u32);
 
 	struct StepEmittingOneTypeOfEvent;

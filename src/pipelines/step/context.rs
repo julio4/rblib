@@ -16,7 +16,7 @@ use {
 #[derive(Debug, Clone)]
 pub struct StepContext<P: Platform> {
 	block: BlockContext<P>,
-	limits: Limits,
+	limits: Limits<P>,
 	events_bus: Arc<EventsBus<P>>,
 	started_at: Option<Instant>,
 }
@@ -25,7 +25,7 @@ impl<P: Platform> StepContext<P> {
 	pub(crate) fn new(
 		block: &BlockContext<P>,
 		step: &StepNavigator<P>,
-		limits: Limits,
+		limits: Limits<P>,
 		in_scope_since: Option<Instant>,
 	) -> Self {
 		let block = block.clone();
@@ -60,7 +60,7 @@ impl<P: Platform> StepContext<P> {
 	}
 
 	/// Payload limits for the scope of the step.
-	pub const fn limits(&self) -> &Limits {
+	pub const fn limits(&self) -> &Limits<P> {
 		&self.limits
 	}
 

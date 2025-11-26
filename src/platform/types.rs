@@ -100,6 +100,9 @@ pub type EvmHaltReason<P: Platform> =
 /// process.
 pub type DefaultLimits<P: Platform> = P::DefaultLimits;
 
+/// Extracts the type that can provide additional limits.
+pub type ExtraLimits<P: Platform> = P::ExtraLimits;
+
 /// The result of executing a transaction in the EVM.
 pub type TransactionExecutionResult<P: Platform> =
 	ExecutionResult<EvmHaltReason<P>>;

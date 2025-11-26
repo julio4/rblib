@@ -134,7 +134,11 @@ struct LimitsMinusEpilogue<P: Platform> {
 }
 
 impl<P: Platform> ScopedLimits<P> for LimitsMinusEpilogue<P> {
-	fn create(&self, payload: &Checkpoint<P>, enclosing: &Limits) -> Limits {
+	fn create(
+		&self,
+		payload: &Checkpoint<P>,
+		enclosing: &Limits<P>,
+	) -> Limits<P> {
 		// calculate the gas usage for the epilogue transaction
 		let message = (self.message_fn)(payload.block());
 		let gas_estimate = estimate_gas_for_tx(message.as_bytes());

@@ -198,7 +198,7 @@ impl<P: PlatformWithRpcTypes + TestNodeFactory<P>> OneStep<P> {
 	}
 
 	#[must_use]
-	pub fn with_limits(mut self, limits: Limits) -> Self {
+	pub fn with_limits(mut self, limits: Limits<P>) -> Self {
 		self.pipeline = self.pipeline.with_limits(limits);
 		self
 	}

@@ -82,7 +82,7 @@ impl<P: Platform> RootScope<P> {
 	}
 
 	/// Given a path to a step in the pipeline, returns its current limits.
-	pub(crate) fn limits_of(&self, step_path: &StepPath) -> Option<Limits> {
+	pub(crate) fn limits_of(&self, step_path: &StepPath) -> Option<Limits<P>> {
 		self
 			.root
 			.read()
@@ -169,7 +169,7 @@ fn scope_of(step: &StepPath) -> StepPath {
 /// that contain it. When a scope is active, then all its parent scopes are
 /// active as well.
 pub(crate) struct Scope<P: Platform> {
-	limits: Limits,
+	limits: Limits<P>,
 	metrics: Metrics,
 	limits_factory: Option<Arc<dyn ScopedLimits<P>>>,
 	entered_at: Option<Instant>,
@@ -197,7 +197,7 @@ impl<P: Platform> Scope<P> {
 	}
 
 	/// Returns the payload limits for steps running within the current scope.
-	pub(crate) const fn limits(&self) -> &Limits {
+	pub(crate) const fn limits(&self) -> &Limits<P> {
 		&self.limits
 	}
 }
@@ -240,7 +240,7 @@ impl<P: Platform> Scope<P> {
 		}
 	}
 
-	fn enter(&mut self, checkpoint: &Checkpoint<P>, enclosing: &Limits) {
+	fn enter(&mut self, checkpoint: &Checkpoint<P>, enclosing: &Limits<P>) {
 		assert!(!self.is_active(), "Scope is already active");
 
 		// refresh limits of this scope
@@ -308,7 +308,7 @@ impl<P: Platform> Scope<P> {
 		checkpoint: &Checkpoint<P>,
 		path: &StepPath,
 		root_name: &str,
-		enclosing: &Limits,
+		enclosing: &Limits<P>,
 	) -> Self {
 		let limits_factory = local.limits().cloned();
 		let scope_limits = limits_factory

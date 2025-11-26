@@ -23,7 +23,7 @@ impl EthereumDefaultLimits {
 }
 
 impl PlatformLimits<Ethereum> for EthereumDefaultLimits {
-	fn create(&self, block: &BlockContext<Ethereum>) -> Limits {
+	fn create(&self, block: &BlockContext<Ethereum>) -> Limits<Ethereum> {
 		let timestamp = block.attributes().timestamp();
 		let parent_gas_limit = block.parent().gas_limit();
 		let gas_limit = self.0.gas_limit(parent_gas_limit);

@@ -32,6 +32,7 @@ impl Platform for CustomPlatform {
 	type Bundle = CustomBundleType;
 	type DefaultLimits = types::DefaultLimits<Optimism>;
 	type EvmConfig = types::EvmConfig<Optimism>;
+	type ExtraLimits = types::ExtraLimits<Optimism>;
 	type NodeTypes = types::NodeTypes<Optimism>;
 	type PooledTransaction = types::PooledTransaction<Optimism>;
 

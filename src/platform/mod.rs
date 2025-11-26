@@ -31,7 +31,7 @@ mod optimism;
 #[cfg(feature = "optimism")]
 pub use optimism::*;
 
-/// This type abstracts the platform specific types of the underlying node that
+/// This type abstracts the platform-specific types of the underlying node that
 /// is building block payloads.
 ///
 /// The payload builder API is agnostic to the underlying payload types, header
@@ -84,6 +84,11 @@ pub trait Platform:
 	/// If no limits are set on a pipeline explicitly, a default instance of this
 	/// type will be used automatically.
 	type DefaultLimits: PlatformLimits<Self>;
+
+	/// Type that can provide extra limits for the payload building process.
+	/// This type is used to provide platform-specific limits that are not
+	/// covered by the default `Limits` type.
+	type ExtraLimits: LimitExtension;
 
 	/// Instantiate the EVM configuration for the platform with a given chain
 	/// specification.

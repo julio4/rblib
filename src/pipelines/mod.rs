@@ -409,12 +409,20 @@ pub mod traits {
 	}
 
 	pub trait PlatformExecBounds<P: Platform>:
-		Platform<NodeTypes = types::NodeTypes<P>, EvmConfig = types::EvmConfig<P>>
+		Platform<
+			NodeTypes = types::NodeTypes<P>,
+			EvmConfig = types::EvmConfig<P>,
+			ExtraLimits = types::ExtraLimits<P>,
+		>
 	{
 	}
 
 	impl<T, P: Platform> PlatformExecBounds<T> for P where
-		T: Platform<NodeTypes = types::NodeTypes<P>, EvmConfig = types::EvmConfig<P>>
+		T: Platform<
+				NodeTypes = types::NodeTypes<P>,
+				EvmConfig = types::EvmConfig<P>,
+				ExtraLimits = types::ExtraLimits<P>,
+			>
 	{
 	}
 }

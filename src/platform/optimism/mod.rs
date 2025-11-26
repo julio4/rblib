@@ -1,10 +1,11 @@
 use {
-	crate::{alloy, prelude::*, reth},
+	crate::{alloy, platform, prelude::*, reth},
 	alloy::{
 		eips::Encodable2718,
 		optimism::consensus::OpPooledTransaction as AlloyPoolTx,
 		primitives::Bytes,
 	},
+	platform::optimism::limits::OpLimitsExt,
 	reth::{
 		api::NodeTypes,
 		chainspec::EthChainSpec,
@@ -32,6 +33,7 @@ impl Platform for Optimism {
 	type Bundle = FlashbotsBundle<Self>;
 	type DefaultLimits = OptimismDefaultLimits;
 	type EvmConfig = OpEvmConfig;
+	type ExtraLimits = OpLimitsExt;
 	type NodeTypes = OpNode;
 	type PooledTransaction = OpPooledTransaction;
 

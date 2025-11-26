@@ -2,7 +2,7 @@ use {
 	crate::{alloy::eips::eip7840::BlobParams, prelude::*},
 	core::time::Duration,
 	serde::{Deserialize, Serialize},
-	std::time::Instant,
+	std::{fmt::Debug, time::Instant},
 };
 
 /// This type specifies the limits that payloads should stay within.
@@ -12,8 +12,8 @@ use {
 /// - Limits are specified on a pipeline scope level. If a pipeline scope
 ///   doesn't explicitly specify its limits it will inherit its enclosing scope
 ///   limits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Limits {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Limits<P: Platform> {
 	/// The maximum cumulative gas that can be used in the block.
 	/// This includes all transactions, epilogues, prologues, and other
 	/// gas-consuming operations.
@@ -24,12 +24,29 @@ pub struct Limits {
 
 	/// The maximum number of transactions that can be included in the block.
 	///
-	/// This is not a standard known ethereum limit, however it can be imposed by
-	/// custom limits factories.
+	/// This is not a standard known ethereum limit; however, it can be imposed
+	/// by custom limits factories.
 	pub max_transactions: Option<usize>,
 
 	/// The time a pipeline is allowed to spend on execution.
 	pub deadline: Option<Duration>,
+
+	/// Per platform extension.
+	pub ext: P::ExtraLimits,
+}
+
+impl<P: Platform> Copy for Limits<P> {}
+
+/// This trait must be implemented by extension limits
+pub trait LimitExtension:
+	Copy + Debug + Default + Send + Sync + 'static
+{
+	#[must_use]
+	fn clamp(&self, other: &Self) -> Self;
+}
+
+impl LimitExtension for () {
+	fn clamp(&self, (): &Self) -> Self {}
 }
 
 /// Types implementing this trait are responsible for calculating top-level
@@ -39,16 +56,17 @@ pub struct Limits {
 /// Implementations of this type are always called exactly once at the beginning
 /// of a new payload job.
 pub trait PlatformLimits<P: Platform>: Default + Send + Sync + 'static {
-	fn create(&self, block: &BlockContext<P>) -> Limits;
+	fn create(&self, block: &BlockContext<P>) -> Limits<P>;
 }
 
-impl Limits {
+impl<P: Platform> Limits<P> {
 	pub fn gas_limit(gas_limit: u64) -> Self {
 		Self {
 			gas_limit,
 			blob_params: None,
 			deadline: None,
 			max_transactions: None,
+			ext: P::ExtraLimits::default(),
 		}
 	}
 
@@ -109,6 +127,7 @@ impl Limits {
 			},
 			max_transactions: self.max_transactions.min(other.max_transactions),
 			deadline: self.deadline.min(other.deadline),
+			ext: self.ext.clamp(&other.ext),
 		}
 	}
 }

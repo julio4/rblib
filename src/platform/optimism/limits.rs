@@ -16,6 +16,26 @@ use {
 #[derive(Debug, Clone, Default)]
 pub struct OptimismDefaultLimits;
 
+#[allow(clippy::struct_field_names)]
+#[derive(Default, Debug, Clone, Copy)]
+pub struct OpLimitsExt {
+	pub max_tx_da: Option<u64>,
+	pub max_block_da: Option<u64>,
+	pub max_block_da_footprint: Option<u64>,
+}
+
+impl LimitExtension for OpLimitsExt {
+	fn clamp(&self, other: &Self) -> Self {
+		Self {
+			max_tx_da: self.max_tx_da.min(other.max_tx_da),
+			max_block_da: self.max_block_da.min(other.max_block_da),
+			max_block_da_footprint: self
+				.max_block_da_footprint
+				.min(other.max_block_da_footprint),
+		}
+	}
+}
+
 impl<P> PlatformLimits<P> for OptimismDefaultLimits
 where
 	P: Platform<
@@ -28,7 +48,7 @@ where
 		>,
 	>,
 {
-	fn create(&self, block: &BlockContext<P>) -> Limits {
+	fn create(&self, block: &BlockContext<P>) -> Limits<P> {
 		let mut limits = Limits::gas_limit(
 			block
 				.attributes()

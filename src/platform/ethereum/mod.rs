@@ -69,6 +69,7 @@ impl Platform for Ethereum {
 	type Bundle = FlashbotsBundle<Self>;
 	type DefaultLimits = EthereumDefaultLimits;
 	type EvmConfig = EthEvmConfig;
+	type ExtraLimits = ();
 	type NodeTypes = EthereumNode;
 	type PooledTransaction = EthPooledTransaction;
 

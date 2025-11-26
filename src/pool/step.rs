@@ -251,7 +251,7 @@ impl<'a, P: Platform> Run<'a, P> {
 		}
 	}
 
-	const fn limits(&self) -> &Limits {
+	const fn limits(&self) -> &Limits<P> {
 		self.ctx.limits()
 	}
 

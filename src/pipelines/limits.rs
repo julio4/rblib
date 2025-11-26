@@ -18,7 +18,8 @@ pub trait ScopedLimits<P: Platform>: Send + Sync + 'static {
 	/// As an input this method receives the current payload checkpoint and the
 	/// limits imposed by its parent scope (or limits created by
 	/// `PlatformLimits`).
-	fn create(&self, payload: &Checkpoint<P>, enclosing: &Limits) -> Limits;
+	fn create(&self, payload: &Checkpoint<P>, enclosing: &Limits<P>)
+	-> Limits<P>;
 }
 
 /// Convenience trait that allows API users to either use a `ScopedLimits` type
@@ -34,11 +35,11 @@ impl<T: ScopedLimits<P>, P: Platform> IntoScopedLimits<P, Variant<0>> for T {
 	}
 }
 
-impl<P: Platform> IntoScopedLimits<P, Variant<1>> for Limits {
+impl<P: Platform> IntoScopedLimits<P, Variant<1>> for Limits<P> {
 	fn into_scoped_limits(self) -> impl ScopedLimits<P> {
-		struct FixedLimits(Limits);
-		impl<P: Platform> ScopedLimits<P> for FixedLimits {
-			fn create(&self, _: &Checkpoint<P>, _: &Limits) -> Limits {
+		struct FixedLimits<P: Platform>(Limits<P>);
+		impl<P: Platform> ScopedLimits<P> for FixedLimits<P> {
+			fn create(&self, _: &Checkpoint<P>, _: &Limits<P>) -> Limits<P> {
 				self.0
 			}
 		}
@@ -104,7 +105,7 @@ impl<T> From<Zero> for ScaleOp<T> {
 }
 
 impl<P: Platform> ScopedLimits<P> for Scaled {
-	fn create(&self, _: &Checkpoint<P>, enclosing: &Limits) -> Limits {
+	fn create(&self, _: &Checkpoint<P>, enclosing: &Limits<P>) -> Limits<P> {
 		self.from(enclosing)
 	}
 }
@@ -121,7 +122,7 @@ impl Scaled {
 		}
 	}
 
-	pub fn from(&self, limits: &Limits) -> Limits {
+	pub fn from<P: Platform>(&self, limits: &Limits<P>) -> Limits<P> {
 		let mut limits = *limits;
 
 		if let Some(ref op) = self.gas {

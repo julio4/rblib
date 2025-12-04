@@ -1,3 +1,133 @@
+//! # Checkpoint Chain
+//!
+//! This module implements a chain of **checkpoints** used during payload
+//! building. Each checkpoint represents the state *after* applying one mutation
+//! (a transaction, a bundle, or a noop barrier), and cheap to clone, move, or
+//! drop.
+//!
+//! The design supports two types of checkpoints:
+//!
+//! - **Light checkpoints** — store only their local state diff (`BundleState`).
+//! - **Fat checkpoints** — additionally store an *accumulated state*, which is
+//!   a fully squashed view of all diffs up to that point.
+//!
+//! Fat checkpoints act as **skip-list anchors**, speeding up state lookups and
+//! reducing the cost of traversing the checkpoint chain.
+//!
+//! ## Checkpoint Chain Structure
+//!
+//! Each checkpoint internally stores:
+//!
+//! - `prev`: the previous checkpoint in the linear history,
+//! - `mutation`: either a barrier or the execution result of a tx/bundle,
+//! - `fat_ancestor`: an optional link to the *closest previous* fat checkpoint,
+//! - `accumulated_state`: `None` for light checkpoints, `Some` for fat ones.
+//!
+//! The chain always forms a backward-linked list:
+//!
+//! ```text
+//!   base_state
+//!      |
+//!      v
+//!   [C1] <- [C2] <- [C3] <- [C4] <- [C5] <- [C6] <- ...
+//! ```
+//!
+//! Fat checkpoints (*) introduce skip-edges
+//!
+//! ```text
+//!   [C3]* <-----+
+//!      ^        |
+//!      |        |
+//!   [C6]* ------+
+//!      ^
+//!      |
+//!   [C8]
+//! ```
+//!
+//! allowing fast traversal backward through accumulated state windows.
+//!
+//! ## How Accumulated State Is Built
+//!
+//! A checkpoint becomes *fat* when `.fat()` is invoked on it. The accumulation
+//! logic depends on whether a fat ancestor exists.
+//!
+//! ### Case 1: No Fat Ancestor Exists
+//!
+//! This happens near the beginning of the block, before any fat checkpoint is
+//! created. The accumulated state is built by squashing *all* diffs from the
+//! start of the chain up to this checkpoint:
+//!
+//! ```text
+//! accumulated = squash([state1, state2, state3])
+//! ```
+//!
+//! This creates a baseline-accumulated snapshot.
+//!
+//! ### Case 2: A Fat Ancestor Exists
+//!
+//! Let the history be:
+//!
+//! ```text
+//! base
+//!  ├─ C1: state1
+//!  ├─ C2: state2
+//!  ├─ C3: state3  → FAT, accumulated = squash([base,1,2,3])
+//!  ├─ C4: state4
+//!  ├─ C5: state5
+//!  ├─ C6: state6  → FAT
+//!  ├─ C7: state7
+//!  ├─ C8: state8
+//! ```
+//!
+//! When C6 becomes fat, we **do not reuse accumulated** state1–state3.
+//! Instead, we *start* from C4 and only apply from there as the fat ancestor
+//! checkpoint already includes its own diff:
+//!
+//! ```text
+//! base
+//!  ├─ C1: state1
+//!  ├─ C2: state2
+//!  ├─ C3: state3  → FAT, accumulated = squash([base,1,2,3])
+//!  ├─ C4: state4
+//!  ├─ C5: state5
+//!  ├─ C6: state6  → FAT, accumulated = squash([4,5,6])
+//!  ├─ C7: state7
+//!  ├─ C8: state8
+//! ```
+//!
+//! ## State Lookup Logic
+//!
+//! Given a checkpoint `C9` (light), state access proceeds through these layers:
+//!
+//! 1. **Local mutation state** (`state9`)
+//! 2. **Previous light checkpoints** (C8 and C7)
+//! 3. **Hit a fat checkpoint (C6)**
+//!    - check only its *accumulated* state (C4–C6)
+//! 4. **Jump to `C6.fat_ancestor` → C3**
+//!    - Check only accumulated state (C1–C3)
+//! 5. **Fall back to base state**
+//!
+//! This ensures:
+//! - Lookups do not scan the entire chain,
+//! - Fat checkpoints define "state windows" that are collapsed
+//!
+//! ## TLDR
+//!
+//! - Light checkpoints store only their local diff.
+//! - Fat checkpoints store a squashed snapshot of all diffs since the previous
+//!   fat checkpoint.
+//! - `fat_ancestor` provides skip-list–style acceleration by linking fat
+//!   checkpoints together.
+//! - State lookup walks for light checkpoint:
+//!   - local diffs
+//!   - then local diffs of previous light checkpoints,
+//!   - at the first fat checkpoint, the fat checkpoint accumulated diffs,
+//!   - then jumps to earlier fat checkpoints accumulated diffs,
+//!   - then base.
+//!
+//! This design supports efficient execution, simulation, and incremental block
+//! building
+
 use {
 	super::exec::IntoExecutable,
 	crate::{alloy, prelude::*, reth},
@@ -51,7 +181,7 @@ pub enum Error<P: Platform> {
 ///    between them. Each of the diverging checkpoints can be used to build
 ///    alternative versions of the payload.
 ///
-///  - Checkpoints are inexpensive to clone, discard and move around. However,
+///  - Checkpoints are inexpensive to clone, discard, and move around. However,
 ///    they are expensive to create, as they require executing transactions
 ///    through the EVM and storing the resulting state changes.
 ///
@@ -101,7 +231,7 @@ impl<P: Platform> Checkpoint<P> {
 		})
 	}
 
-	/// Returns the block context at the root of the checkpoint.
+	/// Returns the block context at the base of the checkpoint.
 	pub fn block(&self) -> &BlockContext<P> {
 		&self.inner.block
 	}
@@ -132,6 +262,11 @@ impl<P: Platform> Checkpoint<P> {
 
 	/// The state changes that occurred as a result of executing the
 	/// transaction(s) that created this checkpoint.
+	///
+	/// If this is a "fat" checkpoint with accumulated state, returns the
+	/// accumulated state (which includes all states changes since last fat
+	/// checkpoint including this local checkpoint's mutation state). Otherwise,
+	/// returns just the local mutation's state.
 	pub fn state(&self) -> Option<&BundleState> {
 		// Return accumulated state if this is a fat checkpoint
 		if let Some(ref accumulated) = self.inner.accumulated_state {
@@ -306,11 +441,17 @@ impl<P: Platform> Checkpoint<P> {
 		mutation: Mutation<P>,
 		context: P::CheckpointContext,
 	) -> Self {
+		let fat_ancestor = if self.inner.accumulated_state.is_some() {
+			Some(Arc::clone(&self.inner))
+		} else {
+			self.inner.fat_ancestor.clone()
+		};
+
 		Self {
 			inner: Arc::new(CheckpointInner {
 				block: self.inner.block.clone(),
 				prev: Some(Arc::clone(&self.inner)),
-				fat_ancestor: self.inner.fat_ancestor.clone(),
+				fat_ancestor,
 				depth: self.inner.depth + 1,
 				mutation,
 				accumulated_state: None,
@@ -368,22 +509,14 @@ impl<P: Platform> Checkpoint<P> {
 	}
 
 	/// Iterator from the latest fat ancestor (or base if none) to self in order
-	/// of application NOT lazy, see `Self::iter` instead
+	/// of application NOT lazy, see `Self::iter` instead for lazy backward
+	/// traversal.
 	fn iter_from_fat_ancestor(&self) -> impl Iterator<Item = Checkpoint<P>> {
-		// last fat ancestor if any, else base
-		let anchor = self.inner.fat_ancestor.as_ref().map_or_else(
-			|| self.into_iter().last().expect("chain always has base"),
-			|inner| Checkpoint {
-				inner: Arc::clone(inner),
-			},
-		);
-
-		// Collect all checkpoints after anchor, newest to oldest
-		let mut chain: Vec<_> =
-			self.into_iter().take_while(|cp| *cp != anchor).collect();
-
-		chain.reverse(); // oldest to newest
-
+		let mut chain: Vec<_> = self
+			.into_iter()
+			.take_while(|cp| cp.inner.accumulated_state.is_none())
+			.collect();
+		chain.reverse(); // oldest -> newest
 		chain.into_iter()
 	}
 }
@@ -410,7 +543,7 @@ enum Mutation<P: Platform> {
 	/// should not be discarded or reordered. An example of this would be placing
 	/// a barrier after applying sequencer transactions to ensure that they do
 	/// not get reordered by pipelines. Another example would be placing a barrier
-	/// after every committed flashblock, to ensure that any steps in the pipeline
+	/// after every committed flashblock to ensure that any steps in the pipeline
 	/// do not modify the committed state of the payload in process.
 	///
 	/// If there are multiple barriers in the history, the last one is considered
@@ -542,10 +675,7 @@ impl<P: Platform> DatabaseRef for CheckpointInner<P> {
 	}
 
 	/// Gets account code by its hash.
-	fn code_by_hash_ref(
-		&self,
-		code_hash: B256,
-	) -> Result<Bytecode, Self::Error> {
+	fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
 		if let Some(code) = self.find_in_chain(|state| state.bytecode(&code_hash)) {
 			return Ok(code);
 		}

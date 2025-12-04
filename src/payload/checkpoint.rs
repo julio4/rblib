@@ -133,6 +133,12 @@ impl<P: Platform> Checkpoint<P> {
 	/// The state changes that occurred as a result of executing the
 	/// transaction(s) that created this checkpoint.
 	pub fn state(&self) -> Option<&BundleState> {
+		// Return accumulated state if this is a fat checkpoint
+		if let Some(ref accumulated) = self.inner.accumulated_state {
+			return Some(accumulated);
+		}
+
+		// Otherwise return the local mutation's state
 		match self.inner.mutation {
 			Mutation::Barrier => None,
 			Mutation::Executable(ref result) => Some(result.state()),
@@ -234,6 +240,60 @@ impl<P: Platform> Checkpoint<P> {
 	) -> Result<types::BuiltPayload<P>, PayloadBuilderError> {
 		P::build_payload(self.clone(), self.block().base_state())
 	}
+
+	/// Creates a "fat" checkpoint with accumulated state.
+	///
+	/// This method traverses the checkpoint history to the latest fat ancestor
+	/// and merges all state changes using `BundleState::extend` to create a
+	/// single accumulated state. The resulting checkpoint can be used as a
+	/// skip-list anchor point for efficient state lookups.
+	///
+	/// If this checkpoint already has accumulated state, it returns self
+	/// unchanged.
+	#[must_use]
+	pub fn fat(mut self) -> Self {
+		// If already a fat checkpoint, return self
+		if self.inner.accumulated_state.is_some() {
+			return self;
+		}
+
+		// Collect/clone state diffs from (latest fat ancestor, self]
+		let mut states = self
+			.iter_from_fat_ancestor()
+			.filter_map(|cp| cp.result().map(|r| r.state().clone()));
+
+		let Some(mut accumulated) = states.next() else {
+			// no mutations (only barriers): don't make this fat.
+			// TODO: maybe still return a fat checkpoint with an empty accumulated
+			// state here?
+			return self.clone();
+		};
+
+		// Extend with the rest of the diffs (each cloned once above).
+		for state in states {
+			accumulated.extend(state);
+		}
+
+		// Try to update in place if exclusive access to checkpoint inner
+		if let Some(inner) = Arc::get_mut(&mut self.inner) {
+			inner.accumulated_state = Some(accumulated);
+			self
+		} else {
+			// Fallback: create a new CheckpointInner
+			Self {
+				inner: Arc::new(CheckpointInner {
+					block: self.inner.block.clone(),
+					prev: self.inner.prev.clone(),
+					fat_ancestor: self.inner.fat_ancestor.clone(),
+					depth: self.inner.depth,
+					mutation: self.inner.mutation.clone(),
+					accumulated_state: Some(accumulated),
+					created_at: self.inner.created_at,
+					context: self.inner.context.clone(),
+				}),
+			}
+		}
+	}
 }
 
 /// Internal API
@@ -250,8 +310,10 @@ impl<P: Platform> Checkpoint<P> {
 			inner: Arc::new(CheckpointInner {
 				block: self.inner.block.clone(),
 				prev: Some(Arc::clone(&self.inner)),
+				fat_ancestor: self.inner.fat_ancestor.clone(),
 				depth: self.inner.depth + 1,
 				mutation,
+				accumulated_state: None,
 				created_at: Instant::now(),
 				context,
 			}),
@@ -267,8 +329,10 @@ impl<P: Platform> Checkpoint<P> {
 			inner: Arc::new(CheckpointInner {
 				block,
 				prev: None,
+				fat_ancestor: None,
 				depth: 0,
 				mutation: Mutation::Barrier,
+				accumulated_state: None,
 				created_at: Instant::now(),
 				context: Default::default(),
 			}),
@@ -285,8 +349,10 @@ impl<P: Platform> Checkpoint<P> {
 			inner: Arc::new(CheckpointInner {
 				block,
 				prev: None,
+				fat_ancestor: None,
 				depth: 0,
 				mutation: Mutation::Barrier,
+				accumulated_state: None,
 				created_at: Instant::now(),
 				context,
 			}),
@@ -296,8 +362,29 @@ impl<P: Platform> Checkpoint<P> {
 	/// Lazy iterator over historic checkpoints.
 	/// Note that it is in reverse history order, starting from the latest applied
 	/// checkpoint up to the first one.
+	#[allow(unused)]
 	fn iter(&self) -> Successors<Self, fn(&Self) -> Option<Self>> {
 		<&Self as IntoIterator>::into_iter(self)
+	}
+
+	/// Iterator from the latest fat ancestor (or base if none) to self in order
+	/// of application NOT lazy, see `Self::iter` instead
+	fn iter_from_fat_ancestor(&self) -> impl Iterator<Item = Checkpoint<P>> {
+		// last fat ancestor if any, else base
+		let anchor = self.inner.fat_ancestor.as_ref().map_or_else(
+			|| self.into_iter().last().expect("chain always has base"),
+			|inner| Checkpoint {
+				inner: Arc::clone(inner),
+			},
+		);
+
+		// Collect all checkpoints after anchor, newest to oldest
+		let mut chain: Vec<_> =
+			self.into_iter().take_while(|cp| *cp != anchor).collect();
+
+		chain.reverse(); // oldest to newest
+
+		chain.into_iter()
 	}
 }
 
@@ -347,6 +434,9 @@ struct CheckpointInner<P: Platform> {
 	/// The previous checkpoint in this chain of checkpoints, if any.
 	prev: Option<Arc<Self>>,
 
+	/// The latest "fat" checkpoint in this chain of checkpoints, if any.
+	fat_ancestor: Option<Arc<Self>>,
+
 	/// The number of checkpoints in the chain starting from the beginning of the
 	/// block context.
 	///
@@ -356,6 +446,10 @@ struct CheckpointInner<P: Platform> {
 
 	/// The mutation kind for the checkpoint.
 	mutation: Mutation<P>,
+
+	/// The accumulated state of the checkpoint, only present if the checkpoint
+	/// is "fat"
+	accumulated_state: Option<BundleState>,
 
 	/// The timestamp when this checkpoint was created.
 	created_at: Instant,
@@ -376,13 +470,53 @@ impl<P: Platform> From<Checkpoint<P>> for Vec<types::Transaction<P>> {
 	}
 }
 
-/// Any checkpoint can be used as a database reference for an EVM instance.
-/// The state at a checkpoint is the cumulative aggregate of all state mutations
-/// that occurred in the current checkpoint and all its ancestors on top of the
-/// base state of the parent block of the block for which the payload is being
-/// built.
-impl<P: Platform> DatabaseRef for Checkpoint<P> {
-	/// The database error type.
+impl<P: Platform> CheckpointInner<P> {
+	/// Traverse the checkpoint chain in the logical lookup order and apply `f`
+	/// to each visible `BundleState`.
+	///
+	/// Semantics:
+	/// - For light checkpoints: visit their local mutation `BundleState` (if
+	///   any), then go to `prev`.
+	/// - For fat checkpoints: visit their `accumulated_state`, then jump to
+	///   `fat_ancestor`.
+	/// - Stops as soon as `f` returns `Some(_)`.
+	fn find_in_chain<T, F>(&self, mut f: F) -> Option<T>
+	where
+		F: FnMut(&BundleState) -> Option<T>,
+	{
+		let mut current: Option<&CheckpointInner<P>> = Some(self);
+
+		while let Some(inner) = current {
+			if let Some(ref accumulated) = inner.accumulated_state {
+				// Fat checkpoint: check the accumulated state only, then jump to
+				// fat_ancestor.
+				if let Some(found) = f(accumulated) {
+					return Some(found);
+				}
+
+				current = inner.fat_ancestor.as_deref();
+			} else {
+				// Light checkpoint: check the local mutation state only, then go to
+				// prev.
+				if let Mutation::Executable(ref result) = inner.mutation {
+					let state = result.state();
+					if let Some(found) = f(state) {
+						return Some(found);
+					}
+				}
+
+				current = inner.prev.as_deref();
+			}
+		}
+
+		None
+	}
+}
+
+/// `DatabaseRef` implementation for `CheckpointInner`.
+/// This is the core implementation that efficiently traverses the checkpoint
+/// chain using the skip-list structure (`fat_ancestor`) when available.
+impl<P: Platform> DatabaseRef for CheckpointInner<P> {
 	type Error = ProviderError;
 
 	/// Gets basic account information.
@@ -390,49 +524,36 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		&self,
 		address: Address,
 	) -> Result<Option<AccountInfo>, Self::Error> {
-		// we want to probe the history of checkpoints in reverse order,
-		// starting from the most recent one, to find the first checkpoint
-		// that has touched the given address.
-
-		if let Some(account) = self.iter().find_map(|checkpoint| {
-			checkpoint
-				.result()?
-				.state()
+		if let Some(account) = self.find_in_chain(|state| {
+			state
 				.account(&address)
-				.and_then(|account| account.info.as_ref())
+				.and_then(|a| a.info.as_ref())
 				.cloned()
 		}) {
 			return Ok(Some(account));
 		}
 
-		// none of the checkpoints priori to this have touched this address,
-		// now we need to check if the account exists in the base state of the
-		// block context.
-		if let Some(acc) = self.block().base_state().basic_account(&address)? {
-			return Ok(Some(acc.into()));
+		// Fallback to base state.
+		if let Some(acc) = self.block.base_state().basic_account(&address)? {
+			Ok(Some(acc.into()))
+		} else {
+			Ok(None)
 		}
-
-		// account does not exist
-		Ok(None)
 	}
 
 	/// Gets account code by its hash.
-	fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-		// we want to probe the history of checkpoints in reverse order,
-		// starting from the most recent one, to find the first checkpoint
-		// that has created the code with the given hash.
-
-		if let Some(code) = self
-			.iter()
-			.find_map(|checkpoint| checkpoint.result()?.state().bytecode(&code_hash))
-		{
+	fn code_by_hash_ref(
+		&self,
+		code_hash: B256,
+	) -> Result<Bytecode, Self::Error> {
+		if let Some(code) = self.find_in_chain(|state| state.bytecode(&code_hash)) {
 			return Ok(code);
 		}
 
-		// check if the code exists in the base state of the block context.
+		// Fallback to base state bytecode.
 		Ok(
 			self
-				.block()
+				.block
 				.base_state()
 				.bytecode_by_hash(&code_hash)?
 				.unwrap_or_default()
@@ -446,41 +567,71 @@ impl<P: Platform> DatabaseRef for Checkpoint<P> {
 		address: Address,
 		index: StorageKey,
 	) -> Result<StorageValue, Self::Error> {
-		// traverse checkpoint history looking for the first checkpoint that
-		// has touched the given address.
-
-		if let Some(value) = self.iter().find_map(|checkpoint| {
-			checkpoint
-				.result()?
-				.state()
+		if let Some(value) = self.find_in_chain(|state| {
+			state
 				.account(&address)
-				.and_then(|account| account.storage.get(&index))
+				.and_then(|a| a.storage.get(&index))
 				.map(|slot| slot.present_value)
 		}) {
 			return Ok(value);
 		}
 
-		// none of the checkpoints prior to this have touched this address,
-		// now we need to check if the account exists in the base state of the
-		// block context.
+		// Fallback to base state storage.
 		Ok(
 			self
-				.block()
+				.block
 				.base_state()
 				.storage(address, index.into())?
 				.unwrap_or_default(),
 		)
 	}
 
-	/// Gets block hash by block number.
 	fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
 		Ok(
 			self
-				.block()
+				.block
 				.base_state()
 				.block_hash(number)?
 				.unwrap_or_default(),
 		)
+	}
+}
+
+/// Any checkpoint can be used as a database reference for an EVM instance.
+/// The state at a checkpoint is the cumulative aggregate of all state mutations
+/// that occurred in the current checkpoint and all its ancestors on top of the
+/// base state of the parent block of the block for which the payload is being
+/// built.
+/// See `<CheckpointInner as DatabaseRef>`
+impl<P: Platform> DatabaseRef for Checkpoint<P> {
+	/// The database error type.
+	type Error = ProviderError;
+
+	/// Gets basic account information.
+	fn basic_ref(
+		&self,
+		address: Address,
+	) -> Result<Option<AccountInfo>, Self::Error> {
+		self.inner.basic_ref(address)
+	}
+
+	/// Gets account code by its hash.
+	fn code_by_hash_ref(&self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+		self.inner.code_by_hash_ref(code_hash)
+	}
+
+	/// Gets storage value of address at index.
+	fn storage_ref(
+		&self,
+		address: Address,
+		index: StorageKey,
+	) -> Result<StorageValue, Self::Error> {
+		self.inner.storage_ref(address, index)
+	}
+
+	/// Gets block hash by block number.
+	fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
+		self.inner.block_hash_ref(number)
 	}
 }
 

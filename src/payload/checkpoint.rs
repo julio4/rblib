@@ -58,7 +58,7 @@
 //! start of the chain up to this checkpoint:
 //!
 //! ```text
-//! accumulated = squash([state1, state2, state3])
+//! accumulated = squash([base, state1, state2, state3])
 //! ```
 //!
 //! This creates a baseline-accumulated snapshot.
@@ -71,10 +71,10 @@
 //! base
 //!  ├─ C1: state1
 //!  ├─ C2: state2
-//!  ├─ C3: state3  → FAT, accumulated = squash([base,1,2,3])
+//!  ├─ C3: state3  -> FAT, accumulated = squash([base,1,2,3])
 //!  ├─ C4: state4
 //!  ├─ C5: state5
-//!  ├─ C6: state6  → FAT
+//!  ├─ C6: state6  -> FAT
 //!  ├─ C7: state7
 //!  ├─ C8: state8
 //! ```
@@ -87,10 +87,10 @@
 //! base
 //!  ├─ C1: state1
 //!  ├─ C2: state2
-//!  ├─ C3: state3  → FAT, accumulated = squash([base,1,2,3])
+//!  ├─ C3: state3  -> FAT, accumulated = squash([base,1,2,3])
 //!  ├─ C4: state4
 //!  ├─ C5: state5
-//!  ├─ C6: state6  → FAT, accumulated = squash([4,5,6])
+//!  ├─ C6: state6  -> FAT, accumulated = squash([4,5,6])
 //!  ├─ C7: state7
 //!  ├─ C8: state8
 //! ```
@@ -103,7 +103,7 @@
 //! 2. **Previous light checkpoints** (C8 and C7)
 //! 3. **Hit a fat checkpoint (C6)**
 //!    - check only its *accumulated* state (C4–C6)
-//! 4. **Jump to `C6.fat_ancestor` → C3**
+//! 4. **Jump to `C6.fat_ancestor` -> C3**
 //!    - Check only accumulated state (C1–C3)
 //! 5. **Fall back to base state**
 //!
@@ -853,26 +853,16 @@ mod tests {
 		crate::{
 			payload::checkpoint::{Checkpoint, IntoExecutable, Mutation},
 			prelude::*,
-			reth::primitives::Recovered,
-			test_utils::{BlockContextMocked, test_bundle, test_tx, test_txs},
+			test_utils::{
+				BlockContextMocked,
+				apply_multiple,
+				test_bundle,
+				test_tx,
+				test_txs,
+			},
 		},
 		std::time::Instant,
 	};
-
-	/// Helper test function to apply multiple transactions on a checkpoint
-	fn apply_multiple<P: PlatformWithRpcTypes>(
-		root: Checkpoint<P>,
-		txs: &[Recovered<types::Transaction<P>>],
-	) -> Vec<Checkpoint<P>> {
-		let mut cur = root;
-		txs
-			.iter()
-			.map(|tx| {
-				cur = cur.apply(tx.clone()).unwrap();
-				cur.clone()
-			})
-			.collect()
-	}
 
 	mod internal {
 		use super::*;
@@ -1043,5 +1033,191 @@ mod tests {
 
 		assert_eq!(built_payload.id(), payload.id());
 		assert_eq!(built_payload.block(), payload.block());
+	}
+
+	mod fat_checkpoints {
+		use {
+			super::*,
+			crate::{
+				alloy::primitives::{Address, B256},
+				reth::revm::{DatabaseRef, primitives::U256},
+			},
+			std::sync::Arc,
+		};
+
+		/// return depths of checkpoints produced by `iter_from_fat_ancestor`.
+		fn depths<P: Platform>(cp: &Checkpoint<P>) -> Vec<usize> {
+			cp.iter_from_fat_ancestor().map(|c| c.depth()).collect()
+		}
+
+		#[test]
+		fn fat_on_first_mutation_accumulates_from_base() {
+			let block = BlockContext::<Ethereum>::mocked();
+			let base = block.start(); // depth 0, barrier
+
+			let txs = test_txs::<Ethereum>(0, 0, 3);
+			let checkpoints = apply_multiple(base, &txs);
+			let c1 = checkpoints[0].clone();
+			let c2 = checkpoints[1].clone();
+			let c3 = checkpoints[2].clone();
+
+			// Sanity: all light, no accumulated state, no fat ancestors.
+			assert!(c1.inner.accumulated_state.is_none());
+			assert!(c2.inner.accumulated_state.is_none());
+			assert!(c3.inner.accumulated_state.is_none());
+			assert!(c1.inner.fat_ancestor.is_none());
+			assert!(c2.inner.fat_ancestor.is_none());
+			assert!(c3.inner.fat_ancestor.is_none());
+
+			// Make C3 fat: with no existing fat ancestor, we should accumulate
+			// the whole window from base to C3.
+			let c3_fat = c3.clone().fat();
+			assert!(c3_fat.inner.accumulated_state.is_some());
+			// the first fat checkpoint has no fat_ancestor
+			assert!(c3_fat.inner.fat_ancestor.is_none());
+
+			// iter_from_fat_ancestor should cover all diffs from base to C3:
+			// depths [0, 1, 2, 3] (Base, C1, C2, C3).
+			let window_depths = depths(&c3);
+			assert_eq!(window_depths, vec![0, 1, 2, 3]);
+
+			// Public API should still work the same way.
+			assert_eq!(c3_fat.depth(), c3.depth());
+			assert_eq!(c3_fat.prev(), c3.prev());
+			assert_eq!(c3_fat.as_transaction(), c3.as_transaction());
+			assert!(c3_fat.state().is_some());
+		}
+
+		#[test]
+		fn fat_with_existing_fat_ancestor_accumulates_only_last_window() {
+			let block = BlockContext::<Ethereum>::mocked();
+			let base = block.start();
+
+			// Build 6 checkpoints.
+			let txs = test_txs::<Ethereum>(0, 0, 6);
+			let checkpoints = apply_multiple(base, &txs[0..3]);
+
+			let c3 = checkpoints[2].clone(); // depth 3
+			// First fat checkpoint at C3: accumulates [C1, C2, C3].
+			let c3_fat = c3.clone().fat();
+
+			let checkpoints = apply_multiple(c3_fat.clone(), &txs[3..6]);
+			let c4 = checkpoints[3 - 3].clone(); // depth 4
+			let c5 = checkpoints[4 - 3].clone(); // depth 5
+			let c6 = checkpoints[5 - 3].clone(); // depth 6
+
+			assert!(c3_fat.inner.accumulated_state.is_some());
+			assert!(c3_fat.inner.fat_ancestor.is_none());
+
+			// Sanity: the successors C4/C5/C6 should have C3 as fat_ancestor.
+			assert!(Arc::ptr_eq(
+				c4.inner
+					.fat_ancestor
+					.as_ref()
+					.expect("expected fat ancestor on C4"),
+				&c3_fat.inner
+			));
+			assert!(Arc::ptr_eq(
+				c5.inner
+					.fat_ancestor
+					.as_ref()
+					.expect("expected fat ancestor on C5"),
+				&c3_fat.inner
+			));
+			assert!(Arc::ptr_eq(
+				c6.inner
+					.fat_ancestor
+					.as_ref()
+					.expect("expected fat ancestor on C6"),
+				&c3_fat.inner
+			));
+
+			// Make C6 fat: now we should accumulate only the window [C4, C5, C6].
+			let c6_fat = c6.clone().fat();
+			assert!(c6_fat.inner.accumulated_state.is_some());
+
+			// The fat ancestor of C6 must be C3.
+			assert!(Arc::ptr_eq(
+				c6_fat
+					.inner
+					.fat_ancestor
+					.as_ref()
+					.expect("fat ancestor on C6"),
+				&c3_fat.inner
+			));
+
+			// iter_from_fat_ancestor on C6 should start after C3, i.e. depths [4, 5,
+			// 6].
+			let window_depths = depths(&c6);
+			assert_eq!(window_depths, vec![4, 5, 6]);
+		}
+
+		#[test]
+		fn iter_from_fat_ancestor_for_light_descendants_uses_latest_fat() {
+			let block = BlockContext::<Ethereum>::mocked();
+			let base = block.start();
+
+			let txs = test_txs::<Ethereum>(0, 0, 10);
+			let checkpoints = apply_multiple(base, &txs[0..3]);
+			let c3 = checkpoints[2].clone();
+			let c3_fat = c3.clone().fat();
+
+			let checkpoints = apply_multiple(c3_fat.clone(), &txs[3..6]);
+			let c6 = checkpoints[5 - 3].clone();
+			let c6_fat = c6.clone().fat();
+
+			let checkpoints = apply_multiple(c6_fat.clone(), &txs[6..10]);
+			let c8 = checkpoints[7 - 3 - 3].clone();
+
+			// After C6 becomes fat, later checkpoints should see C6 as their
+			// latest fat ancestor, so the window for C8 is (C6, C8] -> depths [7, 8].
+			let window_depths = depths(&c8);
+			assert_eq!(window_depths, vec![7, 8]);
+
+			// And for C6 itself, the window is from its fat ancestor C3:
+			// depths [4, 5, 6].
+			let window_depths_c6 = depths(&c6);
+			assert_eq!(window_depths_c6, vec![4, 5, 6]);
+
+			// For C3 (first fat), the window covers from base: [0, 1, 2, 3].
+			let window_depths_c3 = depths(&c3);
+			assert_eq!(window_depths_c3, vec![0, 1, 2, 3]);
+		}
+
+		#[test]
+		fn database_ref_traversal_resolves_state_through_fat_windows() {
+			let block = BlockContext::<Ethereum>::mocked();
+			let base = block.start();
+
+			// Build a moderately deep chain.
+			let txs = test_txs::<Ethereum>(0, 0, 8);
+			let checkpoints = apply_multiple(base, &txs);
+
+			// Make two fat checkpoints as skip-list anchors.
+			let _c3_fat = checkpoints[2].clone().fat();
+			let _c6_fat = checkpoints[5].clone().fat();
+			let latest = checkpoints[7].clone(); // C8
+
+			// We just want to ensure we get the same via Checkpoint and via
+			// CheckpointInner.
+			let addr = Address::random();
+			let key = U256::from(0);
+
+			// basic_ref should never error
+			let from_cp = latest.basic_ref(addr).unwrap();
+			let from_inner = latest.inner.basic_ref(addr).unwrap();
+			assert_eq!(from_cp.is_some(), from_inner.is_some());
+
+			// storage_ref should never error as well.
+			let storage_from_cp = latest.storage_ref(addr, key).unwrap();
+			let storage_from_inner = latest.inner.storage_ref(addr, key).unwrap();
+			assert_eq!(storage_from_cp, storage_from_inner);
+
+			// code_by_hash_ref should be consistent.
+			let any_hash = B256::random();
+			let code_from_cp = latest.code_by_hash_ref(any_hash).unwrap();
+			let code_from_inner = latest.inner.code_by_hash_ref(any_hash).unwrap();
+			assert_eq!(code_from_cp, code_from_inner);
+		}
 	}
 }

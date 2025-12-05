@@ -130,3 +130,23 @@ pub fn invalid_tx<P: PlatformWithRpcTypes>(
 	let signed_tx: types::Transaction<P> = signed_tx.into();
 	signed_tx.with_signer(signer.address())
 }
+
+/// Helper test function to apply multiple transactions on a checkpoint
+///
+/// # Panics
+/// - if `apply` fails
+pub fn apply_multiple<P: PlatformWithRpcTypes>(
+	root: Checkpoint<P>,
+	txs: &[Recovered<types::Transaction<P>>],
+) -> Vec<Checkpoint<P>> {
+	let mut cur = root;
+	txs
+		.iter()
+		.map(|tx| {
+			cur = cur
+				.apply(tx.clone())
+				.expect("test transaction should not fail");
+			cur.clone()
+		})
+		.collect()
+}
